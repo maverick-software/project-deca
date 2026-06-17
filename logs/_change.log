@@ -1,5 +1,33 @@
 # Decadic change log (human-readable; maintained per house RULE #2)
 
+## 2026-06-17 — Self-model program Phase 0: integration-measurement scaffold
+
+Goal (user request): implement the "Self-model feedback loop" plan, Phase 0 first — build the
+falsification/integration-measurement track *before* any feedback pathway so every later phase
+must prove it raises integration rather than relabel outputs.
+
+New `decadic/metrics/` package (RULE #1, FORBIDDEN #3 — new module, ~210 lines):
+- `integration.py`: a perturbational-complexity proxy (PCI / Φ-style). Drives a
+  `NeuralCognitiveStack` with a fixed synthetic percept under `eval()`/`no_grad`, injects a
+  single bounded pulse into `z0` at one cycle, and scores how widely/durably the pulse spreads
+  across the per-stage 32-bin activation profiles vs an unperturbed baseline via the Lempel-Ziv
+  (Kaspar-Schuster, 1976) complexity of the binarized deviation matrix. Returns `pci`, raw `lz`,
+  `active_fraction`, `persistence`, `stage_spread`, and whether the self-feedback spine was
+  driven. Probe resets the transient recurrent buffers on exit (no clobber of a live stack).
+  `SELF_STATE_KEYS`/`self_state_vector()` define the canonical A‖C‖E vector the Phase-1 spine
+  will feed back, so probe + live pipeline agree on "the self-report".
+- `__init__.py`: re-exports the public surface.
+
+New `tests/test_signatures.py` (Section-7 P1–P5 assays, capability-gated): Phase-0 instrument
+tests run now (LZ properties, well-formed/bounded PCI, determinism, recurrent no-clobber); the
+P1–P5 assays `skip` until their phase adds the faculty/flag, then auto-activate — keeps the suite
+green at every step. 4 passed, 5 skipped.
+
+Docs: added a "Self-model program" section to `docs/logical_layer_conformance.md` (the missing
+edge, the falsification guard, and the phase→flag→signature table). No production cycle code
+touched — Phase 0 is measurement only. Backups of all files Phase 1+ will touch saved to
+`.\backups\*.20260617_113342.bak` (RULE #3).
+
 ## 2026-06-17 — Git: initial repo + push to GitHub (maverick-software/project-deca)
 
 Goal (user request): connect this codebase to https://github.com/maverick-software/project-deca

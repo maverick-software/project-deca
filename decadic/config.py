@@ -283,6 +283,24 @@ def perception_feedback_enabled() -> bool:
     return _env_bool("DECADIC_PERCEPTION_FEEDBACK_ENABLED", DEFAULT_PERCEPTION_FEEDBACK_ENABLED)
 
 
+# Self-state feedback spine (self-model program, Phase 1). When ON the stack
+# gains a self_ingress projection that additively injects the previous cycle's
+# self-report (A state-of-mind || C narrative || E metacognition) into the
+# stage-3 fuse, so the channels that "sound like inner life" actually shape the
+# next cycle's processing instead of being emitted-and-discarded. Default OFF:
+# the projection is not built, so the state_dict + numerics are byte-identical to
+# the baseline (parity). It is an architecture variant that takes effect on the
+# next rebuild (configure() / reset()), exactly like perception_feedback. The
+# projection is zero-initialized, so even with the flag ON the first cycle is
+# byte-identical until learning moves it off parity; the fed-back vector is
+# detached (no cross-cycle BPTT).
+DEFAULT_SELF_MODEL_FEEDBACK = False
+
+
+def self_model_feedback_enabled() -> bool:
+    return _env_bool("DECADIC_SELF_MODEL_FEEDBACK", DEFAULT_SELF_MODEL_FEEDBACK)
+
+
 def perception_pred_weight() -> float:
     return max(
         0.0,

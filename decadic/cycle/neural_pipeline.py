@@ -19,6 +19,7 @@ from decadic.config import (
     motor_exploration_sigma,
 )
 from decadic.memory.embeddings import perceptual_key, query_vector_from_state_bus
+from decadic.metrics.integration import self_state_vector
 from decadic.cycle import cognition_trace, narrative as cognition_narrative
 from decadic.cycle.stages import stage_10
 from decadic.interpretability import probes as interp_probes
@@ -325,7 +326,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         intero=intero_t,
     )
     z0 = z0_eff
-    out = bundle.stack(z0, ep, mem_t)
+    # Self-state feedback spine: condition this cycle on the previous cycle's
+    # detached self-report. None on the first cycle / when the faculty is off
+    # (then the stack ignores it) -> full parity with the no-spine baseline.
+    self_prev_fed = bundle.prev_self if bundle.stack.has_self_model_feedback else None
+    out = bundle.stack(z0, ep, mem_t, self_prev=self_prev_fed)
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 
     # NaN firewall (always on, independent of plasticity): if the forward pass or
@@ -810,6 +815,31 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     _np_assign(ctx.state_bus.narrative_emb, nar)
     _np_assign(ctx.state_bus.metacognition, meta)
 
+    # Self-state feedback spine: carry this cycle's self-report (A||C||E) forward
+    # so the next cycle's stack is conditioned on its own prior state. Detached
+    # (no cross-cycle BPTT); zeroed on a non-finite cycle so a poisoned report
+    # can't re-poison the loop. No-op (prev_self stays None) when the faculty is
+    # off. The continuity readout (cosine vs the vector this cycle was fed) makes
+    # the narrative report *of* the fed-back content rather than a dead end.
+    self_model_block: dict | None = None
+    if bundle.stack.has_self_model_feedback:
+        sv = self_state_vector(out)
+        continuity = None
+        if self_prev_fed is not None:
+            with torch.no_grad():
+                continuity = _finite(
+                    float(
+                        torch.nn.functional.cosine_similarity(
+                            self_prev_fed.reshape(1, -1), sv.reshape(1, -1)
+                        ).item()
+                    )
+                )
+        if forward_finite and bool(torch.isfinite(sv).all()):
+            bundle.prev_self = sv.clone()
+        else:
+            bundle.prev_self = None
+        self_model_block = {"active": True, "continuity": continuity}
+
     # Global-workspace blend: attention-weighted working-memory summary into A.
     wm = getattr(ctx.perceptual, "working_memory", None)
     wm_slots = 0
@@ -1117,6 +1147,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 episodic=ctx.episodic,
                 qv=qv,
                 probes=probes_block,
+                self_model=self_model_block,
             ).to_dict()
         except Exception:
             cognitive = None

@@ -819,6 +819,7 @@ class AgentRuntime:
         max_neurons: int | None = None,
         perception_mode: str | None = None,
         perception_feedback: bool | None = None,
+        self_model_feedback: bool | None = None,
         encoder_mode: str | None = None,
         cognition_trace: bool | None = None,
         probe_capture: bool | None = None,
@@ -837,10 +838,12 @@ class AgentRuntime:
         it organically) or, if lowered below the current width, sleeps neurons
         immediately. Enabling/disabling a subsystem entirely takes effect on the
         next ``reset()`` (mirrors preset-switch semantics).
-        ``perception_feedback`` / ``perception_mode`` / ``encoder_mode``: the core
-        cognitive faculties. Each changes the model's module set / state_dict shape,
-        so toggling one rebuilds the brain with fresh weights (reset semantics for
-        cognition; episodic + working memory are left intact).
+        ``perception_feedback`` / ``perception_mode`` / ``encoder_mode`` /
+        ``self_model_feedback``: the core cognitive faculties. Each changes the
+        model's module set / state_dict shape, so toggling one rebuilds the brain
+        with fresh weights (reset semantics for cognition; episodic + working
+        memory are left intact). ``self_model_feedback`` adds the self-state
+        feedback spine (the previous cycle's A‖C‖E shapes the next cycle).
         ``cognition_trace`` / ``probe_capture``: read-only observation toggles that
         apply live (no rebuild); they never feed cognition.
         ``episodic_async``: live toggle for write-behind episodic persistence (moves
@@ -881,6 +884,11 @@ class AgentRuntime:
             pf = bool(perception_feedback)
             if pf != self.faculties.perception_feedback:
                 self.faculties.perception_feedback = pf
+                arch_changed = True
+        if self_model_feedback is not None:
+            smf = bool(self_model_feedback)
+            if smf != self.faculties.self_model_feedback:
+                self.faculties.self_model_feedback = smf
                 arch_changed = True
         if encoder_mode is not None:
             enc = str(encoder_mode).strip().lower()
@@ -1015,6 +1023,7 @@ class AgentRuntime:
             "motor_babble_sigma": self.motor_babble_sigma_override,
             "perception_mode": self.perception_mode,
             "perception_feedback": self.faculties.perception_feedback,
+            "self_model_feedback": self.faculties.self_model_feedback,
             "encoder_mode": self.faculties.encoder_mode,
             "cognition_trace": self.cognition_trace,
             "probe_capture": self.probe_capture,

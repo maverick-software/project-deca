@@ -22,6 +22,7 @@ export default function CognitionTogglesPanel(props: {
   const perceptionMode = cap?.perception_mode ?? metrics?.perception_mode ?? "discovered";
   const encoderMode = cap?.encoder_mode ?? "hf";
   const feedback = cap?.perception_feedback ?? metrics?.perception_feedback ?? true;
+  const selfModel = cap?.self_model_feedback ?? false;
   const trace = cap?.cognition_trace ?? true;
   const probe = cap?.probe_capture ?? false;
   const episodicAsync = cap?.episodic_async ?? true;
@@ -69,6 +70,19 @@ export default function CognitionTogglesPanel(props: {
           checked={defaults?.perception_feedback ?? true}
           disabled={!defaults}
           onChange={(e) => onCommitDefaults({ perception_feedback: e.target.checked })}
+        />
+      </label>
+
+      <label className="cap-row toggle-row">
+        <span>
+          Self-model feedback spine
+          <Info tip="Self-model program: the previous cycle's self-report (A state-of-mind, C narrative, E metacognition) is injected back into the stack so internal state shapes the next cycle, instead of being emitted-and-discarded. Research faculty; default off (zero-init, so on is byte-identical until it learns). Rebuilds the brain on toggle." />
+        </span>
+        <input
+          type="checkbox"
+          checked={defaults?.self_model_feedback ?? false}
+          disabled={!defaults}
+          onChange={(e) => onCommitDefaults({ self_model_feedback: e.target.checked })}
         />
       </label>
 
@@ -121,6 +135,18 @@ export default function CognitionTogglesPanel(props: {
               type="checkbox"
               checked={feedback}
               onChange={(e) => void commit({ perception_feedback: e.target.checked })}
+            />
+          </label>
+
+          <label className="cap-row toggle-row">
+            <span>
+              Self-model feedback spine
+              <Info tip="Feed this agent's self-report (A/C/E) back into the next cycle's stack. Research faculty; rebuilds the brain with fresh weights (zero-init, so it starts at parity and learns to use the loop)." />
+            </span>
+            <input
+              type="checkbox"
+              checked={selfModel}
+              onChange={(e) => void commit({ self_model_feedback: e.target.checked })}
             />
           </label>
 

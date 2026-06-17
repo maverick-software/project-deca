@@ -44,6 +44,12 @@ def _stage_timer(device: torch.device):
 class NeuralCognitiveStack(nn.Module):
     """Differentiable cognitive pipeline blocks + predictive-coding heads."""
 
+    # Marker: this build supports the self-state feedback spine (self-model
+    # program, Phase 1). The spine itself is gated by the faculty flag below; this
+    # attribute just lets the falsification harness detect that the capability
+    # exists at all (vs an older build that predates the feature).
+    _supports_self_model_feedback = True
+
     def __init__(
         self,
         cfg: NeuralArchitectureConfig,
@@ -244,6 +250,20 @@ class NeuralCognitiveStack(nn.Module):
                 self.slot_ingress.weight.zero_()
                 self.slot_ingress.bias.zero_()
             self.agency = AgencyHead(slot_dim=self._slot_dim, n_actuators=cfg.n_actuators)
+        # Self-state feedback spine (self-model program, Phase 1). When the
+        # faculty is on, this projection injects the previous cycle's self-report
+        # (A state-of-mind || C narrative || E metacognition) additively into the
+        # stage-3 fuse, so the channels that "sound like inner life" actually shape
+        # the next cycle. Zero-initialized => the first cycle (and every cycle
+        # until learning moves it) is byte-identical to the no-spine baseline; the
+        # fed-back vector is detached upstream so no gradient crosses cycles.
+        self._self_dim = cfg.state_mind_out + cfg.narrative_out + cfg.metacog_out
+        self.has_self_model_feedback = self.faculties.self_model_feedback
+        if self.has_self_model_feedback:
+            self.self_ingress = nn.Linear(self._self_dim, cfg.d_model)
+            with torch.no_grad():
+                self.self_ingress.weight.zero_()
+                self.self_ingress.bias.zero_()
         self.pc_heads = nn.ModuleList([nn.Linear(cfg.d_model, cfg.d_model) for _ in range(4)])
         self.register_buffer("gru_h", torch.zeros(1, cfg.gru_hidden))
         self.register_buffer("lstm_h", torch.zeros(1, cfg.lstm_hidden))
@@ -534,6 +554,7 @@ class NeuralCognitiveStack(nn.Module):
         z0: torch.Tensor,
         episodic_proxy: torch.Tensor,
         memory_context: torch.Tensor | None = None,
+        self_prev: torch.Tensor | None = None,
     ) -> dict[str, Any]:
         # Per-stage instrumentation: wall time of each block (in execution
         # order) is attributed to its conceptual Decadic stage number.
@@ -559,6 +580,14 @@ class NeuralCognitiveStack(nn.Module):
                 dtype=z0.dtype,
             )
         zm = self.mem_proj(memory_context)
+        # Self-state feedback spine: additively fold the previous cycle's
+        # self-report into the experience-framing latent before the stage-3 fuse.
+        # No-op when the faculty is off or no prior self-state exists; zero-init
+        # projection keeps it byte-identical at first.
+        if self.has_self_model_feedback and self_prev is not None:
+            sp = self_prev.to(device=z2.device, dtype=z2.dtype).reshape(z2.shape[0], -1)
+            if sp.shape[-1] == self._self_dim:
+                z2 = z2 + self.self_ingress(sp)
         z3 = self.stage3(torch.cat([z2, ze, zm], dim=-1))
         mark(3)  # memory retrieval / heuristic fusion
         z4 = self.risk_mlp(z3)

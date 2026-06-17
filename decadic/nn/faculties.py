@@ -35,11 +35,18 @@ class CognitionFaculties:
     - ``encoder_mode``: ``"hf"`` loads real frozen CLIP + Whisper (required for
       discovered perception's patch tokens); ``"zeros"`` uses the cheap synthetic
       fallback (no download, but discovered perception is inert).
+    - ``self_model_feedback``: the self-state feedback spine (self-model program).
+      When on the stack builds a zero-init ``self_ingress`` projection that
+      injects the previous cycle's self-report (A‖C‖E) into the stage-3 fuse, so
+      the self-model shapes subsequent processing. Defaults OFF (unlike the other
+      faculties): it is a research pathway that must prove it raises integration
+      before becoming a default, and OFF is byte-identical to the baseline.
     """
 
     perception_feedback: bool = True
     perception_mode: str = "discovered"
     encoder_mode: str = "hf"
+    self_model_feedback: bool = False
 
     def __post_init__(self) -> None:
         mode = str(self.perception_mode).strip().lower()
@@ -47,6 +54,7 @@ class CognitionFaculties:
         enc = str(self.encoder_mode).strip().lower()
         self.encoder_mode = enc if enc in VALID_ENCODER_MODES else "hf"
         self.perception_feedback = bool(self.perception_feedback)
+        self.self_model_feedback = bool(self.self_model_feedback)
 
     @property
     def discovered(self) -> bool:
@@ -61,4 +69,5 @@ class CognitionFaculties:
             perception_feedback=_cfg.perception_feedback_enabled(),
             perception_mode=_cfg.perception_mode(),
             encoder_mode=_cfg.encoder_mode(),
+            self_model_feedback=_cfg.self_model_feedback_enabled(),
         )

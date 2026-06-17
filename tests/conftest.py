@@ -25,6 +25,7 @@ def _baseline_faculties(monkeypatch):
     monkeypatch.setenv("DECADIC_ENCODER_MODE", "zeros")
     monkeypatch.setenv("DECADIC_PERCEPTION_MODE", "oracle")
     monkeypatch.setenv("DECADIC_PERCEPTION_FEEDBACK_ENABLED", "0")
+    monkeypatch.setenv("DECADIC_SELF_MODEL_FEEDBACK", "0")
     monkeypatch.setenv("DECADIC_PLASTICITY_ENABLED", "0")
     monkeypatch.setenv("DECADIC_SPARSE_ENABLED", "0")
     monkeypatch.setenv("DECADIC_GROWTH_ENABLED", "0")

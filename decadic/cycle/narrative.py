@@ -56,6 +56,23 @@ def _template(trace: dict[str, Any]) -> str:
     affect = trace.get("affect") or {}
     parts.append("Feeling " + _affect_phrase(affect) + ".")
 
+    # Self-model spine: when the self-state feedback loop is closed, the report is
+    # OF the fed-back content -- describe how steadily the agent's sense of self
+    # is carried forward (continuity = cosine of this cycle's self-report against
+    # the one it was conditioned on).
+    self_model = trace.get("self_model") or {}
+    if isinstance(self_model, dict) and self_model.get("active"):
+        cont = self_model.get("continuity")
+        if isinstance(cont, (int, float)):
+            steadiness = (
+                "steady" if cont >= 0.6 else "shifting" if cont >= 0.2 else "unsettled"
+            )
+            parts.append(
+                f"Its sense of self is {steadiness}, carried forward from the last moment."
+            )
+        else:
+            parts.append("Carrying its prior state of mind forward (self-model engaged).")
+
     surprise = trace.get("self_surprise") or {}
     mar = surprise.get("mean_abs_residual")
     if isinstance(mar, (int, float)) and mar >= 0.25:

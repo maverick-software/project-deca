@@ -376,3 +376,43 @@ honest target of measurement; they are **not** a claim about phenomenal experien
 ("what it is like"). The Cognition panel reports access/reportability, not qualia, and
 nothing in it feeds back into cognition — the agent's behaviour is byte-for-byte
 identical whether or not the trace, probes, or narrative are enabled.
+
+## Self-model program — closing the cognitive feedback loop
+
+The conformance map above is descriptive of what exists; this section tracks the
+**self-model program**, which closes the architecture's missing edge: the
+channels that "sound like inner life" (A state-of-mind, C narrative, E
+metacognition, B affect, the workspace) are today *emitted and discarded* — they
+are written to the State Bus and never read back. The only cross-cycle feedback
+is the GRU/LSTM recurrence plus the affect/viability scalars in the 4-vector
+`ep`. The program turns those self-reports into content the stack **acts
+through**, phase by phase, each default-OFF and byte-identical when off.
+
+### Falsification + integration measurement (the honesty guard)
+
+Every phase must *prove* it raises integration, not merely relabel outputs.
+`decadic/metrics/integration.py` is the shared instrument: a perturbational
+complexity proxy (PCI / Φ-style). It drives a `NeuralCognitiveStack` with a
+fixed synthetic percept, injects a single bounded pulse into `z0`, and scores how
+widely (across stages) and how durably (across cycles) the pulse spreads versus
+an unperturbed baseline, via the Lempel-Ziv complexity of the binarized
+deviation matrix. A genuinely integrating pathway makes the pulse persist and
+differentiate, raising PCI; a cosmetic one does not. `tests/test_signatures.py`
+scaffolds the Section-7 P1–P5 signature assays and is **capability-gated** — each
+assay auto-activates when its phase lands and skips before then.
+
+| Phase | Mechanism | Flag (default OFF) | Signature assay |
+|-------|-----------|--------------------|-----------------|
+| 0 | PCI/Φ proxy + signature scaffold | n/a (always-available instrument) | `test_pci_metric_wellformed`, determinism, no-clobber |
+| 1 | Self-state feedback spine (A‖C‖E → next cycle) | `DECADIC_SELF_MODEL_FEEDBACK` | severing the loop changes the self-report; proxy persistence rises |
+| 2 | Real global workspace (winner-take-all + ignition + broadcast) | `DECADIC_GWT_ENABLED` | moving the ignition threshold changes report + downstream |
+| 3 | Explicit temporal-integration window (committed "now") | `DECADIC_INTEGRATION_WINDOW_MS` | window length shifts the committed moment |
+| 4 | Constructed predictive affect (predict B forward, route into prior) | `DECADIC_PREDICTIVE_AFFECT` | predicted affect changes perception |
+| 5 | Represented self (interoception/affect/capability as self-node content) | (discovered already default) | richer self-node content + edges |
+| 6 | Scale + richness (memory-efficient heavy-tier training) | `DECADIC_MEMEFFICIENT_OPTIM` | sweep configs against the Phase-0 measure |
+
+Cross-cutting discipline: each new pathway is a new faculty/flag defaulting OFF
+with zero-init or additive injection, so the baseline `state_dict` and numerics
+stay byte-identical; any shape change rebuilds on toggle (reset semantics);
+feedback is detached first to avoid cross-cycle BPTT; and every new flag is
+pinned OFF in `tests/conftest.py`.

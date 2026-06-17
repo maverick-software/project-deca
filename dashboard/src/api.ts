@@ -51,6 +51,9 @@ export type CapacityConfig = {
   perception_mode?: string;
   // Top-down predictive-perception loop (a core faculty; rebuilds the brain).
   perception_feedback?: boolean;
+  // Self-state feedback spine: the previous cycle's self-report (A/C/E) shapes
+  // the next cycle. Research faculty (default off); rebuilds the brain on toggle.
+  self_model_feedback?: boolean;
   // Sensory encoder mode: "hf" (real frozen CLIP/Whisper) | "zeros" (synthetic).
   encoder_mode?: string;
   // Read-only observation toggles (apply live; never feed cognition).
@@ -618,6 +621,8 @@ export async function configureAgent(
     params.set("perception_mode", String(cfg.perception_mode));
   if (cfg.perception_feedback != null)
     params.set("perception_feedback", cfg.perception_feedback ? "1" : "0");
+  if (cfg.self_model_feedback != null)
+    params.set("self_model_feedback", cfg.self_model_feedback ? "1" : "0");
   if (cfg.encoder_mode != null) params.set("encoder_mode", String(cfg.encoder_mode));
   if (cfg.cognition_trace != null)
     params.set("cognition_trace", cfg.cognition_trace ? "1" : "0");
@@ -813,6 +818,8 @@ export type AgentDefaults = {
   growable_hidden_ceiling: number;
   // Core cognitive faculties (inherent; on by default).
   perception_feedback: boolean;
+  // Self-state feedback spine (self-model program; research faculty, off by default).
+  self_model_feedback?: boolean;
   perception_mode: string;
   encoder_mode: string;
 };
@@ -840,6 +847,8 @@ export async function setAgentDefaults(
     params.set("growable_hidden_ceiling", String(partial.growable_hidden_ceiling));
   if (partial.perception_feedback != null)
     params.set("perception_feedback", partial.perception_feedback ? "1" : "0");
+  if (partial.self_model_feedback != null)
+    params.set("self_model_feedback", partial.self_model_feedback ? "1" : "0");
   if (partial.perception_mode != null)
     params.set("perception_mode", String(partial.perception_mode));
   if (partial.encoder_mode != null)

@@ -96,6 +96,12 @@ class NeuralBundle:
         # interoceptive world model against the realized transition (homeostatic
         # drive reduction). Unused/None when that flag is off.
         self.prev_intero: torch.Tensor | None = None
+        # Self-state feedback spine (self-model program): the previous cycle's
+        # detached self-report (A||C||E) fed back into the stack. Like the other
+        # transition buffers it is ephemeral -- never checkpointed, rebuilt as None
+        # on load, and zeroed on a non-finite cycle. Stays None when the faculty
+        # is off (full parity).
+        self.prev_self: torch.Tensor | None = None
 
     @staticmethod
     def resolve_device() -> torch.device:

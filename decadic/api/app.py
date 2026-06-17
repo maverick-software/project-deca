@@ -60,6 +60,7 @@ def _faculties_to_dict(fac: CognitionFaculties) -> dict[str, object]:
     """Serialize cognitive faculties for the /settings/agent-defaults endpoints."""
     return {
         "perception_feedback": bool(fac.perception_feedback),
+        "self_model_feedback": bool(fac.self_model_feedback),
         "perception_mode": str(fac.perception_mode),
         "encoder_mode": str(fac.encoder_mode),
     }
@@ -215,6 +216,7 @@ def create_app() -> FastAPI:
         max_neurons: int | None = None,
         growable_hidden_ceiling: int | None = None,
         perception_feedback: bool | None = None,
+        self_model_feedback: bool | None = None,
         perception_mode: str | None = None,
         encoder_mode: str | None = None,
     ) -> JSONResponse:
@@ -239,6 +241,9 @@ def create_app() -> FastAPI:
             perception_feedback=cur_fac.perception_feedback
             if perception_feedback is None
             else bool(perception_feedback),
+            self_model_feedback=cur_fac.self_model_feedback
+            if self_model_feedback is None
+            else bool(self_model_feedback),
             perception_mode=cur_fac.perception_mode if perception_mode is None else perception_mode,
             encoder_mode=cur_fac.encoder_mode if encoder_mode is None else encoder_mode,
         )
@@ -341,6 +346,7 @@ def create_app() -> FastAPI:
         max_neurons: int | None = None,
         perception_mode: str | None = None,
         perception_feedback: bool | None = None,
+        self_model_feedback: bool | None = None,
         encoder_mode: str | None = None,
         cognition_trace: bool | None = None,
         probe_capture: bool | None = None,
@@ -376,6 +382,7 @@ def create_app() -> FastAPI:
                 max_neurons=max_neurons,
                 perception_mode=perception_mode,
                 perception_feedback=perception_feedback,
+                self_model_feedback=self_model_feedback,
                 encoder_mode=encoder_mode,
                 cognition_trace=cognition_trace,
                 probe_capture=probe_capture,
