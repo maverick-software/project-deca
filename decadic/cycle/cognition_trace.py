@@ -69,6 +69,7 @@ class CognitiveTrace:
     counterfactuals: dict[str, Any] | None = None
     probes: dict[str, Any] | None = None
     self_model: dict[str, Any] | None = None
+    workspace: dict[str, Any] | None = None
     narrative: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,6 +83,7 @@ class CognitiveTrace:
             "counterfactuals": self.counterfactuals,
             "probes": self.probes,
             "self_model": self.self_model,
+            "workspace": self.workspace,
             "narrative": self.narrative,
         }
 
@@ -400,6 +402,7 @@ def build(
     counterfactuals: dict[str, Any] | None = None,
     probes: dict[str, Any] | None = None,
     self_model: dict[str, Any] | None = None,
+    workspace: dict[str, Any] | None = None,
 ) -> CognitiveTrace:
     """Assemble the structured trace from captured raw arrays + cycle scalars."""
     raw = raw or {}
@@ -413,4 +416,5 @@ def build(
         counterfactuals=counterfactuals,
         probes=probes,
         self_model=self_model,
+        workspace=workspace,
     )

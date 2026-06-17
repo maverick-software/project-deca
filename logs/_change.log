@@ -1,5 +1,202 @@
 # Decadic change log (human-readable; maintained per house RULE #2)
 
+## 2026-06-17 — Self-model program Phase 5: the represented self
+
+Goal (plan Phase 5): the architecture has an implicit self (a proprioceptive self-node, the agency
+"this is mine" signal, the A‖C‖E spine) but the self is not a *represented object* — its
+interoception, affect, and capability are not written as content, and the self-node's own summary is
+not modelled/fed back.
+
+Mechanism:
+- New `decadic/state/self_model.py` (~135 lines): `RepresentedSelf` + `build_represented_self`.
+  Assembles interoception (viability + hydration/energy/integrity reservoirs), affect
+  (pain/pleasure/priority), and capability (mean agency over slots promoted to `self_part`) into a
+  compact REPSELF_DIM=8 embedding, plus `node_content()` (merged onto the self-node) and
+  `semantic_edges()` (typed "controls" edges self -> body part).
+- `decadic/nn/neural_stack.py`: builds a zero-init `repself_ingress` when the `represented_self`
+  faculty is on; `forward()` takes `repself_prev` and injects it into the stage-3 fuse parallel to
+  the A‖C‖E spine. Zero-init => byte-identical until learned. `has_represented_self` marker.
+- `decadic/nn/faculties.py`: new `represented_self` faculty (default off) threaded via `from_env`.
+- `decadic/config.py`: `DEFAULT_REPRESENTED_SELF=False` + `represented_self_enabled()`
+  (`DECADIC_REPRESENTED_SELF`).
+- `decadic/cycle/neural_pipeline.py`: feeds the previous cycle's `bundle.prev_repself` to the stack;
+  after the affect/priority are set it builds the represented self, writes `self_model` content onto
+  the egocentric self-node, appends "controls" edges, stores the (detached, finite-guarded)
+  embedding as `prev_repself` for the next cycle, and records it in the trace's self_model block.
+  Dropped on a non-finite cycle (poison guard). Off => prev_repself stays None.
+- `decadic/nn/bundle.py`: ephemeral `prev_repself` (never checkpointed).
+- `runtime` (`configure`/`capacity_config`) + `api/app.py` (`configure_agent`, `set_agent_defaults`,
+  `_faculties_to_dict`) + dashboard (`api.ts`, panel faculty toggles): `represented_self` is a
+  rebuild-on-toggle faculty surfaced alongside the spine + predictive affect (new-agent + live).
+
+Tests: new `tests/test_represented_self.py` (10 tests): builder embedding shape/bounds + capability
+math, node content + controls edges, default-off no-ingress parity, zero-init build + byte-identical
+forward, faculty/env threading, configure rebuild-on-toggle, checkpoint round-trip, and a live cycle
+that enriches the self-node, binds a controls edge, and feeds the embedding. conftest pins
+`DECADIC_REPRESENTED_SELF=0`.
+
+Verification: full suite 581 passed / 7 skipped (the 7 are pre-existing unrelated skips). Dashboard
+`npm run build` clean.
+
+## 2026-06-17 — Self-model program Phase 4: predictive affect (feeling as a prediction)
+
+Goal (plan Phase 4): the architecture reacts to its body (viability/pain/pleasure/priority feed the
+stack each cycle) but never anticipates how it will feel. Interoceptive-inference accounts hold that
+affect is itself a prediction and that expected affect colours perception.
+
+Mechanism:
+- New `decadic/nn/affect_model.py` (~55 lines): `AffectPredictor` — a tiny 2-layer MLP that predicts
+  the next-step affect delta (4-D: viability/pain/pleasure/priority) forward from the current affect.
+  Output layer zero-init => zero delta at birth (parity). `predict()` is the detached inference API.
+- `decadic/nn/neural_stack.py`: builds `self.affect_predictor` when the `predictive_affect` faculty
+  is on (a stack submodule, so checkpointed + rebuilt-on-toggle). `has_predictive_affect` marker.
+- `decadic/nn/faculties.py`: new `predictive_affect` faculty (default off) threaded via `from_env`.
+- `decadic/config.py`: `DEFAULT_PREDICTIVE_AFFECT=False` + `predictive_affect_enabled()`
+  (`DECADIC_PREDICTIVE_AFFECT`) + `predictive_affect_gain()` (`DECADIC_PREDICTIVE_AFFECT_GAIN`).
+- `decadic/cycle/neural_pipeline.py`: after the 4-D episodic proxy `ep` is built, run the previous
+  cycle's ACTUAL affect (detached, on `bundle.prev_affect`) through the forward model and add
+  `gain * predicted_delta` to `ep` before it is projected into the stack — so perception is coloured
+  by expected affect. The predictor's weights stay on the main prediction-error graph (trained for
+  free). prev_affect is refreshed each cycle with the actual affect and dropped on a non-finite
+  cycle (poison guard), mirroring the other cross-cycle buffers. Zero-init => byte-identical until
+  learned; off => prev_affect stays None.
+- `decadic/nn/bundle.py`: ephemeral `prev_affect` (never checkpointed).
+- `runtime` (`configure`/`capacity_config`) + `api/app.py` (`configure_agent`, `set_agent_defaults`,
+  `_faculties_to_dict`) + dashboard (`api.ts`, panel faculty toggles): `predictive_affect` is a
+  rebuild-on-toggle faculty surfaced alongside the self-model spine (new-agent default + live).
+
+Falsification: the P-test `test_predictive_affect_changes_perception` now activates (every Section-7
+signature assay is live — 0 skips in tests/test_signatures.py). New `tests/test_predictive_affect.py`
+(9 tests): predictor zero-init parity + learned non-zero delta, default-off no module, faculty/env
+threading, configure rebuild-on-toggle, checkpoint round-trip, and a learned predictor changing the
+cycle output. conftest pins `DECADIC_PREDICTIVE_AFFECT=0`.
+
+Verification: full suite 571 passed / 7 skipped (the 7 are pre-existing unrelated skips). Dashboard
+`npm run build` clean.
+
+## 2026-06-17 — Self-model program Phase 3: explicit temporal-integration window
+
+Goal (plan Phase 3): give "now" a duration. Today each cycle treats the freshest percept as the
+present; there is no discrete committed moment. Conscious experience integrates input over a window
+(~tens–hundreds of ms) and commits one bound moment as the present.
+
+Mechanism:
+- New `decadic/cycle/integration_window.py` (~95 lines): `IntegrationWindow` + `WindowResult`.
+  Accumulates the bottom-up percept over a wall-clock window (`window_ms`) or a frame cap
+  (`max_frames`); on close it binds the buffered percepts into ONE committed latent (parameter-free
+  mean pool) and reopens empty. `window_ms <= 0` is a pass-through (commit every percept = today's
+  behaviour, byte-identical).
+- `decadic/cycle/neural_pipeline.py`: right after the bottom-up percept (incl. discovered-slot
+  injection) is formed, push it into the per-bundle window; while the window is open the agent acts
+  on the LAST committed moment (`bundle._committed_now`), so changing the window length shifts when
+  "now" updates. On warmup (before the first commit) it falls back to the live percept. Records an
+  `integration_window` block in `ctx.latents`.
+- `decadic/nn/bundle.py`: ephemeral `_integration_window` + `_committed_now` (never checkpointed).
+- `decadic/config.py`: `DEFAULT_INTEGRATION_WINDOW_MS=0.0` + `integration_window_ms()`
+  (`DECADIC_INTEGRATION_WINDOW_MS`) and `integration_window_max_frames()`
+  (`DECADIC_INTEGRATION_WINDOW_MAX_FRAMES`, default 8).
+- `decadic/cycle/types.py`: `CycleContext.integration_window_ms` (per-agent; None => env default).
+- `runtime` (`configure`/`capacity_config`/ctx) + `api/app.py` + dashboard (`api.ts`, panel numeric
+  input): `integration_window_ms` is a LIVE per-agent setting (pipeline branch -> no rebuild).
+
+Falsification: the P1.x assay `test_integration_window_shifts_committed_now` now activates (a 0-ms
+window commits immediately; a real window holds and binds). Bugfix during dev: `self._start_s or
+now_s` treated a legitimate `0.0` start time as falsy — replaced with an explicit `is not None`
+check. New `tests/test_integration_window.py` (6 tests): pass-through off-branch, frame-cap close +
+mean bind, time-based close, reopen-after-commit, the pipeline holds/commits a now, and the live
+configure setting. conftest pins `DECADIC_INTEGRATION_WINDOW_MS=0`.
+
+Verification: full suite 561 passed / 8 skipped (the prior flaky non-neural API reset race passed
+this run too). Dashboard `npm run build` clean.
+
+## 2026-06-17 — Self-model program Phase 2: real global workspace (ignition + broadcast)
+
+Goal (user request, plan Phase 2): replace the post-hoc EMA "global workspace" (a soft average of
+the working-memory attention summary always blended into A and never read back) with a real Global
+Workspace Theory mechanism — content competes, and only a dominant coalition wins access to global
+broadcast (ignition). Default OFF and byte-identical when off.
+
+Mechanism:
+- New `decadic/nn/workspace.py` (~115 lines): `GlobalWorkspace` + `Ignition`. Numpy winner-take-all
+  over the working-memory slot vectors: score = salience x attention; keep the top-`capacity`
+  coalition; ignite only if the coalition commands >= `threshold` share of the salience mass; below
+  threshold there is no ignition (A holds prior). The broadcast vector is a softmax(score/T)-weighted
+  blend of the winning coalition.
+- `decadic/state/working_memory.py`: `workspace_candidates(dim)` decomposes the attention vector into
+  per-slot competition candidates (signed, affect-weighted hashed channels) + the scene latent as an
+  ambient candidate.
+- `decadic/config.py`: `DEFAULT_GWT_ENABLED=False` + `gwt_enabled()` (`DECADIC_GWT_ENABLED`) and the
+  `gwt_ignition_threshold()` / `gwt_capacity()` / `gwt_temperature()` / `gwt_salience_boost()` knobs.
+- `decadic/cycle/neural_pipeline.py`: the workspace block now branches — ON runs WTA+ignition and,
+  when ignited, blends the broadcast content into A and records a `workspace` trace block; OFF keeps
+  the exact legacy EMA (parity). Broadcast wiring: (a) **spine** — when ignited, the self-model spine
+  feeds back the workspace-influenced A (reportable == broadcast == fed back), else the raw head
+  (Phase-1 behaviour); (d) **narrative** — a phrase reports whether a coalition broke into awareness.
+- `decadic/cycle/stages/stage_10.py`: (b) **episodic salience** — a strong ignition lifts the stored
+  episode's salience (`gwt_salience_boost * share`). (c) **policy** is reached transitively via the
+  spine (which injects into the stack before the policy head), so no state_dict change is needed.
+- `decadic/cycle/cognition_trace.py` + `narrative.py`: trace carries `workspace`; narrative reports
+  ignition. `decadic/cycle/types.py`: `CycleContext.gwt_enabled` (per-agent, None => env default).
+- `runtime` (`configure`/`capacity_config`/ctx) + `api/app.py` + dashboard (`api.ts`,
+  `CognitionTogglesPanel.tsx`): `gwt_enabled` is a LIVE per-agent toggle (pipeline branch, not an
+  architecture change -> no rebuild), surfaced under "Cognition (live)".
+
+Falsification: the P-test `test_gwt_ignition_threshold_changes_report` now activates (moving the
+ignition threshold changes report/content). New `tests/test_global_workspace.py` (8 tests):
+no-ignition with no/zero/diffuse salience, ignition + broadcast above threshold, capacity coalition,
+candidate decomposition, on-branch diverges from the EMA off-branch in a real cycle, and the live
+configure toggle. conftest pins `DECADIC_GWT_ENABLED=0`.
+
+Verification: full suite 553 passed / 9 skipped (the one failure is the same pre-existing flaky
+non-neural API reset/memory race — passes in isolation; unrelated to GWT). Dashboard `npm run build`
+clean.
+
+## 2026-06-17 — Self-model program Phase 1: self-state feedback spine
+
+Goal (user request, plan Phase 1): close the architecture's missing edge — the channels that
+"sound like inner life" (A state-of-mind, C narrative, E metacognition) were emitted to the
+State Bus and never read back. Add a persistent, detached, zero-init self-state feedback spine so
+the self-report shapes the next cycle, default OFF and byte-identical when off.
+
+Mechanism:
+- `decadic/nn/faculties.py`: new `self_model_feedback` faculty (default False; the only
+  default-off faculty — research pathway). Threaded through `from_env()`. `asdict` round-trips
+  (checkpoint compat: old checkpoints without the field load as False = parity).
+- `decadic/config.py`: `DEFAULT_SELF_MODEL_FEEDBACK=False` + `self_model_feedback_enabled()`
+  (`DECADIC_SELF_MODEL_FEEDBACK`).
+- `decadic/nn/neural_stack.py`: build `self_ingress = nn.Linear(self_dim=136, d_model)` only when
+  the faculty is on, **zero-initialized** (weight+bias). `forward()` gains a `self_prev` kwarg and
+  injects it additively into z2 before the stage-3 fuse (`z2 = z2 + self_ingress(self_prev)`), so
+  the first cycle (and every cycle until learning moves it) is byte-identical to the no-spine
+  baseline. Class marker `_supports_self_model_feedback=True` lets the falsification harness detect
+  the capability.
+- `decadic/nn/bundle.py`: ephemeral `prev_self` buffer (never checkpointed, rebuilt None on load,
+  zeroed on a non-finite cycle), mirroring the `prev_state`/`prev_intero` transition buffers.
+- `decadic/cycle/neural_pipeline.py`: feed `bundle.prev_self` into the stack (detached, no
+  cross-cycle BPTT), then set the next `prev_self` from this cycle's A‖C‖E via the canonical
+  `decadic.metrics.integration.self_state_vector` (probe + pipeline agree). Compute a `continuity`
+  (cosine vs the vector fed in) and pass a `self_model` block to the trace.
+- `decadic/cycle/cognition_trace.py` + `narrative.py`: trace carries `self_model`; the narrative
+  now reports OF the fed-back content ("Its sense of self is steady/shifting/unsettled, carried
+  forward from the last moment") — making the previously-dead self-report causally + descriptively
+  alive.
+- `runtime.configure()` + `capacity_config()` + `api/app.py` (`configure_agent`, agent-defaults)
+  + dashboard (`api.ts`, `CognitionTogglesPanel.tsx`): `self_model_feedback` is a live per-agent
+  faculty toggle (rebuild-on-toggle, reset semantics) in both new-agent defaults and the selected
+  agent, mirroring `perception_feedback`.
+
+Falsification (Phase-0 instrument): the P1 signature assays now activate — `tests/test_signatures.py`
+shows closing the spine raises the integration proxy's persistence and that severing the loop
+changes the self-report. New `tests/test_self_model_feedback.py` (8 tests): default-off parity,
+zero-init byte-identical-when-on, learned-spine-changes-output, env/faculty threading,
+configure rebuild + capacity readout, checkpoint round-trip of the spine. conftest pins
+`DECADIC_SELF_MODEL_FEEDBACK=0`.
+
+Verification: full suite 544 passed / 10 skipped (one pre-existing flaky API reset/memory race
+passed on isolation + file re-run; unrelated — that fixture is non-neural). End-to-end driven
+cycle confirmed `prev_self` populated (1×136) and the narrative reports the carried-forward self.
+Dashboard `npm run build` clean. Backups under `.\backups\*.20260617_113342.bak` (RULE #3).
+
 ## 2026-06-17 — Self-model program Phase 0: integration-measurement scaffold
 
 Goal (user request): implement the "Self-model feedback loop" plan, Phase 0 first — build the

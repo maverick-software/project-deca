@@ -41,12 +41,24 @@ class CognitionFaculties:
       the self-model shapes subsequent processing. Defaults OFF (unlike the other
       faculties): it is a research pathway that must prove it raises integration
       before becoming a default, and OFF is byte-identical to the baseline.
+    - ``predictive_affect``: the affect forward model (self-model program). When on
+      the stack builds a zero-init ``AffectPredictor`` that predicts the next-step
+      affective context and colours the episodic proxy with it, so the agent
+      perceives in light of how it expects to feel. Defaults OFF (research pathway,
+      byte-identical when off).
+    - ``represented_self``: the represented self (self-model program). When on the
+      stack builds a zero-init ``repself_ingress`` and the cycle writes
+      interoception/affect/capability onto the self-node, adds "controls" edges to
+      the body parts, and feeds the self-node embedding back through that ingress.
+      Defaults OFF (research pathway, byte-identical when off).
     """
 
     perception_feedback: bool = True
     perception_mode: str = "discovered"
     encoder_mode: str = "hf"
     self_model_feedback: bool = False
+    predictive_affect: bool = False
+    represented_self: bool = False
 
     def __post_init__(self) -> None:
         mode = str(self.perception_mode).strip().lower()
@@ -55,6 +67,8 @@ class CognitionFaculties:
         self.encoder_mode = enc if enc in VALID_ENCODER_MODES else "hf"
         self.perception_feedback = bool(self.perception_feedback)
         self.self_model_feedback = bool(self.self_model_feedback)
+        self.predictive_affect = bool(self.predictive_affect)
+        self.represented_self = bool(self.represented_self)
 
     @property
     def discovered(self) -> bool:
@@ -70,4 +84,6 @@ class CognitionFaculties:
             perception_mode=_cfg.perception_mode(),
             encoder_mode=_cfg.encoder_mode(),
             self_model_feedback=_cfg.self_model_feedback_enabled(),
+            predictive_affect=_cfg.predictive_affect_enabled(),
+            represented_self=_cfg.represented_self_enabled(),
         )

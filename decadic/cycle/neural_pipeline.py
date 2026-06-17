@@ -20,6 +20,8 @@ from decadic.config import (
 )
 from decadic.memory.embeddings import perceptual_key, query_vector_from_state_bus
 from decadic.metrics.integration import self_state_vector
+from decadic.nn.workspace import GlobalWorkspace
+from decadic.cycle.integration_window import IntegrationWindow
 from decadic.cycle import cognition_trace, narrative as cognition_narrative
 from decadic.cycle.stages import stage_10
 from decadic.interpretability import probes as interp_probes
@@ -259,6 +261,44 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             slot_out = bundle.stack.slot_encode(patch_tokens)
             pooled = bundle.stack.slot_pool(slot_out["slots"], slot_out["presence"])
             z0_bu = z0_bu + bundle.stack.slot_ingress(pooled)
+
+    # --- Temporal-integration window: commit a bound "now" (Phase 3) -----------
+    # Accumulate the bottom-up percept over a wall-clock window; act on the LAST
+    # committed moment until the window closes and a new "now" is bound, so
+    # changing the window length shifts when "now" updates. OFF (window_ms <= 0)
+    # => the freshest percept is always "now" (byte-identical to before).
+    win_ms = (
+        ctx.integration_window_ms
+        if ctx.integration_window_ms is not None
+        else C.integration_window_ms()
+    )
+    window_block: dict | None = None
+    if win_ms > 0:
+        iw = bundle._integration_window
+        if iw is None or float(getattr(iw, "window_ms", -1.0)) != float(win_ms):
+            iw = IntegrationWindow(
+                window_ms=win_ms, max_frames=C.integration_window_max_frames()
+            )
+            bundle._integration_window = iw
+            bundle._committed_now = None
+        res = iw.push(z0_bu.detach().float().cpu().numpy().reshape(-1), now_s=time.time())
+        if res.committed is not None:
+            bundle._committed_now = torch.as_tensor(
+                res.committed, device=z0_bu.device, dtype=z0_bu.dtype
+            ).reshape(1, -1)
+        if bundle._committed_now is not None:
+            z0_bu = bundle._committed_now
+        window_block = {
+            "enabled": True,
+            "window_ms": float(win_ms),
+            "committed": bool(res.committed is not None),
+            "buffered": int(res.buffered),
+        }
+        ctx.latents["integration_window"] = window_block
+    else:
+        bundle._integration_window = None
+        bundle._committed_now = None
+
     enc_ms = (time.perf_counter() - t0) * 1000.0  # stage 1: sensory perception
     ep = torch.tensor(
         [
@@ -272,6 +312,21 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         device=bundle.device,
         dtype=z0_bu.dtype,
     )
+    # --- Predictive affect: colour the proxy with the expected next affect ------
+    # The previous cycle's actual affect context (detached) is run through the
+    # forward model; its predicted delta is added to ep so the agent perceives in
+    # light of how it expects to feel. The predictor's weights stay on the graph
+    # (trained for free by the main objective). No-op until prev_affect exists;
+    # zero-init => byte-identical until learned. Off => prev_affect stays None.
+    affect_predicted = False
+    if getattr(bundle.stack, "has_predictive_affect", False):
+        ep_actual = ep.detach().clone()
+        if bundle.prev_affect is not None:
+            pa = bundle.prev_affect.to(device=ep.device, dtype=ep.dtype).reshape(1, -1)
+            if pa.shape[-1] == ep.shape[-1]:
+                ep = ep + C.predictive_affect_gain() * bundle.stack.affect_predictor(pa)
+                affect_predicted = True
+        bundle.prev_affect = ep_actual
     # Loop 2 — perceptual-similarity retrieval. The query carries a parameter-free
     # key compressed from the *learned* percept, so recall is driven by sensory
     # likeness in z0's learned geometry (off ⇒ key is None ⇒ zero tail ⇒ parity).
@@ -330,7 +385,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # detached self-report. None on the first cycle / when the faculty is off
     # (then the stack ignores it) -> full parity with the no-spine baseline.
     self_prev_fed = bundle.prev_self if bundle.stack.has_self_model_feedback else None
-    out = bundle.stack(z0, ep, mem_t, self_prev=self_prev_fed)
+    # Represented self (Phase 5): feed the previous cycle's modelled self embedding.
+    repself_fed = (
+        bundle.prev_repself if getattr(bundle.stack, "has_represented_self", False) else None
+    )
+    out = bundle.stack(z0, ep, mem_t, self_prev=self_prev_fed, repself_prev=repself_fed)
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 
     # NaN firewall (always on, independent of plasticity): if the forward pass or
@@ -633,6 +692,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         bundle.prev_state = None
         bundle.prev_motor = None
         bundle.prev_intero = None
+        bundle.prev_affect = None
+        bundle.prev_repself = None
     bwd_ms = (time.perf_counter() - tb0) * 1000.0
 
     def _finite(x: float, default: float = 0.0) -> float:
@@ -815,6 +876,52 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     _np_assign(ctx.state_bus.narrative_emb, nar)
     _np_assign(ctx.state_bus.metacognition, meta)
 
+    # --- Global workspace: competition + ignition (Phase 2) OR the legacy EMA ----
+    # Off-branch (default): the salience-weighted working-memory summary is
+    # EMA-blended into A -- byte-identical to before. On-branch (gwt_enabled):
+    # working-memory coalitions compete; only a dominant coalition (>= ignition
+    # threshold of the salience mass) ignites and is globally broadcast (blended
+    # into A here, fed back via the spine below, boosts the episodic salience in
+    # stage 10, and is described by the narrative). Below threshold => no ignition
+    # => A holds its prior (nothing reaches global broadcast).
+    wm = getattr(ctx.perceptual, "working_memory", None)
+    wm_slots = 0
+    gwt_on = ctx.gwt_enabled if ctx.gwt_enabled is not None else C.gwt_enabled()
+    workspace_block: dict | None = None
+    if wm is not None:
+        # Persist the pooled percept as the scene latent (EMA across cycles).
+        if hasattr(wm, "deposit_scene"):
+            wm.deposit_scene(fused.detach().cpu().reshape(-1).tolist())
+        wm_slots = len(getattr(wm, "slots", {}) or {})
+        dim = ctx.state_bus.state_of_mind.shape[0]
+        beta = float(os.environ.get("DECADIC_WM_ATTENTION_WEIGHT", "0.25"))
+        if gwt_on:
+            vecs, sal = wm.workspace_candidates(dim)
+            slots_arr = (
+                np.asarray(vecs, dtype=np.float32) if vecs else np.zeros((0, dim), np.float32)
+            )
+            ign = GlobalWorkspace(
+                threshold=C.gwt_ignition_threshold(),
+                capacity=C.gwt_capacity(),
+                temperature=C.gwt_temperature(),
+            ).ignite(slots_arr, np.asarray(sal, dtype=np.float32))
+            if ign.ignited:
+                a_vec = ctx.state_bus.state_of_mind
+                a_vec[:] = (1.0 - beta) * a_vec + beta * ign.content.astype(np.float32)
+            workspace_block = {
+                "enabled": True,
+                "ignited": bool(ign.ignited),
+                "share": round(float(ign.score), 4),
+                "threshold": round(float(C.gwt_ignition_threshold()), 4),
+                "n_candidates": int(len(vecs)),
+                "winners": list(ign.winners),
+            }
+            ctx.latents["workspace"] = workspace_block
+        elif wm_slots or getattr(wm, "scene_latent", None):
+            attn = np.asarray(wm.attention_vector(dim), dtype=np.float32)
+            a_vec = ctx.state_bus.state_of_mind
+            a_vec[:] = (1.0 - beta) * a_vec + beta * attn
+
     # Self-state feedback spine: carry this cycle's self-report (A||C||E) forward
     # so the next cycle's stack is conditioned on its own prior state. Detached
     # (no cross-cycle BPTT); zeroed on a non-finite cycle so a poisoned report
@@ -823,7 +930,22 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # the narrative report *of* the fed-back content rather than a dead end.
     self_model_block: dict | None = None
     if bundle.stack.has_self_model_feedback:
-        sv = self_state_vector(out)
+        # When the workspace ignited, the reported A reflects the broadcast
+        # content, so the spine feeds THAT back (reportable == broadcast == fed
+        # back). Otherwise the raw state-of-mind head is fed (Phase-1 behavior,
+        # byte-identical off-branch).
+        workspace_fed = bool(
+            gwt_on and workspace_block is not None and workspace_block.get("ignited")
+        )
+        if workspace_fed:
+            a_src = torch.as_tensor(
+                ctx.state_bus.state_of_mind,
+                device=out["state_mind"].device,
+                dtype=out["state_mind"].dtype,
+            ).reshape(1, -1)
+            sv = torch.cat([a_src, out["narrative"], out["metacognition"]], dim=-1).detach()
+        else:
+            sv = self_state_vector(out)
         continuity = None
         if self_prev_fed is not None:
             with torch.no_grad():
@@ -838,23 +960,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             bundle.prev_self = sv.clone()
         else:
             bundle.prev_self = None
-        self_model_block = {"active": True, "continuity": continuity}
-
-    # Global-workspace blend: attention-weighted working-memory summary into A.
-    wm = getattr(ctx.perceptual, "working_memory", None)
-    wm_slots = 0
-    if wm is not None:
-        # Persist the pooled percept as the scene latent (EMA across cycles).
-        if hasattr(wm, "deposit_scene"):
-            wm.deposit_scene(fused.detach().cpu().reshape(-1).tolist())
-        wm_slots = len(getattr(wm, "slots", {}) or {})
-        if wm_slots or getattr(wm, "scene_latent", None):
-            beta = float(os.environ.get("DECADIC_WM_ATTENTION_WEIGHT", "0.25"))
-            attn = np.asarray(
-                wm.attention_vector(ctx.state_bus.state_of_mind.shape[0]), dtype=np.float32
-            )
-            a_vec = ctx.state_bus.state_of_mind
-            a_vec[:] = (1.0 - beta) * a_vec + beta * attn
+        self_model_block = {
+            "active": True,
+            "continuity": continuity,
+            "workspace_fed": workspace_fed,
+        }
 
     # Finalize discovered perception: fold per-slot agency into the object files
     # (promoting persistent high-agency slots to body parts) and rebuild the
@@ -896,6 +1006,38 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # survival gating already collapses the epistemic value to ~0 under threat.
     if cur_out is not None and cur_out.investigate and ctx.state_bus.priority_label == "explore":
         ctx.state_bus.priority_label = "investigate"
+
+    # --- Represented self (Phase 5): self as a modelled object -----------------
+    # Assemble the agent's interoception/affect/capability into a compact self and
+    # (a) write it as content onto the egocentric self-node + bind "controls" edges
+    # to its learned body parts (observable; off by default), and (b) feed the
+    # self-node embedding back through the zero-init spine ingress so the modelled
+    # self conditions the next cycle. No-op + parity when the faculty is off.
+    if getattr(bundle.stack, "has_represented_self", False):
+        from decadic.state.self_model import build_represented_self
+
+        rs = build_represented_self(
+            viability=ctx.viability.value,
+            homeostasis=ctx.homeostasis,
+            pain=ctx.state_bus.pain_scalar,
+            pleasure=ctx.state_bus.pleasure_scalar,
+            priority=ctx.state_bus.priority_scalar,
+            working_memory=wm,
+        )
+        rv = torch.as_tensor(rs.embedding(), device=z0.device, dtype=z0.dtype).reshape(1, -1)
+        bundle.prev_repself = rv if (forward_finite and bool(torch.isfinite(rv).all())) else None
+        nodes = getattr(ctx.perceptual, "egocentric_nodes", None)
+        edges = getattr(ctx.perceptual, "egocentric_edges", None)
+        if isinstance(nodes, list):
+            self_node = next((n for n in nodes if n.get("role") == "self"), None)
+            if self_node is not None:
+                self_node["self_model"] = rs.node_content()
+                if isinstance(edges, list):
+                    ent_nodes = [n for n in nodes if n.get("role") == "entity"]
+                    edges.extend(rs.semantic_edges(str(self_node.get("id", "self")), ent_nodes))
+        if self_model_block is None:
+            self_model_block = {"active": True}
+        self_model_block["represented"] = rs.node_content()
 
     prop = ctx.perceptual.proprio_position or [0.0, 0.0, 0.0]
     # Motor action: per-actuator PD targets are the real efferent output. The
@@ -1148,6 +1290,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 qv=qv,
                 probes=probes_block,
                 self_model=self_model_block,
+                workspace=workspace_block,
             ).to_dict()
         except Exception:
             cognitive = None

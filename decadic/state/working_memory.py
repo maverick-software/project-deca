@@ -535,6 +535,38 @@ class WorkingMemory:
             return scene
         return [(1.0 - g) * e + g * s for e, s in zip(entity, scene)]
 
+    def workspace_candidates(self, dim: int) -> tuple[list[list[float]], list[float]]:
+        """Per-candidate (vector, salience) pairs for global-workspace competition.
+
+        Decomposes :meth:`attention_vector` into the individual coalitions that
+        compete for ignition: one candidate per active entity slot (its signed,
+        affect-weighted hashed channel) plus, when present, the persisting scene
+        latent as an ambient candidate (weighted by ``scene_blend`` so it competes
+        on the same footing as the slots rather than swamping them). Returns
+        ``(vectors, saliences)``; empty lists when there is nothing to broadcast.
+        """
+        vectors: list[list[float]] = []
+        saliences: list[float] = []
+        if dim <= 0:
+            return vectors, saliences
+        for slot in self.slots.values():
+            sal = max(0.0, float(slot.salience))
+            if sal <= 0.0:
+                continue
+            v = [0.0] * dim
+            idx = (hash(slot.entity_id) % dim + dim) % dim
+            v[idx] = 1.0 + math.tanh(slot.affective_weight)
+            vectors.append(v)
+            saliences.append(sal)
+        if self.scene_latent:
+            scene = [math.tanh(v) for v in self._fold_scene(dim)]
+            rms = self.scene_rms() or 0.0
+            scene_sal = float(min(1.0, max(0.0, self.scene_blend)) * min(1.0, rms))
+            if scene_sal > 0.0:
+                vectors.append(scene)
+                saliences.append(scene_sal)
+        return vectors, saliences
+
     def snapshot(self) -> dict[str, Any]:
         rms = self.scene_rms()
         preview = (

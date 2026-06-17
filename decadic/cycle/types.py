@@ -50,6 +50,16 @@ class CycleContext:
     # process-env default. They gate interpretability work only; never cognition.
     cognition_trace: bool | None = None
     probe_capture: bool | None = None
+    # Global-workspace competition (self-model program, Phase 2). None -> fall back
+    # to the process-env default (DECADIC_GWT_ENABLED). When on, the working-memory
+    # EMA blend into A is replaced by winner-take-all + ignition + broadcast; when
+    # off the cycle keeps the legacy EMA (byte-identical). A live pipeline branch
+    # (not an architecture change) -> toggling it does NOT rebuild the brain.
+    gwt_enabled: bool | None = None
+    # Temporal-integration window in ms (self-model program, Phase 3). None -> env
+    # default (DECADIC_INTEGRATION_WINDOW_MS). > 0 binds a span of percepts into one
+    # committed "now"; 0 = off = the freshest percept is always now (byte-identical).
+    integration_window_ms: float | None = None
     # Live curriculum overrides for active-inference weights. None -> use the
     # process-env default (exact parity). They reweight the EXISTING self-
     # supervised objective (drive-reduction pull, deprivation priority, motor

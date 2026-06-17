@@ -102,6 +102,19 @@ class NeuralBundle:
         # on load, and zeroed on a non-finite cycle. Stays None when the faculty
         # is off (full parity).
         self.prev_self: torch.Tensor | None = None
+        # Temporal-integration window (self-model program): the accumulator + the
+        # last committed "now" percept. Ephemeral (never checkpointed); created
+        # lazily by the cycle when DECADIC_INTEGRATION_WINDOW_MS > 0.
+        self._integration_window: Any | None = None
+        self._committed_now: torch.Tensor | None = None
+        # Predictive affect (self-model program): the previous cycle's actual 4-D
+        # affect context, fed to the forward model to anticipate the next moment.
+        # Ephemeral (never checkpointed); stays None when the faculty is off.
+        self.prev_affect: torch.Tensor | None = None
+        # Represented self (self-model program): the previous cycle's compact
+        # self-node embedding (intero‖affect‖capability), fed back via repself_ingress.
+        # Ephemeral (never checkpointed); stays None when the faculty is off.
+        self.prev_repself: torch.Tensor | None = None
 
     @staticmethod
     def resolve_device() -> torch.device:

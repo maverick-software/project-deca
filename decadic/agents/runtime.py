@@ -33,7 +33,9 @@ from decadic.config import (
     goal_max_cycles,
     goal_onset_deficit,
     goal_satisfy_level,
+    gwt_enabled,
     her_enabled,
+    integration_window_ms,
     her_relabel_k,
     heal_min_reserve,
     hydration_empty_s,
@@ -199,6 +201,12 @@ class AgentRuntime:
         # per agent via configure() and threaded into the cycle through CycleContext.
         self.cognition_trace = cognition_trace_enabled()
         self.probe_capture = probe_capture_enabled()
+        # Global-workspace competition (self-model program, Phase 2). Live per-agent
+        # toggle threaded into the cycle through CycleContext; off => the legacy EMA.
+        self.gwt_enabled = gwt_enabled()
+        # Temporal-integration window in ms (self-model program, Phase 3). Live
+        # per-agent setting; 0 => the freshest percept is always "now".
+        self.integration_window_ms = integration_window_ms()
         # Neuroplasticity flags this agent was built with (None -> env defaults).
         # Stored so reset() preserves the agent's plasticity config rather than
         # silently re-reading the process env.
@@ -820,9 +828,13 @@ class AgentRuntime:
         perception_mode: str | None = None,
         perception_feedback: bool | None = None,
         self_model_feedback: bool | None = None,
+        predictive_affect: bool | None = None,
+        represented_self: bool | None = None,
         encoder_mode: str | None = None,
         cognition_trace: bool | None = None,
         probe_capture: bool | None = None,
+        gwt_enabled: bool | None = None,
+        integration_window_ms: float | None = None,
         episodic_async: bool | None = None,
         ltm_async: bool | None = None,
     ) -> dict[str, Any]:
@@ -844,8 +856,18 @@ class AgentRuntime:
         with fresh weights (reset semantics for cognition; episodic + working
         memory are left intact). ``self_model_feedback`` adds the self-state
         feedback spine (the previous cycle's A‖C‖E shapes the next cycle).
+        ``predictive_affect`` adds the affect forward model (the predicted next-step
+        affect colours perception). ``represented_self`` adds the represented-self
+        ingress (interoception/affect/capability written onto the self-node + fed
+        back). All default off and rebuild the brain on toggle.
         ``cognition_trace`` / ``probe_capture``: read-only observation toggles that
         apply live (no rebuild); they never feed cognition.
+        ``gwt_enabled``: live toggle for the global-workspace competition (replaces
+        the working-memory EMA blend into A with winner-take-all + ignition +
+        broadcast). A pipeline branch, not an architecture change, so no rebuild.
+        ``integration_window_ms``: live temporal-integration window (ms). > 0 binds a
+        span of percepts into one committed "now"; 0 = off. Pipeline branch, no
+        rebuild.
         ``episodic_async``: live toggle for write-behind episodic persistence (moves
         the per-cycle SQLite write off the cognitive lock); drains+stops the worker
         when turned off. No rebuild; no write is lost.
@@ -890,6 +912,16 @@ class AgentRuntime:
             if smf != self.faculties.self_model_feedback:
                 self.faculties.self_model_feedback = smf
                 arch_changed = True
+        if predictive_affect is not None:
+            pa = bool(predictive_affect)
+            if pa != self.faculties.predictive_affect:
+                self.faculties.predictive_affect = pa
+                arch_changed = True
+        if represented_self is not None:
+            rs = bool(represented_self)
+            if rs != self.faculties.represented_self:
+                self.faculties.represented_self = rs
+                arch_changed = True
         if encoder_mode is not None:
             enc = str(encoder_mode).strip().lower()
             if enc in ("zeros", "hf") and enc != self.faculties.encoder_mode:
@@ -899,6 +931,10 @@ class AgentRuntime:
             self.cognition_trace = bool(cognition_trace)
         if probe_capture is not None:
             self.probe_capture = bool(probe_capture)
+        if gwt_enabled is not None:
+            self.gwt_enabled = bool(gwt_enabled)
+        if integration_window_ms is not None:
+            self.integration_window_ms = max(0.0, float(integration_window_ms))
         if episodic_async is not None:
             set_async = getattr(self.episodic, "set_async", None)
             if callable(set_async):
@@ -1024,9 +1060,13 @@ class AgentRuntime:
             "perception_mode": self.perception_mode,
             "perception_feedback": self.faculties.perception_feedback,
             "self_model_feedback": self.faculties.self_model_feedback,
+            "predictive_affect": self.faculties.predictive_affect,
+            "represented_self": self.faculties.represented_self,
             "encoder_mode": self.faculties.encoder_mode,
             "cognition_trace": self.cognition_trace,
             "probe_capture": self.probe_capture,
+            "gwt_enabled": self.gwt_enabled,
+            "integration_window_ms": float(self.integration_window_ms),
             "episodic_async": bool(getattr(self.episodic, "async_enabled", False)),
             "ltm_async": bool(getattr(self.ltm_graph, "async_enabled", False)),
         }
@@ -1633,6 +1673,8 @@ class AgentRuntime:
                     perception_mode=self.perception_mode,
                     cognition_trace=self.cognition_trace,
                     probe_capture=self.probe_capture,
+                    gwt_enabled=self.gwt_enabled,
+                    integration_window_ms=self.integration_window_ms,
                     ai_intero_pref_weight=self.ai_intero_pref_weight_override,
                     drive_priority_gain=self.drive_priority_gain_override,
                     motor_babble_sigma=self.motor_babble_sigma_override,

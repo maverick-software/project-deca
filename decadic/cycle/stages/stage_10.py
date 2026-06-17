@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from decadic.config import ltm_consolidate_min_seen
+from decadic.config import gwt_salience_boost, ltm_consolidate_min_seen
 from decadic.cycle.stages._helpers import trace
 from decadic.cycle.types import CycleContext, StageTrace
 from decadic.memory.embeddings import episode_embedding_from_cycle
@@ -24,6 +24,12 @@ def run(ctx: CycleContext) -> StageTrace:
     salience = abs(ctx.state_bus.pain_scalar - ctx.state_bus.pleasure_scalar) + (
         1.0 - ctx.viability.value / 100.0
     )
+    # Global-workspace broadcast (Phase 2): a strong ignition lifts the stored
+    # episode's salience, so globally-broadcast content is preferentially
+    # remembered. No-op when GWT is off (no workspace block) or it did not ignite.
+    ws = ctx.latents.get("workspace")
+    if isinstance(ws, dict) and ws.get("ignited"):
+        salience += gwt_salience_boost() * float(ws.get("share", 0.0))
     z5_raw = ctx.latents.get("z5_snapshot")
     z5_np = np.asarray(z5_raw, dtype=np.float32).reshape(-1) if z5_raw else None
     # Perceptual key (compression of this cycle's z0); None when the loop is off,

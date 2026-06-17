@@ -23,8 +23,12 @@ export default function CognitionTogglesPanel(props: {
   const encoderMode = cap?.encoder_mode ?? "hf";
   const feedback = cap?.perception_feedback ?? metrics?.perception_feedback ?? true;
   const selfModel = cap?.self_model_feedback ?? false;
+  const predictiveAffect = cap?.predictive_affect ?? false;
+  const representedSelf = cap?.represented_self ?? false;
   const trace = cap?.cognition_trace ?? true;
   const probe = cap?.probe_capture ?? false;
+  const gwt = cap?.gwt_enabled ?? false;
+  const integrationWindowMs = cap?.integration_window_ms ?? 0;
   const episodicAsync = cap?.episodic_async ?? true;
   const ltmAsync = cap?.ltm_async ?? true;
 
@@ -83,6 +87,32 @@ export default function CognitionTogglesPanel(props: {
           checked={defaults?.self_model_feedback ?? false}
           disabled={!defaults}
           onChange={(e) => onCommitDefaults({ self_model_feedback: e.target.checked })}
+        />
+      </label>
+
+      <label className="cap-row toggle-row">
+        <span>
+          Predictive affect
+          <Info tip="Self-model program: a small forward model predicts the next-step affect (viability/pain/pleasure/priority) and colours perception with how the agent expects to feel, instead of only reacting to the body. Research faculty; default off (zero-init, so on is byte-identical until it learns). Rebuilds the brain on toggle." />
+        </span>
+        <input
+          type="checkbox"
+          checked={defaults?.predictive_affect ?? false}
+          disabled={!defaults}
+          onChange={(e) => onCommitDefaults({ predictive_affect: e.target.checked })}
+        />
+      </label>
+
+      <label className="cap-row toggle-row">
+        <span>
+          Represented self
+          <Info tip="Self-model program: write the agent's interoception (reservoirs), affect, and capability (its learned body schema) as content onto the egocentric self-node, bind 'controls' edges to its body parts, and feed the self-node embedding back through the spine — so the self becomes a represented object the agent models. Research faculty; default off (zero-init, byte-identical until it learns). Rebuilds the brain on toggle." />
+        </span>
+        <input
+          type="checkbox"
+          checked={defaults?.represented_self ?? false}
+          disabled={!defaults}
+          onChange={(e) => onCommitDefaults({ represented_self: e.target.checked })}
         />
       </label>
 
@@ -150,6 +180,30 @@ export default function CognitionTogglesPanel(props: {
             />
           </label>
 
+          <label className="cap-row toggle-row">
+            <span>
+              Predictive affect
+              <Info tip="Let a forward model anticipate this agent's next-step affect and colour its perception. Research faculty; rebuilds the brain with fresh weights (zero-init, so it starts at parity and learns)." />
+            </span>
+            <input
+              type="checkbox"
+              checked={predictiveAffect}
+              onChange={(e) => void commit({ predictive_affect: e.target.checked })}
+            />
+          </label>
+
+          <label className="cap-row toggle-row">
+            <span>
+              Represented self
+              <Info tip="Write this agent's interoception/affect/capability onto its self-node, bind 'controls' edges to its body parts, and feed the self-node embedding back via the spine. Research faculty; rebuilds the brain with fresh weights (zero-init, so it starts at parity and learns)." />
+            </span>
+            <input
+              type="checkbox"
+              checked={representedSelf}
+              onChange={(e) => void commit({ represented_self: e.target.checked })}
+            />
+          </label>
+
           <label className="cap-row">
             <span>Perception mode</span>
             <select value={perceptionMode} onChange={(e) => onPerceptionMode(e.target.value)}>
@@ -175,6 +229,36 @@ export default function CognitionTogglesPanel(props: {
               encoder to hf for it to do anything.
             </div>
           )}
+
+          <div className="strip-label">Cognition (live)</div>
+
+          <label className="cap-row toggle-row">
+            <span>
+              Global workspace (ignition)
+              <Info tip="Self-model program: replace the working-memory EMA blend into A with a real global-workspace competition — working-memory coalitions compete and only a dominant one (>= ignition threshold of the salience mass) breaks into global broadcast (blended into A, fed back via the self-model spine, boosts episodic salience, reported by the narrative). Below threshold, nothing reaches awareness. Live toggle (no rebuild); default off." />
+            </span>
+            <input
+              type="checkbox"
+              checked={gwt}
+              onChange={(e) => void commit({ gwt_enabled: e.target.checked })}
+            />
+          </label>
+
+          <label className="cap-row">
+            <span>
+              Integration window (ms)
+              <Info tip="Self-model program: bind a span of percepts into one committed 'now'. The agent acts on the last committed moment until the window (this many ms, or 8 cycles) closes and a new now is bound — so longer windows shift when perception updates. 0 = off (the freshest percept is always now). Live setting (no rebuild)." />
+            </span>
+            <input
+              type="number"
+              min={0}
+              step={50}
+              value={integrationWindowMs}
+              onChange={(e) =>
+                void commit({ integration_window_ms: Math.max(0, Number(e.target.value) || 0) })
+              }
+            />
+          </label>
 
           <div className="strip-label">Observation (live; never feeds cognition)</div>
 

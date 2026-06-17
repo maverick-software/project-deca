@@ -301,6 +301,93 @@ def self_model_feedback_enabled() -> bool:
     return _env_bool("DECADIC_SELF_MODEL_FEEDBACK", DEFAULT_SELF_MODEL_FEEDBACK)
 
 
+# Real global workspace (self-model program, Phase 2). When ON the post-hoc EMA
+# blend of the working-memory attention summary into A is replaced by a
+# capacity-limited winner-take-all competition with an ignition threshold: only a
+# dominant coalition (share of the salience mass >= threshold) "ignites" and is
+# globally broadcast (blended into A, fed back via the spine, boosts the episodic
+# salience, and is described by the narrative). Below threshold there is no
+# ignition: A holds its prior (nothing reaches global broadcast). Default OFF: the
+# off-branch is the existing EMA blend, byte-identical to before. It is a live
+# per-agent toggle (a pipeline branch, not an architecture change -> no rebuild).
+DEFAULT_GWT_ENABLED = False
+
+
+def gwt_enabled() -> bool:
+    return _env_bool("DECADIC_GWT_ENABLED", DEFAULT_GWT_ENABLED)
+
+
+def gwt_ignition_threshold() -> float:
+    """Min share of the salience mass a coalition must command to ignite ([0,1])."""
+    v = float(os.environ.get("DECADIC_GWT_IGNITION_THRESHOLD", "0.5"))
+    return min(1.0, max(0.0, v))
+
+
+def gwt_capacity() -> int:
+    """How many slots may join the winning coalition (workspace breadth)."""
+    return max(1, int(os.environ.get("DECADIC_GWT_CAPACITY", "1")))
+
+
+def gwt_temperature() -> float:
+    """Softmax temperature for combining the winning coalition's content."""
+    return max(1e-3, float(os.environ.get("DECADIC_GWT_TEMPERATURE", "1.0")))
+
+
+def gwt_salience_boost() -> float:
+    """How much a strong ignition lifts the stored episode's salience."""
+    return max(0.0, float(os.environ.get("DECADIC_GWT_SALIENCE_BOOST", "1.0")))
+
+
+# Explicit temporal-integration window (self-model program, Phase 3). When > 0
+# the agent accumulates the bottom-up percept over this many wall-clock
+# milliseconds (or DECADIC_INTEGRATION_WINDOW_MAX_FRAMES cycles, whichever comes
+# first) and commits ONE bound "now" latent on close; between commits it acts on
+# the last committed moment (perception is held). 0 = off = today (the freshest
+# percept is always "now"), byte-identical. A live per-agent setting.
+DEFAULT_INTEGRATION_WINDOW_MS = 0.0
+
+
+def integration_window_ms() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_INTEGRATION_WINDOW_MS", str(DEFAULT_INTEGRATION_WINDOW_MS))))
+
+
+def integration_window_max_frames() -> int:
+    return max(1, int(os.environ.get("DECADIC_INTEGRATION_WINDOW_MAX_FRAMES", "8")))
+
+
+# Predictive affect (self-model program, Phase 4). When ON a small forward model
+# predicts the next-step affective context (viability/pain/pleasure/priority) from
+# the previous cycle's actual affect, and the predicted delta is added to the
+# episodic proxy before it is projected into the stack -- so the agent perceives
+# in light of how it expects to feel. Default OFF; the predictor's output layer is
+# zero-init so on is byte-identical until it learns. Rebuilds the brain on toggle
+# (the predictor is a stack submodule, checkpointed with the brain).
+DEFAULT_PREDICTIVE_AFFECT = False
+
+
+def predictive_affect_enabled() -> bool:
+    return _env_bool("DECADIC_PREDICTIVE_AFFECT", DEFAULT_PREDICTIVE_AFFECT)
+
+
+def predictive_affect_gain() -> float:
+    """How strongly the predicted affect delta colours the episodic proxy."""
+    return max(0.0, float(os.environ.get("DECADIC_PREDICTIVE_AFFECT_GAIN", "1.0")))
+
+
+# Represented self (self-model program, Phase 5). When ON the agent's interoception
+# (reservoirs), affect, and capability (the discovered body schema) are written as
+# content onto the egocentric self-node, "controls" edges bind the self to its
+# learned body parts, and a compact self-node embedding is fed back through a
+# dedicated zero-init spine ingress -- so the self becomes a represented object the
+# agent models, not just an implicit process. Default OFF; the ingress is zero-init
+# (byte-identical until learned). Rebuilds the brain on toggle (stack submodule).
+DEFAULT_REPRESENTED_SELF = False
+
+
+def represented_self_enabled() -> bool:
+    return _env_bool("DECADIC_REPRESENTED_SELF", DEFAULT_REPRESENTED_SELF)
+
+
 def perception_pred_weight() -> float:
     return max(
         0.0,

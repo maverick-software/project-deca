@@ -61,6 +61,8 @@ def _faculties_to_dict(fac: CognitionFaculties) -> dict[str, object]:
     return {
         "perception_feedback": bool(fac.perception_feedback),
         "self_model_feedback": bool(fac.self_model_feedback),
+        "predictive_affect": bool(fac.predictive_affect),
+        "represented_self": bool(fac.represented_self),
         "perception_mode": str(fac.perception_mode),
         "encoder_mode": str(fac.encoder_mode),
     }
@@ -217,6 +219,8 @@ def create_app() -> FastAPI:
         growable_hidden_ceiling: int | None = None,
         perception_feedback: bool | None = None,
         self_model_feedback: bool | None = None,
+        predictive_affect: bool | None = None,
+        represented_self: bool | None = None,
         perception_mode: str | None = None,
         encoder_mode: str | None = None,
     ) -> JSONResponse:
@@ -244,6 +248,12 @@ def create_app() -> FastAPI:
             self_model_feedback=cur_fac.self_model_feedback
             if self_model_feedback is None
             else bool(self_model_feedback),
+            predictive_affect=cur_fac.predictive_affect
+            if predictive_affect is None
+            else bool(predictive_affect),
+            represented_self=cur_fac.represented_self
+            if represented_self is None
+            else bool(represented_self),
             perception_mode=cur_fac.perception_mode if perception_mode is None else perception_mode,
             encoder_mode=cur_fac.encoder_mode if encoder_mode is None else encoder_mode,
         )
@@ -347,9 +357,13 @@ def create_app() -> FastAPI:
         perception_mode: str | None = None,
         perception_feedback: bool | None = None,
         self_model_feedback: bool | None = None,
+        predictive_affect: bool | None = None,
+        represented_self: bool | None = None,
         encoder_mode: str | None = None,
         cognition_trace: bool | None = None,
         probe_capture: bool | None = None,
+        gwt_enabled: bool | None = None,
+        integration_window_ms: float | None = None,
         episodic_async: bool | None = None,
         ltm_async: bool | None = None,
     ) -> JSONResponse:
@@ -365,6 +379,8 @@ def create_app() -> FastAPI:
             # perception_mode/perception_feedback/encoder_mode: core faculties that
             #   rebuild the brain (fresh weights) when changed.
             # cognition_trace/probe_capture: live read-only observation toggles.
+            # gwt_enabled: live global-workspace competition toggle (no rebuild).
+            # integration_window_ms: live temporal-integration window (0=off).
             # episodic_async/ltm_async: live write-behind persistence toggles.
             config = agent.configure(
                 parallel_sessions=parallel_sessions,
@@ -383,9 +399,13 @@ def create_app() -> FastAPI:
                 perception_mode=perception_mode,
                 perception_feedback=perception_feedback,
                 self_model_feedback=self_model_feedback,
+                predictive_affect=predictive_affect,
+                represented_self=represented_self,
                 encoder_mode=encoder_mode,
                 cognition_trace=cognition_trace,
                 probe_capture=probe_capture,
+                gwt_enabled=gwt_enabled,
+                integration_window_ms=integration_window_ms,
                 episodic_async=episodic_async,
                 ltm_async=ltm_async,
             )

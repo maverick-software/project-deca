@@ -73,6 +73,16 @@ def _template(trace: dict[str, Any]) -> str:
         else:
             parts.append("Carrying its prior state of mind forward (self-model engaged).")
 
+    # Global workspace: report whether content reached global broadcast (ignition).
+    workspace = trace.get("workspace") or {}
+    if isinstance(workspace, dict) and workspace.get("enabled"):
+        if workspace.get("ignited"):
+            share = workspace.get("share")
+            share_txt = f" ({round(float(share) * 100)}% of attention)" if isinstance(share, (int, float)) else ""
+            parts.append(f"One coalition broke into awareness{share_txt}.")
+        else:
+            parts.append("Nothing rose to the level of awareness this moment.")
+
     surprise = trace.get("self_surprise") or {}
     mar = surprise.get("mean_abs_residual")
     if isinstance(mar, (int, float)) and mar >= 0.25:

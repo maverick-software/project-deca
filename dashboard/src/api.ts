@@ -54,11 +54,23 @@ export type CapacityConfig = {
   // Self-state feedback spine: the previous cycle's self-report (A/C/E) shapes
   // the next cycle. Research faculty (default off); rebuilds the brain on toggle.
   self_model_feedback?: boolean;
+  // Predictive affect: a forward model anticipates the next-step affect and colours
+  // perception. Research faculty (default off); rebuilds the brain on toggle.
+  predictive_affect?: boolean;
+  // Represented self: interoception/affect/capability written onto the self-node +
+  // fed back via the spine. Research faculty (default off); rebuilds on toggle.
+  represented_self?: boolean;
   // Sensory encoder mode: "hf" (real frozen CLIP/Whisper) | "zeros" (synthetic).
   encoder_mode?: string;
   // Read-only observation toggles (apply live; never feed cognition).
   cognition_trace?: boolean;
   probe_capture?: boolean;
+  // Global-workspace competition (winner-take-all + ignition + broadcast) instead
+  // of the working-memory EMA blend into A (applies live; default off).
+  gwt_enabled?: boolean;
+  // Temporal-integration window (ms): bind a span of percepts into one committed
+  // "now" (applies live; 0 = off = freshest percept is always now).
+  integration_window_ms?: number;
   // Write-behind episodic persistence: per-cycle SQLite write off the cognitive
   // lock (applies live; default on). No write is lost.
   episodic_async?: boolean;
@@ -623,11 +635,19 @@ export async function configureAgent(
     params.set("perception_feedback", cfg.perception_feedback ? "1" : "0");
   if (cfg.self_model_feedback != null)
     params.set("self_model_feedback", cfg.self_model_feedback ? "1" : "0");
+  if (cfg.predictive_affect != null)
+    params.set("predictive_affect", cfg.predictive_affect ? "1" : "0");
+  if (cfg.represented_self != null)
+    params.set("represented_self", cfg.represented_self ? "1" : "0");
   if (cfg.encoder_mode != null) params.set("encoder_mode", String(cfg.encoder_mode));
   if (cfg.cognition_trace != null)
     params.set("cognition_trace", cfg.cognition_trace ? "1" : "0");
   if (cfg.probe_capture != null)
     params.set("probe_capture", cfg.probe_capture ? "1" : "0");
+  if (cfg.gwt_enabled != null)
+    params.set("gwt_enabled", cfg.gwt_enabled ? "1" : "0");
+  if (cfg.integration_window_ms != null)
+    params.set("integration_window_ms", String(cfg.integration_window_ms));
   if (cfg.episodic_async != null)
     params.set("episodic_async", cfg.episodic_async ? "1" : "0");
   if (cfg.ltm_async != null)
@@ -820,6 +840,10 @@ export type AgentDefaults = {
   perception_feedback: boolean;
   // Self-state feedback spine (self-model program; research faculty, off by default).
   self_model_feedback?: boolean;
+  // Predictive affect (self-model program; research faculty, off by default).
+  predictive_affect?: boolean;
+  // Represented self (self-model program; research faculty, off by default).
+  represented_self?: boolean;
   perception_mode: string;
   encoder_mode: string;
 };
@@ -849,6 +873,10 @@ export async function setAgentDefaults(
     params.set("perception_feedback", partial.perception_feedback ? "1" : "0");
   if (partial.self_model_feedback != null)
     params.set("self_model_feedback", partial.self_model_feedback ? "1" : "0");
+  if (partial.predictive_affect != null)
+    params.set("predictive_affect", partial.predictive_affect ? "1" : "0");
+  if (partial.represented_self != null)
+    params.set("represented_self", partial.represented_self ? "1" : "0");
   if (partial.perception_mode != null)
     params.set("perception_mode", String(partial.perception_mode));
   if (partial.encoder_mode != null)

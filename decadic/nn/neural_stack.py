@@ -264,6 +264,29 @@ class NeuralCognitiveStack(nn.Module):
             with torch.no_grad():
                 self.self_ingress.weight.zero_()
                 self.self_ingress.bias.zero_()
+        # Predictive affect (self-model program, Phase 4). When the faculty is on,
+        # this zero-init forward model predicts the next-step affective context; the
+        # cycle adds its delta to the 4-D episodic proxy before projection, so the
+        # agent perceives in light of how it expects to feel. Zero-init => parity
+        # until learned; it rides the main prediction-error graph (trained for free).
+        self.has_predictive_affect = self.faculties.predictive_affect
+        if self.has_predictive_affect:
+            from decadic.nn.affect_model import AffectPredictor
+
+            self.affect_predictor = AffectPredictor(affect_dim=4)
+        # Represented self (self-model program, Phase 5). A dedicated zero-init
+        # ingress that injects the compact self-node embedding (interoception ‖
+        # affect ‖ capability) into the stage-3 fuse, parallel to the A‖C‖E spine,
+        # so the modelled self conditions the next cycle. Zero-init => parity.
+        from decadic.state.self_model import REPSELF_DIM as _REPSELF_DIM
+
+        self._repself_dim = int(_REPSELF_DIM)
+        self.has_represented_self = self.faculties.represented_self
+        if self.has_represented_self:
+            self.repself_ingress = nn.Linear(self._repself_dim, cfg.d_model)
+            with torch.no_grad():
+                self.repself_ingress.weight.zero_()
+                self.repself_ingress.bias.zero_()
         self.pc_heads = nn.ModuleList([nn.Linear(cfg.d_model, cfg.d_model) for _ in range(4)])
         self.register_buffer("gru_h", torch.zeros(1, cfg.gru_hidden))
         self.register_buffer("lstm_h", torch.zeros(1, cfg.lstm_hidden))
@@ -555,6 +578,7 @@ class NeuralCognitiveStack(nn.Module):
         episodic_proxy: torch.Tensor,
         memory_context: torch.Tensor | None = None,
         self_prev: torch.Tensor | None = None,
+        repself_prev: torch.Tensor | None = None,
     ) -> dict[str, Any]:
         # Per-stage instrumentation: wall time of each block (in execution
         # order) is attributed to its conceptual Decadic stage number.
@@ -588,6 +612,12 @@ class NeuralCognitiveStack(nn.Module):
             sp = self_prev.to(device=z2.device, dtype=z2.dtype).reshape(z2.shape[0], -1)
             if sp.shape[-1] == self._self_dim:
                 z2 = z2 + self.self_ingress(sp)
+        # Represented self (Phase 5): inject the modelled self embedding, parallel
+        # to the A‖C‖E spine above. Zero-init ingress => no-op until learned.
+        if self.has_represented_self and repself_prev is not None:
+            rp = repself_prev.to(device=z2.device, dtype=z2.dtype).reshape(z2.shape[0], -1)
+            if rp.shape[-1] == self._repself_dim:
+                z2 = z2 + self.repself_ingress(rp)
         z3 = self.stage3(torch.cat([z2, ze, zm], dim=-1))
         mark(3)  # memory retrieval / heuristic fusion
         z4 = self.risk_mlp(z3)
