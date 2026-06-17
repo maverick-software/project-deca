@@ -1,5 +1,37 @@
 # Decadic change log (human-readable; maintained per house RULE #2)
 
+## 2026-06-17 — Self-model program Phase 6: memory-efficient training + integration sweep
+
+Goal (plan Phase 6 — hardware-gated): make the heavy presets trainable on a single consumer GPU and
+ship the falsification harness that decides whether the self-model loops actually raise integration.
+
+Mechanism:
+- New `decadic/nn/optim.py` (~55 lines): `build_optimizer(...) -> (optimizer, kind)`. When
+  `DECADIC_MEMORY_EFFICIENT_TRAINING` is on AND on CUDA AND `bitsandbytes` imports, builds
+  `bnb.optim.Adam8bit` (block-wise 8-bit moments, ~4x smaller optimizer state — the single largest
+  training cost for the heavy tiers); otherwise silently returns fp32 `torch.optim.Adam`. Default off
+  / no-bnb / CPU => byte-identical to before.
+- `decadic/nn/bundle.py`: `try_build` + `_rebuild_stack` route through `build_optimizer`; new
+  `train_autocast()` returns a bf16 `torch.autocast` only on CUDA + flag, else `nullcontext` (parity).
+  Heavy-preset warning now points at the flag.
+- `decadic/cycle/neural_pipeline.py`: the stack forward runs under `with bundle.train_autocast():`
+  (nullcontext on CPU/off, so the fp32/test path is byte-identical; bf16 activations on CUDA).
+- `decadic/config.py`: `DEFAULT_MEMORY_EFFICIENT_TRAINING=False` + `memory_efficient_training_enabled()`.
+- New `scripts/integration_sweep.py` (~150 lines): the falsification harness. For each preset/seed it
+  builds ONE spine-capable stack and probes the Phase-0 PCI proxy twice on the SAME weights — loop
+  severed vs loop closed — so the feedback loop is the only variable. Zero-init spine => exact 0
+  delta (parity); `--learned-sigma S` emulates a learned loop. Writes JSONL + prints a verdict.
+  Demonstration (tiny, sigma=0.3, seeds 0-2): mean PCI delta +0.066 -> closing the loop RAISES
+  integration, as the program predicts.
+
+Tests: new `tests/test_memory_efficient_training.py` (6 tests): config default off, optimizer fp32
+default + CPU fallback, autocast nullcontext on CPU, and the sweep harness (exact-parity zero-init
+delta + finite learned reading). conftest needs no new pin (the flag defaults off).
+
+Verification: full suite 586 passed / 7 skipped (the lone failure is the pre-existing flaky
+non-neural API reset/memory race — passes in isolation; unrelated). This completes the self-model
+program (Phases 0–6).
+
 ## 2026-06-17 — Self-model program Phase 5: the represented self
 
 Goal (plan Phase 5): the architecture has an implicit self (a proprioceptive self-node, the agency

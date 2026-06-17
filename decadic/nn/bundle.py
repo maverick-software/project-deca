@@ -19,6 +19,7 @@ from decadic.nn.config import (
 from decadic.nn.faculties import CognitionFaculties
 from decadic.nn.frozen_encoders import FrozenSensoryEncoders
 from decadic.nn.neural_stack import NeuralCognitiveStack
+from decadic.nn.optim import build_optimizer
 from decadic.nn.plastic import PlasticityFlags, PlasticityRuntimeState
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,8 @@ def _warn_if_heavy(preset: str, n_params: int, device: torch.device) -> None:
     base = (
         f"preset {preset!r} is a HEAVY/define-only tier: ~{train_gb:.1f} GB for fp32 "
         "weights+grads+Adam moments (before activations), trained every cognitive cycle. "
-        "No mixed-precision/sharded path yet; expect slow cycles or CUDA OOM."
+        "Set DECADIC_MEMORY_EFFICIENT_TRAINING=1 (8-bit Adam + bf16 forward on CUDA) to "
+        "cut training memory; otherwise expect slow cycles or CUDA OOM."
     )
     if device.type == "cuda":
         try:
@@ -175,7 +177,14 @@ class NeuralBundle:
         # is never silent.
         _warn_if_heavy(preset_name, n_params, device)
         lr = float(os.environ.get("DECADIC_LEARNING_RATE", "1e-4"))
-        optimizer = torch.optim.Adam(params, lr=lr)
+        from decadic.config import memory_efficient_training_enabled
+
+        optimizer, _opt_kind = build_optimizer(
+            params,
+            lr=lr,
+            device=device,
+            memory_efficient=memory_efficient_training_enabled(),
+        )
         logger.info(
             "NeuralBundle agent_id=%s device=%s encoder_mode=%s preset=%s trainable_params=%s "
             "perception_feedback=%s perception_mode=%s plasticity=%s sparse=%s growth=%s",
@@ -217,6 +226,22 @@ class NeuralBundle:
             self.stack.lstm_h.copy_(self.stack.lstm_h.detach())
             self.stack.lstm_c.copy_(self.stack.lstm_c.detach())
 
+    def train_autocast(self):
+        """bf16 autocast context for the forward pass (memory-efficient training).
+
+        Returns a real ``torch.autocast`` only when ``DECADIC_MEMORY_EFFICIENT_TRAINING``
+        is on AND the device is CUDA; otherwise a ``nullcontext`` so the fp32 path is
+        byte-identical (CPU / off). bf16 needs no GradScaler, so the backward pass
+        stays in fp32 outside this context.
+        """
+        from contextlib import nullcontext
+
+        from decadic.config import memory_efficient_training_enabled
+
+        if self.device.type == "cuda" and memory_efficient_training_enabled():
+            return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+        return nullcontext()
+
     def _rebuild_stack(
         self, flags: PlasticityFlags, faculties: CognitionFaculties | None = None
     ) -> None:
@@ -244,7 +269,14 @@ class NeuralBundle:
         )
         params = list(self.stack.parameters()) + list(self.encoders.parameters())
         lr = float(self.optimizer.param_groups[0]["lr"])
-        self.optimizer = torch.optim.Adam(params, lr=lr)
+        from decadic.config import memory_efficient_training_enabled
+
+        self.optimizer, _ = build_optimizer(
+            params,
+            lr=lr,
+            device=self.device,
+            memory_efficient=memory_efficient_training_enabled(),
+        )
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

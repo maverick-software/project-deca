@@ -389,7 +389,10 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     repself_fed = (
         bundle.prev_repself if getattr(bundle.stack, "has_represented_self", False) else None
     )
-    out = bundle.stack(z0, ep, mem_t, self_prev=self_prev_fed, repself_prev=repself_fed)
+    # bf16 autocast on the forward only when the memory-efficient path is on (CUDA);
+    # a nullcontext otherwise, so the fp32 / CPU / test path is byte-identical.
+    with bundle.train_autocast():
+        out = bundle.stack(z0, ep, mem_t, self_prev=self_prev_fed, repself_prev=repself_fed)
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 
     # NaN firewall (always on, independent of plasticity): if the forward pass or

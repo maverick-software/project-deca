@@ -388,6 +388,21 @@ def represented_self_enabled() -> bool:
     return _env_bool("DECADIC_REPRESENTED_SELF", DEFAULT_REPRESENTED_SELF)
 
 
+# Memory-efficient training path (self-model program, Phase 6 — hardware-gated).
+# When ON the per-cycle training step uses (a) an 8-bit Adam optimizer when
+# bitsandbytes is importable on CUDA (halving the optimizer-moment memory, the
+# single largest training cost for the heavy presets) and (b) a bf16 autocast
+# around the stack forward on CUDA (cutting activation memory). Both fall back
+# silently to the fp32 path when unavailable (no bnb / CPU), and the flag defaults
+# OFF, so the standard path is byte-identical. Aimed at fitting the 250m/500m/1b
+# tiers on a single consumer GPU.
+DEFAULT_MEMORY_EFFICIENT_TRAINING = False
+
+
+def memory_efficient_training_enabled() -> bool:
+    return _env_bool("DECADIC_MEMORY_EFFICIENT_TRAINING", DEFAULT_MEMORY_EFFICIENT_TRAINING)
+
+
 def perception_pred_weight() -> float:
     return max(
         0.0,

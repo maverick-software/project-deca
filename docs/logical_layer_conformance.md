@@ -399,17 +399,24 @@ an unperturbed baseline, via the Lempel-Ziv complexity of the binarized
 deviation matrix. A genuinely integrating pathway makes the pulse persist and
 differentiate, raising PCI; a cosmetic one does not. `tests/test_signatures.py`
 scaffolds the Section-7 P1–P5 signature assays and is **capability-gated** — each
-assay auto-activates when its phase lands and skips before then.
+assay auto-activates when its phase lands and skips before then. All seven phases
+have now shipped, so every assay in `tests/test_signatures.py` is live (0 skips).
 
-| Phase | Mechanism | Flag (default OFF) | Signature assay |
-|-------|-----------|--------------------|-----------------|
-| 0 | PCI/Φ proxy + signature scaffold | n/a (always-available instrument) | `test_pci_metric_wellformed`, determinism, no-clobber |
-| 1 | Self-state feedback spine (A‖C‖E → next cycle) | `DECADIC_SELF_MODEL_FEEDBACK` | severing the loop changes the self-report; proxy persistence rises |
-| 2 | Real global workspace (winner-take-all + ignition + broadcast) | `DECADIC_GWT_ENABLED` | moving the ignition threshold changes report + downstream |
-| 3 | Explicit temporal-integration window (committed "now") | `DECADIC_INTEGRATION_WINDOW_MS` | window length shifts the committed moment |
-| 4 | Constructed predictive affect (predict B forward, route into prior) | `DECADIC_PREDICTIVE_AFFECT` | predicted affect changes perception |
-| 5 | Represented self (interoception/affect/capability as self-node content) | (discovered already default) | richer self-node content + edges |
-| 6 | Scale + richness (memory-efficient heavy-tier training) | `DECADIC_MEMEFFICIENT_OPTIM` | sweep configs against the Phase-0 measure |
+| Phase | Mechanism | Flag (default OFF) | Signature assay | Status |
+|-------|-----------|--------------------|-----------------|--------|
+| 0 | PCI/Φ proxy + signature scaffold | n/a (always-available instrument) | `test_pci_metric_wellformed`, determinism, no-clobber | ✅ shipped |
+| 1 | Self-state feedback spine (A‖C‖E → next cycle) | `DECADIC_SELF_MODEL_FEEDBACK` | `test_severing_self_loop_changes_self_report`, `test_self_feedback_raises_integration` | ✅ shipped |
+| 2 | Real global workspace (winner-take-all + ignition + broadcast) | `DECADIC_GWT_ENABLED` | `test_gwt_ignition_threshold_changes_report` | ✅ shipped |
+| 3 | Explicit temporal-integration window (committed "now") | `DECADIC_INTEGRATION_WINDOW_MS` | `test_integration_window_shifts_committed_now` | ✅ shipped |
+| 4 | Constructed predictive affect (predict B forward, route into prior) | `DECADIC_PREDICTIVE_AFFECT` | `test_predictive_affect_changes_perception` | ✅ shipped |
+| 5 | Represented self (interoception/affect/capability as self-node content + spine ingress) | `DECADIC_REPRESENTED_SELF` | richer self-node content + "controls" edges; `tests/test_represented_self.py` | ✅ shipped |
+| 6 | Scale + richness (memory-efficient heavy-tier training) | `DECADIC_MEMORY_EFFICIENT_TRAINING` | `scripts/integration_sweep.py` sweeps configs vs the Phase-0 measure | ✅ shipped |
+
+The Phase-6 sweep harness is the program's verdict tool: probing one spine-capable
+stack with the loop severed vs closed (same weights, the loop the only variable),
+a *learned* spine raises the PCI proxy (demo: tiny preset, mean Δ ≈ +0.07 over
+seeds 0–2), while a zero-init spine gives an exact 0 delta — so the claim "closing
+the feedback loop raises integration" is measured, not asserted.
 
 Cross-cutting discipline: each new pathway is a new faculty/flag defaulting OFF
 with zero-init or additive injection, so the baseline `state_dict` and numerics
