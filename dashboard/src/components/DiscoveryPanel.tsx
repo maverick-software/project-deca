@@ -1,0 +1,110 @@
+import type { AgentState } from "../api";
+import Info from "./Info";
+
+const BOX = 200;
+
+function agencyColor(a: number | null | undefined): string {
+  if (a == null) return "rgba(150,160,180,0.7)";
+  // Violet for high agency ("mine"), grey-blue for low.
+  const m = Math.max(0, Math.min(1, (a + 0.2) / 0.6));
+  return `rgba(${Math.round(150 + 50 * m)},${Math.round(160 - 30 * m)},${Math.round(180 + 70 * m)},0.95)`;
+}
+
+export default function DiscoveryPanel(props: { state: AgentState }) {
+  const p = props.state.perceptual;
+  const mode = p.perception_mode ?? "oracle";
+  const wm = p.working_memory;
+  const slots = wm?.slots ?? [];
+  const inView = slots.filter((s) => s.in_view);
+  const parts = slots.filter((s) => s.kind === "self_part");
+
+  if (mode !== "discovered") {
+    return (
+      <div className="panel span-5">
+        <h2>
+          Object Discovery
+          <Info tip="The agent's coined object files: anonymous objects discovered from its own camera via slot attention, re-identified across frames by appearance + motion, with a learned agency ('mine') score for body parts." />
+        </h2>
+        <div className="empty">
+          This agent is in <b>oracle</b> perception mode — the world graph is handed to it by
+          the simulator. Switch to <b>discovered</b> mode (Agent Settings) and reset to let
+          the graph emerge from the agent's own perception.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel span-5">
+      <h2>
+        Object Discovery
+        <Info tip="Coined object files discovered from the egocentric camera (slot attention), re-identified across frames by appearance + predicted image position. 'mine' = a slot whose motion the agent has learned to command (agency); these become body parts. Nothing here comes from the simulator." />
+      </h2>
+
+      <div className="strip-label">
+        <span>{slots.length} objects · {inView.length} in view · {parts.length} body parts</span>
+        <span>image space</span>
+      </div>
+
+      <svg
+        className="discovery-svg"
+        viewBox={`0 0 ${BOX} ${BOX}`}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <rect x={0} y={0} width={BOX} height={BOX} className="disc-frame" />
+        {slots.map((s, i) => {
+          const uv = s.uv;
+          if (!uv || uv.length < 2) return null;
+          const cx = uv[0] * BOX;
+          const cy = uv[1] * BOX;
+          const r = 4 + 8 * Math.min(1, s.salience);
+          const isPart = s.kind === "self_part";
+          return (
+            <g key={s.entity_id ?? i}>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={r}
+                fill={agencyColor(s.agency)}
+                stroke={isPart ? "rgba(200,130,255,1)" : "rgba(0,0,0,0.4)"}
+                strokeWidth={isPart ? 2.5 : 1}
+                opacity={s.in_view ? 0.95 : 0.4}
+              >
+                <title>
+                  {s.entity_id} · {s.kind}
+                  {s.agency != null ? ` · agency ${s.agency.toFixed(3)}` : ""}
+                </title>
+              </circle>
+              <text x={cx} y={cy - r - 2} textAnchor="middle" className="graph-label">
+                {s.entity_id?.replace("obj-", "#") ?? ""}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      <table className="disc-table">
+        <thead>
+          <tr>
+            <th>object</th>
+            <th>kind</th>
+            <th>seen</th>
+            <th>salience</th>
+            <th>agency</th>
+          </tr>
+        </thead>
+        <tbody>
+          {slots.slice(0, 12).map((s) => (
+            <tr key={s.entity_id} className={s.kind === "self_part" ? "row-part" : ""}>
+              <td>{s.entity_id}</td>
+              <td>{s.kind === "self_part" ? "mine ✋" : s.kind}</td>
+              <td>{s.seen_count}{s.in_view ? " ●" : ""}</td>
+              <td>{s.salience.toFixed(2)}</td>
+              <td>{s.agency != null ? s.agency.toFixed(3) : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

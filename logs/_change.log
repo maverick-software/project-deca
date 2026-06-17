@@ -1,0 +1,1440 @@
+# Decadic change log (human-readable; maintained per house RULE #2)
+
+## 2026-06-17 — README comprehensive sync (document drifted features)
+
+Goal (user request): "Update the README." The README was well-maintained for what it covered
+but had drifted from the codebase — several shipped subsystems had no README coverage and the
+latest config additions were undocumented. Scope confirmed with the user: comprehensive sync.
+Docs-only change; no code touched. README backed up first to
+`.\backups\README.md.20260617_101400.bak` (RULE #3).
+
+Added sections (verified against `decadic/config.py`, `decadic/api/app.py` routes, and
+`dashboard/src/App.tsx` tabs):
+- "The cognitive architecture" — the ten stages + State Bus A–F table + the online
+  self-supervised learning summary (the README previously jumped straight to Setup).
+- Dashboard tab list (matches the 13 tabs in App.tsx).
+- "Embodiment: stances, joint braces & the walking curriculum" — joint-brace orthosis + ROM
+  ratchet, master brace toggle, Reset ROM, stance library (`GET /body/stances`,
+  `POST /body/stance`), Hold movement (`POST /body/movement_hold`), and the observation-only
+  walking CurriculumSupervisor (`/curriculum/*`, `--baseline {random,cpg}`).
+- "Motivation & long-horizon learning" — homeostatic drive + the 2026-06-17 distal-credit
+  stack (goal lifecycle, successor-features value, HER, imagined replay, resource randomization).
+- "Memory: episodic store + long-term knowledge graph" (LTM graph was only mentioned in passing).
+- "Environments & scenarios" (managed environments, scenes, NPC village, `/give`).
+- "Saving & loading agents" (checkpoints vs Saved Agents library vs scenario presets).
+- "Interpretability: cognition trace / why" (`/explain`, cognition-trace knobs).
+- "Cloud GPU deployment (Vast.ai)" (Deploy/GPU tab).
+- Two new env-var tables: "Motivation, goals & long-horizon credit" (goal/SF/HER/imagination/
+  resource-randomization + viability mode) and "Perception, memory & interpretability" (perception
+  mode/feedback, LTM graph, cognition trace, narrative mode, probe path), plus a pointer that
+  `decadic/config.py` is the complete `DECADIC_*` source of truth.
+
+Verification: README grew 322 -> 548 lines; markdown lints clean; endpoint names cross-checked
+against the `@application.*` decorators in `app.py`; env-var names/defaults cross-checked against
+the accessors in `config.py`; referenced scripts (`synthetic_ws_client.py`) confirmed to exist.
+
+## 2026-06-17 — Long-horizon credit assignment, goal lifecycle, successor-value learning (+ anti-camping)
+
+Goal: move the agent from "act until a drive is accidentally relieved" to "see a resource,
+value it, walk to it, and learn the path that worked." True to the experiment: every new
+component starts NAIVE (zero/identity init, ramped influence) and learns only from the
+agent's own lived experience and its single innate drive (homeostatic reservoirs). Files
+backed up to `.\backups\distal_credit_20260617_100700\` first (RULE #3).
+
+Phase 0 — Scaffolding/config/safety. APIs confirmed against existing usage (RULE #6):
+MuJoCo `model.body_pos[bid][i]` mutation is already exercised by `HumanoidSim.give_near`
+(L1384-1410); PyTorch TD(lambda)/successor-features are classic and need no new dependency.
+Added config blocks to `decadic/config.py` (env-var pattern, all live-overridable):
+- Per-life resource randomization: `randomize_resources_enabled` (default ON),
+  `resource_placement_mode` (arena|zone), `resource_min_dist`, `resource_fence_margin`.
+- Goal lifecycle: `goal_onset_deficit`, `goal_satisfy_level`, `goal_abandon_cycles`,
+  `goal_max_cycles`.
+- Distal credit + successor features: `sf_enabled`, `sf_gamma`, `sf_lambda`,
+  `sf_loss_weight`, `sf_value_weight`, `sf_value_ramp_cycles`, `sf_value_weight_for_cycle`
+  (linear 0->max ramp so a fresh agent is byte-identical to today until experience grows it).
+- HER: `her_enabled`, `her_relabel_k`. Imagination (default OFF): `imagination_enabled`,
+  `imagination_horizon`, `imagination_weight`.
+No change to `decadic/nn/config.py`: the SF head reuses `motor_hidden` and outputs the
+existing `INTERO_PRED_DIM` (3) feature dim, so the preset table / checkpoint shape is
+untouched.
+
+Phase 1 — Per-life random resource placement (anti-camping).
+- NEW `decadic/embodiment/resource_placement.py` (pure, MuJoCo-free): `scatter_positions`
+  picks fresh XY for each consumable, uniform-by-area in the arena disc (kept >= min_dist
+  from origin, inside the fence margin) or within random habitat zones. Unit-tested.
+- `scripts/mujoco_decadic_adapter.py`: new `HumanoidSim._randomize_resources(seed)` writes
+  `model.body_pos` for every static (non-gift) food/water prop, un-hides + cancels pending
+  respawns, clears `eaten`, `mj_forward`s, and stores `_resource_seed`. Gift bodies (free-
+  joint parent provisions) are intentionally left to the delivery FSM. Called once at body
+  spawn (after `recenter()` in `__init__`) and via a new `randomize_resources[:seed]` WS
+  body command. Imports the four resource config accessors + `active_habitats`.
+- `decadic/agents/runtime.py`: `revive()` now queues `recenter` + `randomize_resources:<seed>`
+  on each new life (mind weights/memory untouched; only body pose + world layout reset) and
+  records the seed in `metrics["resource_seed"]` (new metric, default -1). Added
+  `randomize_resources_enabled` import + `import random`.
+Smoke test confirmed deterministic scatter, min-dist invariant, and config wiring.
+
+Phase 2 — Goal lifecycle state + telemetry.
+- NEW `decadic/state/goal_lifecycle.py` (pure): `GoalState.update(reservoirs, cycle, alive)`
+  latches the dominant normalized deficit as the active goal once it crosses
+  `onset_deficit`, holds it, and emits `GoalEvent`s on close: achieved (reservoir back
+  >= satisfy_level), abandoned (a different need dominates for abandon_cycles), truncated
+  (max_cycles), or died. `dwell()` reports cycles-open; `episodes`/`last_outcome` track
+  history. The closed [onset->close] window is the episode the return learner trains on.
+- `decadic/agents/runtime.py`: owns one `GoalState` (built in `__init__` from the goal
+  config), new `_reservoirs_norm()` + `_advance_goal(transition)` helper called each cycle
+  in `_cycle_loop` (after the replay push). Surfaces `goal`, `goal_status`, `goal_dwell`,
+  `goal_episodes`, `goal_last_outcome` in metrics (added to `_initial_metrics`). Added the
+  four goal config imports + `GoalState`.
+Smoke test confirmed latch/achieve/abandon+reopen/death transitions.
+
+## 2026-06-17 — Async cycle speedups: take the non-learning work off the cognitive lock
+
+Goal: raise sustained cycle throughput by removing synchronous I/O and redundant CPU
+from inside `async with self.lock` in the cognitive loop, WITHOUT touching the science.
+The forward + backward + optimizer step, stage ordering, memory *reads*, and action
+selection stay exactly where they are (no stale-weight overlap). Files backed up to
+`.\backups\*.20260617_081700.bak` first (RULE #3).
+
+Phase 0 — Measured first (RULE #6). GPU `full`+`hf`+discovered split (avg of 15 cycles):
+encoders 31.5 ms, fwd 47.6 ms, bwd 30.2 ms, mem_recall 0.4 ms, stage10 0.15 ms, wall
+103 ms (~9.7 Hz). Confirmed the ROI order: decode-once attacks the 31.5 ms encoders
+bucket; the I/O offloads (logging, SQLite commits, trace writes) remove hot-path tax the
+in-memory micro-benchmark doesn't even show.
+
+Edits (surgical):
+- `decadic/logging/json_logging.py` (+ `logging/__init__.py`): logging is now non-blocking.
+  The root logger holds a single `QueueHandler`; a background `QueueListener` owns the
+  real stream + rotating-file handlers (same JSON output + order). New `stop_logging()`;
+  `decadic/api/app.py` lifespan stops the listener last on shutdown. Unconditional (pure
+  win, no toggle).
+- `decadic/nn/frozen_encoders.py`: decode-the-frame-ONCE. New `predecode(obs)` +
+  `_decode_pixel_values`/`_decode_audio_features` produce CPU tensors a single time and
+  stash them on `obs['_decoded']`; the pooled-vision, patch-token, and audio paths reuse
+  them with one `.to(device)` (the two redundant CLIP preprocesses collapse to one).
+  `decadic/agents/runtime.py` calls `predecode` in `handle_observation_dict` BEFORE the
+  lock (no-op in zeros mode / stub cognition). Byte-identical output (GPU parity test:
+  max|diff| = 0.0). Unconditional (pure win, no toggle).
+- `decadic/memory/ltm_write_behind.py` (NEW): `WriteBehindLongTermGraph` mirrors the
+  episodic write-behind for stage 10's WM→LTM consolidation. A single FIFO worker drains
+  consolidation jobs off the cycle thread (graph's own RLock guards the in-memory mutate
+  + commit); jobs snapshot the six slot fields `consolidate` reads at enqueue time so the
+  worker never touches a since-mutated `MemorySlot`. Order-preserving sync fallback under
+  backpressure; `flush()` before clear/backup/restore; drained on `stop()`. Always the
+  graph the runtime constructs (like episodic) so the mode flips live. `config.py`
+  `ltm_async_enabled()` (default ON, pinned OFF in conftest); `runtime.configure(ltm_async=…)`
+  + `capacity_config()['ltm_async']`; `api/app.py` `configure_agent(ltm_async=…)`;
+  `dashboard/src/api.ts` `CapacityConfig.ltm_async` + URL param; second checkbox in the
+  "Performance (live)" group of `CognitionTogglesPanel.tsx`.
+- `decadic/io/jsonl_writer.py` (NEW package `decadic/io`): a single daemon thread +
+  queue that appends `(path, line)` items off-thread, with a write-lock so the worker
+  and an inline backpressure write never race the same file (lost-line fix on Windows),
+  `flush()`/`close()`, lazy/relazy worker start. The cycle-trace dump (`runtime.py`) and
+  probe capture (`interpretability/probes.py`) now serialize on-cycle (content unchanged)
+  and hand only the file append to it. Inherits existing gating (no new default-on flag).
+- `tests/conftest.py`: pin `DECADIC_LTM_ASYNC=0` (CPU/zeros/fp32/synchronous baseline).
+
+Decisions: new offloads default ON with live toggles (matching episodic-async); logging
++ decode-once are unconditional pure wins; the cognition trace defers only the file I/O
+(the two frozen forward passes stay on-cycle, cheap on GPU). All deferred memory writes
+carry a ~one-cycle visibility lag (immaterial — recall/re-id read the prior cycle), and
+are flushed before backup/restore/clear.
+
+Tests: 5 new files — `test_ltm_write_behind.py` (parity vs sync, no-loss reopen, clear
+flush, order-preserving backpressure, born-disabled, live toggle), `test_jsonl_writer.py`
+(flush/no-loss/byte-identical/backpressure/relazy), `test_logging_async.py` (root holds
+only QueueHandler, records drain to file + flush on stop, idempotent re-init),
+`test_predecode.py` (zeros no-op + GPU decode-once byte-identical parity), and a live
+`test_configure_ltm_async_toggle_is_live` in `test_faculties.py`. Full suite: 488 passed,
+7 skipped (pre-existing GPU/HF-gated unrelated). The JSONL backpressure test caught a
+genuine concurrent-append data race, fixed with the writer's io-lock.
+
+## 2026-06-17 — Hold movement mode (run the active stance until disabled)
+
+Goal: a master "Hold movement" toggle so the operator can keep the active stance
+/motion running indefinitely with the joint braces fully welded -- the ROM
+curriculum suspended (no range-of-motion release) and motion stances looping
+continuously -- until they turn it off. The training is working; this lets a
+movement be driven precisely on repeat rather than gradually freeing the joints.
+The root is never forced, so the no-glide invariant still holds.
+
+Edits (surgical; originals backed up to `.\backups\hold_20260617_080642\`):
+- `scripts/mujoco_decadic_adapter.py`: `_movement_hold` flag + `set_movement_hold()`;
+  new `_hold_braces()` (pins every `_tightness` to 1.0 + re-applies gains, leaving
+  the PE EMA/dwell untouched so releasing hold resumes the ratchet); `step()` braced
+  branch picks `_hold_braces()` vs `_update_braces()`; `_advance_motion()` loops when
+  held (`stance.loop or self._movement_hold`) so the one-shot Rise also repeats;
+  `movement_hold` on `BodySnapshot` + obs JSON; WS `hold_on`/`hold_off` dispatch.
+- `decadic/api/app.py`: `POST /agent/{id}/body/movement_hold?enabled=bool`.
+- `decadic/agents/runtime.py`: `movement_hold` in `_initial_metrics` + mirrored in
+  `_capture_locomotion_telemetry` (telemetry only; inert to cognition).
+- `dashboard/src/api.ts`: `movement_hold?` on `Metrics` + `setMovementHold()`.
+  `dashboard/src/components/MotorPanel.tsx`: a "Hold movement" On/Off toggle row
+  under the Stance selector (disabled when no agent or braces off).
+
+Behavior notes: hold re-welds (the "Range of motion earned" readout shows 0% while
+held); releasing resumes the ratchet from welded. Hold is global and persists
+across stance switches. Only takes effect while the master joint braces are on.
+
+Verification: full `pytest` 470 passed, 7 skipped (2 new hold tests: welded/no ROM
+release under sustained low PE + resume on release; one-shot Rise loops while held);
+dashboard `npm run build` (tsc+vite) OK.
+
+## 2026-06-16 — Async episodic memory: live per-agent toggle, default ON
+
+Goal: expose the write-behind episodic store (Phase 4 below) as a per-agent toggle in
+the dashboard's Agent Settings tab, and make it ON by default (the user's call — keeps
+the cognitive lock free; the synchronous write was a measured-but-now-removed stall).
+
+Design: the write-behind store is now ALWAYS the store the runtime constructs, with a
+live on/off switch and a LAZY worker — so when async is OFF it is byte-identical to a
+bare EpisodicStore and spawns no thread (the test baseline, pinned OFF, has zero
+overhead). The mode flips live because `append` (cycle) and `configure` (settings) both
+run under the agent lock, so a flip can never race an in-flight write. Turning it OFF
+drains the backlog and retires the worker; the store object is never swapped (no SQLite
+connection migration), so the brain is never rebuilt.
+
+Edits (originals backed up to `.\backups\*.20260616_235628.bak`):
+- `decadic/config.py` — `episodic_async_enabled()` default flipped False -> True.
+- `decadic/memory/write_behind.py` — rewrote as live-toggleable: `enabled` ctor arg,
+  `set_async()` (lazy start / drain+stop), `async_enabled` property; `close()` now just
+  `set_async(False)`. No-write-lost + flush-on-clear/backup/restore preserved.
+- `decadic/agents/runtime.py` — always construct `WriteBehindEpisodicStore(..., enabled=
+  episodic_async_enabled())`; `configure(episodic_async=...)` calls `set_async`;
+  `capacity_config()` reports `episodic_async`.
+- `decadic/api/app.py` — `configure_agent` accepts `episodic_async` and threads it through.
+- `dashboard/src/api.ts` — `CapacityConfig.episodic_async` + `configureAgent` param.
+- `dashboard/src/components/CognitionTogglesPanel.tsx` — "Performance (live)" group with
+  the "Async episodic memory" checkbox (default on) in the selected-agent section.
+- `scripts/launch_decadic.ps1` — pin `DECADIC_EPISODIC_ASYNC = '1'` (explicit birth default).
+- `tests/test_faculties.py` — `test_configure_episodic_async_toggle_is_live` (live flip,
+  no rebuild, store not swapped, reported back).
+- `tests/test_write_behind.py` — born-disabled (no worker, sync) + off->on->off round-trip
+  preserves all records.
+- `README.md` — env row + Performance note updated to default-on + the live toggle.
+
+Verification: targeted 17 passed; full suite 468 passed, 7 skipped (was 465 + 3 new);
+dashboard `tsc --noEmit` clean; manual smoke: default-on worker runs, off drains+stops &
+writes sync, on restarts, born-disabled spawns no thread.
+
+## 2026-06-16 — Live agent performance: GPU + bf16 HF encoders
+
+Goal: lift the running agent from ~1 Hz toward a human-realistic 10–20 Hz WITHOUT
+changing the science — keep `full` + HF perception on, keep wall-clock metabolic /
+consolidation constants, keep the trainable stack fp32. Every change is device-gated
+so the `cpu`/`zeros`/`fp32`-pinned test suite (`tests/conftest.py`) stays
+byte-identical (465 passed, 7 skipped, unchanged).
+
+Root cause: a ~25M-param stack + CLIP ViT-B/32 + Whisper-small were training every
+cycle, and `torch` historically resolved to a CPU-only wheel — CPU was the whole
+bottleneck (the cycle profiler below shows fwd+bwd dominates). The hot path was
+already device-aware, so this was "turn the GPU on + trim CPU work," not a rewrite.
+(NOTE: this environment already has `torch 2.11.0+cu128` with CUDA available, so the
+big lever was just pinning the device + the bf16/dedup trims.)
+
+Phase 0 — Measure first (RULE #6): reused the pipeline's existing per-section timers
+(`neural_forward_ms`, `neural_backward_ms`, `encode_phase_ms`, `enc_ms`, `mem_ms`,
+`ms10`) instead of instrumenting the hot path. Surfaced `encoders_ms` /
+`memory_recall_ms` / `stage10_ms` in the diagnostics dict and added a
+`DECADIC_CYCLE_PROFILE=1` cycle log of the split (`runtime._cycle_loop`). Off by
+default, near-zero cost.
+
+Phase 1 — GPU enablement: pinned `DECADIC_DEVICE=cuda` in `scripts/launch_decadic.ps1`
+(auto-falls-back to CPU if CUDA absent); added a startup log in `bundle.try_build`
+(`neural compute device=… gpu=… vram_free_gb=… bf16=…`). The consolidation clone +
+landscape probe inherit `bundle.device` for free.
+
+Phase 2 — bf16 frozen encoders (device-gated): `config.encoder_autocast_dtype()`
+(`DECADIC_ENCODER_PRECISION=auto|bf16|fp16|fp32`, default `auto`). In
+`frozen_encoders.py` the CLIP/Whisper forwards autocast to bf16 on a bf16-capable
+CUDA device and are cast back to fp32 before the fusion `cat`; CPU stays fp32. The
+trainable proprio MLP + stack are never autocast.
+
+Phase 3 — De-dup CLIP: cache the spatial patch-token grid keyed on `obs["timestamp"]`
+(mirrors the pooled cache), so repeated cycles consuming one frame skip the CLIP
+vision_model forward (cached `None` honored for image-less frames).
+
+Phase 4 — Episodic write off the lock (flagged OFF): new
+`decadic/memory/write_behind.py` `WriteBehindEpisodicStore` (subclass of
+`EpisodicStore`) defers the per-cycle SQLite append to a daemon worker; reads are
+inherited, no write is lost (sync fallback on a full queue), `clear`/`backup`/
+`restore` flush first. Gated by `DECADIC_EPISODIC_ASYNC` (default OFF), pinned OFF in
+conftest, worker drained in `runtime.stop()`.
+
+New files:
+- `decadic/memory/write_behind.py` — write-behind episodic store (<110 lines).
+- `tests/test_encoder_precision.py` — CPU fp32 parity (unconditional) + CUDA-gated
+  bf16 finite/fp32/shape smoke + CLIP patch-token cache hit/recompute.
+- `tests/test_write_behind.py` — persistence-after-flush, search parity, clear-flush,
+  backpressure-never-drops (all CPU-only).
+
+Edits (originals backed up to `.\backups\*.20260616_232629.bak`):
+- `decadic/config.py` — `cycle_profile_enabled()`, `encoder_autocast_dtype()`,
+  `episodic_async_enabled()`.
+- `decadic/cycle/neural_pipeline.py` — surface `encoders_ms`/`memory_recall_ms`/
+  `stage10_ms` in diagnostics.
+- `decadic/agents/runtime.py` — `cycle_profile` log; conditional write-behind store;
+  worker close in `stop()`.
+- `decadic/nn/bundle.py` — CUDA/CPU startup device + VRAM + bf16 log.
+- `decadic/nn/frozen_encoders.py` — `_encoder_autocast()`, bf16-then-fp32 around the
+  three frozen forwards, patch-token cache (`_compute_patch_tokens` split out).
+- `scripts/launch_decadic.ps1` — pin `DECADIC_DEVICE=cuda`.
+- `tests/conftest.py` — pin `DECADIC_ENCODER_PRECISION=fp32`, `DECADIC_EPISODIC_ASYNC=0`,
+  `DECADIC_CYCLE_PROFILE=0`.
+- `README.md` — new "Performance / GPU" section + env rows + cognition-vs-wallclock
+  caveat.
+
+Verification: `tests/test_encoder_precision.py` + `tests/test_write_behind.py` → 8
+passed (bf16 + patch-cache actually ran on the RTX 3080); full suite 465 passed,
+7 skipped (no regressions). GPU smoke: `device=cuda gpu=NVIDIA GeForce RTX 3080
+vram_free_gb=8.9 bf16=True`; bf16 encoder fused output dtype=float32 shape (1,1344)
+finite; patch tokens float32 (1,49,768).
+
+## 2026-06-16 — Stance & motion ROM braces (selectable braced postures)
+
+Goal: let the operator put the agent in postures to learn — stand & balance,
+all-fours, kneel (twist left/right), plus motions (crawl, rise) — by extending the
+joint-brace system with a selectable stance library. A stance re-poses the body
+(root height/orientation + per-joint reference) and re-welds the braces toward
+that pose; the existing ROM curriculum then loosens each joint as prediction error
+falls. A motion is a time-varying reference the stiff braces track, so travel comes
+from REAL contact with the floor. The root is never forced — the no-glide invariant
+holds in every stance (`xfrc_applied[torso]` stays zero, asserted in tests).
+
+New file:
+- `decadic/embodiment/stances.py` — single source of truth (pure data + resolvers,
+  no MuJoCo). `Stance` dataclass (label, joints deg, root_z, root_quat, fall_z, and
+  optional motion keyframes/period/loop). `STANCES` registry: stand, all_fours,
+  kneel_left, kneel_right (static) + crawl, sit_to_stand (motion). `resolve()` maps
+  deg->rad and clamps ONLY authored joints (unspecified hinges keep qpos0 verbatim,
+  so stand == the validated zero pose); `motion_ref()` interpolates/wraps keyframes;
+  `catalog()` feeds the UI. <~330 lines.
+
+Edits (surgical; originals backed up to `.\backups\stance_20260616_220338\`):
+- `scripts/mujoco_decadic_adapter.py`: capture `hinge_names` + per-hinge ranges;
+  active-stance state (`_stance_name/_stance_phase/_stance_root_z/_stance_root_quat/
+  _stance_fall_z`); `_q_ref` now resolved from the active stance; `set_stance(name)`
+  (re-pose via stance-aware `recenter()` + `reset_braces()`); `_advance_motion()` in
+  `step()` retargets `_q_ref`+`qpos_spring` from the motion phase before the brace
+  tick; `recenter()` uses the stance root pose (still preserves earned ROM); `stance`
+  /`stance_phase` on `BodySnapshot` + obs JSON; per-stance `fall_height` into
+  `body_events`; WS `set_stance:NAME` dispatch.
+- `decadic/api/app.py`: `GET /body/stances` (catalog) + `POST /agent/{id}/body/
+  stance?name=...` (queues `set_stance:NAME`).
+- `decadic/agents/runtime.py`: `stance`/`stance_phase` in `_initial_metrics` and
+  mirrored in `_capture_locomotion_telemetry` (dashboard-only; inert to cognition).
+- `dashboard/src/api.ts`: `stance`/`stance_phase` on `Metrics`, `STANCES` constant,
+  `setStance()`. `dashboard/src/components/MotorPanel.tsx`: a "Stance" selector
+  button group (active highlighted) + a phase readout for motion stances.
+- `scripts/_gen_stand_pose.py`: `settle_stance()` settle-checks each stance under
+  full braces (finite / support loads / drift / root_z). `scripts/_probe_pose.py`:
+  pose-authoring probe (per-geom world-z + COM at spawn) used to tune the poses.
+
+Pose tuning notes (validated stable, drift over a 6 s braced settle):
+- stand 0.007, all_fours 0.137 (hands+feet bear), kneel_left/right ~0.09
+  (knees-down quadruped, torso twisted L/R), crawl/sit_to_stand start 0.137.
+- A free-root statue held only by position-braces obeys COM-over-support: an upright
+  single-knee kneel and a deep bipedal squat are NOT statically holdable on this
+  humanoid (joint ranges shoot the feet ahead of the COM and it tips), so the kneels
+  are realized as a stable knees-down quadruped distinguished by torso twist, and
+  `sit_to_stand` ("Rise up") is a stable push-up from all-fours (leg/elbow extension)
+  rather than a full bipedal stand. Full sit-to-stand needs dynamic balance — noted
+  as future work (alongside the separately-scoped balance-gated ROM curriculum).
+
+Verification: full `pytest` 457 passed, 7 skipped; 7 new stance tests (resolve
+clamp/defaults, catalog/motion flags, motion interp+wrap, set_stance re-pose/re-weld,
+no external wrench per stance, motion advances q_ref, posture-aware fall floor);
+dashboard `npm run build` (tsc+vite) OK; TestClient `GET /body/stances` returns the
+6-stance catalog.
+
+## 2026-06-16 — Live loss-landscape visualization (filter-normalized brain surface)
+
+Goal: render the loss surface from the reference image *live*, for the agent's actual
+brain — `L(a,b) = loss(theta* + a·d1 + b·d2)` over a 2D grid of filter-normalized
+weight-space directions, drawn as a 3D mesh in the dashboard with the current weights
+theta* marked at the center. Reuses the dual-network consolidation machinery so the
+plotted surface is the agent's TRUE training objective (predictive coding + proprioceptive
++ interoceptive forward models), not a proxy. Default OFF: visualization-only, expensive,
+and never touches the live weights — enabling it is byte-identical to baseline cognition.
+
+Problem / why:
+- The user asked for a live version of the loss-landscape plot showing the agent's brain.
+- A meaningful surface needs (a) the real objective, (b) filter normalization (Li et al.,
+  2018) so the geometry is not a weight-scale artifact, (c) a throwaway clone so the live
+  agent is never perturbed, and (d) off-critical-path background compute + caching.
+
+Design:
+- Shared objective (DRY): extracted module-level `replay_batch_loss(stack, batch, device)`
+  in consolidator.py; `ConsolidationManager.replay_loss` now delegates to it, so the probe
+  and the consolidator score the IDENTICAL loss. Consolidation tests guard parity.
+- Filter-normalized directions: two seeded Gaussian directions over params with dim>=2
+  (the network's "filters"), each filter rescaled to its weight filter's norm; 1-D params
+  (biases/norm gains) held fixed. Seeded/persisted so the bowl is comparable frame-to-frame.
+- Recurrent state zeroed before every grid-point eval, so the surface is a pure function of
+  (weights, batch, directions) — no evaluation-order contamination from the GRU/LSTM buffers.
+
+New files:
+- decadic/consolidation/landscape.py (NEW, ~190 lines): LossLandscapeProbe — own clone,
+  filter_normalized_directions, no-grad grid `compute()` returning the JSON surface dict.
+- dashboard/src/components/LandscapePanel.tsx (NEW): react-three-fiber surface mesh built
+  from z[][], RdYlBu height/color map, theta* marker sphere, warming-up empty state; reuses
+  BrainMapPanel's Canvas/OrbitControls conventions. Polls every 4 s.
+- tests/test_landscape.py (NEW, 11 tests): direction norms + 1-D skip, seed determinism,
+  grid shape + finiteness, center_loss == consolidator held_out_loss, no live-weight
+  mutation, empty-batch None, grid clamp, runtime parity-when-off, API 404/202/200.
+
+Wiring (thin hooks; every edited file backed up to .\backups\ first per RULE #3):
+- decadic/config.py: DEFAULT_LANDSCAPE_* + accessors landscape_enabled() (default 0),
+  landscape_grid()/span()/batch()/interval_s()/seed().
+- decadic/agents/runtime.py: _landscape_task/_landscape_probe/_last_landscape; start
+  _landscape_runner in ensure_cycle_worker when (flag AND neural AND replay_buffer); the
+  runner samples the buffer, runs probe.compute via asyncio.to_thread on a cadence, caches
+  the surface, logs `landscape_compute` (cycle/grid/batch/center/min/max/wall_ms); cancel in
+  stop(); clear in reset(); brain_landscape() accessor.
+- decadic/api/app.py: GET /agent/{id}/brain/landscape (404 unknown / 202 warming up / 200).
+- dashboard/src/api.ts: BrainLandscape type + fetchBrainLandscape().
+- dashboard/src/App.tsx: "Loss Landscape" tab + LandscapePanel render.
+- tests/conftest.py: pin DECADIC_LANDSCAPE_ENABLED=0 in _baseline_faculties for parity.
+
+Docs: README.md gains a "Loss Landscape (live)" subsection + the DECADIC_LANDSCAPE_* env
+var rows. Plan file: .cursor/plans (untouched per instruction).
+
+Verification:
+- tests/test_landscape.py: 11 passed. tests/test_consolidation.py: 13 passed (parity held
+  after the replay_batch_loss extraction). dashboard `tsc --noEmit`: clean.
+- Full suite: 450 passed, 7 skipped (the 11 new landscape tests; no regressions).
+
+## 2026-06-16 — Persistent long-term knowledge graph (hippocampal index)
+
+Goal: add the missing long-term half of the memory architecture. Working memory
+stays bounded (K=7 slots / capacity 12 — the "what's present now" buffer), but
+there was no growing relational long-term memory: the only graph was rebuilt
+from scratch every observation and thrown away, capped at the slot bottleneck.
+This adds a persistent, unbounded relational knowledge graph (the hippocampal
+index) that working memory consolidates into and reinstates from, plus a
+dedicated dashboard panel to watch it grow. All paths ship ON by default.
+
+Changes:
+- decadic/memory/semantic_graph.py (NEW, 382 lines): LongTermGraph — SQLite-backed
+  (in-memory fallback), thread-safe, UNBOUNDED node/edge store. match() does
+  cosine re-identification by appearance; upsert_node() coins stable ent-NNNNN
+  ids or EMA-updates a matched node; bump_edge() accumulates co-occurrence edges;
+  consolidate(slots) commits stable slots + links co-present ones; snapshot(limit)
+  is a windowed read-out carrying total_nodes/total_edges; backup_to/restore_from
+  mirror the episodic-store SQLite backup pattern.
+- decadic/memory/__init__.py: export LongTermGraph.
+- decadic/config.py: ltm_graph_enabled() (env DECADIC_LTM_GRAPH) DEFAULTS TRUE,
+  plus ltm_match_threshold/ltm_consolidate_min_seen/ltm_snapshot_limit. (Contrast:
+  consolidation_enabled stays the existing behavior; the flag is only a parity
+  escape hatch.)
+- decadic/cycle/types.py: CycleContext gains ltm_graph (default None -> parity).
+- decadic/agents/registry.py + runtime.py: construct per-agent
+  agent_<id>_graph.sqlite; hold it on AgentRuntime (None only when disabled);
+  inject into every CycleContext; clear() on reset; backup_graph_to/restore_graph_from;
+  merge ltm_graph.snapshot(limit) into the perceptual payload (snapshot_state).
+- decadic/cycle/stages/stage_10.py: consolidation write (WM -> LTM) each cycle,
+  gated on discovered mode + a stability criterion (seen_count >= min_seen).
+- decadic/state/working_memory.py: integrate_discovered gains an optional
+  reidentify hook (LTM -> WM read); a coin-path hit rebinds to the persistent
+  ent-NNNNN id so the "now" graph and the long-term graph share identities.
+  reidentify=None -> byte-identical to before (oracle / no-LTM parity).
+- decadic/cycle/neural_pipeline.py: pass ctx.ltm_graph.match as reidentify when
+  the graph is present.
+- decadic/api/saved_agents/store.py + routes.py: graph.sqlite save artifact
+  (GRAPH_NAME, SavePaths.graph, SCHEMA_VERSION 1 -> 2), copied on save/restore so
+  saved agents carry their accumulated long-term graph. Missing file -> no-op.
+- dashboard/src/api.ts: LtmNode/LtmEdge/LtmGraphSnapshot types; perceptual.ltm_graph.
+- dashboard/src/components/LongTermMemoryPanel.tsx (NEW, 194 lines): force-directed
+  relational view; node color = a deterministic hue of the appearance embedding
+  (NO semantic labels), size = times seen, rim = consolidated affect; headline
+  total_nodes/total_edges counters so growth is observable.
+- dashboard/src/App.tsx + style.css: mount the panel next to the bounded "now"
+  graph on the Self-Indexed Graph tab; .ltm-* styles.
+- tests/test_semantic_graph.py (NEW): store (upsert/match/growth/edges/
+  consolidate/persistence/clear) + wiring (reinstatement rebinds to the long-term
+  id; no-reidentify parity; LTM grows while WM stays bounded; default-on).
+
+House rules: backups of every edited file in .\backups\ (suffix .20260616_170045.bak);
+ai.md added for decadic/memory and dashboard/src/components. New files are all
+< 500 lines. Pre-existing oversized files (runtime.py, config.py, api.ts,
+working_memory.py) were touched minimally and are flagged as separate refactors.
+
+Verification: full pytest 439 passed, 7 skipped; dashboard `npm run build`
+(tsc + vite) OK; live smoke (AgentRuntime) confirms the graph is constructed by
+default and rides in the API payload (perceptual.ltm_graph, totals 0/0 fresh).
+
+## 2026-06-16 — Agent presets (save & start) + single top-bar dropdown
+
+Goal: remove the redundant second scenario dropdown (it lived on BOTH the
+Environment tab and the top bar). Now there is ONE preset dropdown, in the top
+bar next to "+ New agent", backed by a server-side preset store. The Environment
+tab becomes the editor for a shared "draft" (elements + senses + joint braces)
+that mirrors the selected preset and can either be Saved as a new preset or
+Started immediately. Joint braces are now configurable at SPAWN time (not just
+live), so a preset can start a free body from t=0.
+
+Backups (pre-edit, per house RULE #3) in ./backups/ tag 20260616_150722:
+- decadic/api/{app.py,environment.py,schemas.py}, scripts/mujoco_decadic_adapter.py,
+  tests/test_environment_supervisor.py.
+- dashboard/{api.ts,App.tsx,components/AgentAdmin.tsx,components/EnvironmentPanel.tsx,
+  style.css} -> ./backups/dashboard/.
+
+New package decadic/api/presets/ (each file < 500 lines; see its ai.md):
+- store.py — PresetStore: JSON-backed presets/agent_presets.json, seeds the
+  built-ins (calm/forage/parent/village/predator/mind) on first run, CRUD +
+  traversal-proof id validation, atomic writes, mind_only normalises elements=[].
+- routes.py — register_preset_routes: GET/POST/DELETE /agent-presets (POST filters
+  elements to VALID_ELEMENTS; bodied preset with no valid elements -> 422).
+- __init__.py, ai.md.
+
+Edits (surgical; originals backed up):
+- decadic/api/schemas.py: + CreateAgentPresetRequest, AgentPresetRecord,
+  AgentPresetListResponse.
+- decadic/api/app.py: lifespan creates app.state.presets_dir + preset_store;
+  register_preset_routes(application); EnvironmentStartRequest.braces (default
+  True); start_environment passes braces=req.braces.
+- decadic/api/environment.py: REMOVED SCENARIO_PRESETS + the available_presets
+  status field; EnvironmentSupervisor.start(..., braces=True) appends --no-braces
+  only when off and records options.braces.
+- scripts/mujoco_decadic_adapter.py: --braces/--no-braces CLI flag (default on)
+  threaded through _run -> HumanoidSim(braces=); __init__ sets _braces_enabled
+  from the arg and applies gains or _relax_braces() accordingly. Default ON keeps
+  the established spawn behaviour byte-for-byte.
+- dashboard/src/api.ts: + AgentPreset/ScenarioDraft/CreateAgentPresetRequest
+  types + listAgentPresets/createAgentPreset/deleteAgentPreset; braces added to
+  EnvironmentStartRequest + EnvironmentStatus.options; removed available_presets.
+- dashboard/src/App.tsx: holds presets + the shared ScenarioDraft + selectedPresetId;
+  fetch/refresh presets, onSelectPreset (load into draft), updateDraft (-> Custom),
+  savePreset; passes them to AgentAdmin + EnvironmentPanel.
+- dashboard/src/components/AgentAdmin.tsx: dropdown now lists presets (built-ins +
+  user); selecting loads into the draft; "+ New agent" starts the draft (or
+  createAgent for mind-only). Removed hardcoded BODY_CHOICES.
+- dashboard/src/components/EnvironmentPanel.tsx: removed the in-tab "Scenario
+  preset" dropdown (+ FALLBACK_PRESETS/onPickPreset); elements/senses bound to the
+  shared draft; new Joint-braces toggle; "Start now" + "Save as preset" buttons;
+  running view stays read-only.
+- dashboard/src/style.css: replaced .env-preset(-select) rules with .env-editing.
+
+Tests: + tests/test_agent_presets.py (store seeding/CRUD/persistence/id validation
++ routes via a minimal app). Updated tests/test_environment_supervisor.py (dropped
+the SCENARIO_PRESETS/Village-preset assertions; + braces option + --no-braces argv
+tests) and tests/test_crowd.py (element-sync no longer references SCENARIO_PRESETS;
++ village built-in preset check). Full suite: 425 passed, 7 skipped. Dashboard
+`npm run build` (tsc + vite) clean.
+
+Known follow-up (flagged, NOT done — out of scope): dashboard/src/api.ts is ~889
+lines (pre-existing monolith). It exceeds the 500-line house guideline; splitting
+it into domain modules should be a separate, permissioned refactor.
+
+## 2026-06-16 — NPC habitat crowd ("village") environment
+
+Goal: give the single learner a small society to discover and learn from — 8
+scripted, collisionless, kinematically-animated NPCs confined to their own
+habitats, each running a per-zone behavior (forage / wander / sit / sit-stand /
+communicate / idle), with co-located respawning food/water, and one parent that
+provisions the learner on a NEED THRESHOLD (not a fixed timer). Pure embodiment/
+sim work: cognition, the losses, and the 21-actuator motor contract are untouched.
+One-click "Village" preset added to the dashboard Environment dropdown.
+
+Backups (pre-edit, per house RULE #3) in ./backups/ tag 20260616_112506:
+- scripts/mujoco_decadic_adapter.py, decadic/agents/runtime.py,
+  decadic/api/environment.py, decadic/api/app.py, tests/test_npc.py,
+  tests/test_environment_supervisor.py.
+- dashboard/{api.ts,components/EnvironmentPanel.tsx,style.css} -> ./backups/dashboard/.
+
+New package decadic/embodiment/ (each file < 500 lines; see its ai.md):
+- habitats.py — Habitat descriptors + DEFAULT_HABITATS (8 zones in-view within
+  FENCE_RADIUS, exactly one parent), env-var config accessors (DECADIC_CROWD_SIZE,
+  DECADIC_HABITAT_RADIUS, DECADIC_PARENT_NEED_THRESHOLD, DECADIC_PARENT_FADE_PER_OFFER,
+  DECADIC_PARENT_THRESHOLD_FLOOR, DECADIC_PARENT_REFRACTORY_S, DECADIC_CROWD_LOD_DISTANCE),
+  clamp_to_zone, and parent_effective_threshold(offers) (faded + floored).
+- npc_behaviors.py — pure kinematic pose library (walk/stand/sit/communicate/lerp/
+  sit_stand_blend) keyed r_hip,l_hip,r_knee,l_knee,r_sh,l_sh.
+- npc_xml.py — multi-NPC humanoid generation: clone_humanoid_xml (prefixed,
+  actuator-free, COLLISIONLESS), parent_gifts_xml (prop_food_gift_c/prop_water_gift_c,
+  distinct from the legacy parent's gifts), habitat_resources_xml (net-additive
+  prop_food_h{i}_*/prop_water_h{i}_*), zone_markers_xml (decor discs), crowd_scene_xml.
+- npc_controller.py — MuJoCo-bound CrowdController + NPCRuntime: discovers npc{i}_*
+  bodies/joints, animates each substep (apply), runs per-zone behavior + forage/parent
+  FSMs (events), publishes entities(), and does distance/frustum LOD culling.
+
+Edits (surgical; originals backed up):
+- scripts/mujoco_decadic_adapter.py: import the crowd helpers; SCENE_ELEMENTS["crowd"]
+  (built via crowd_scene_xml(ASSETS_XML)); "crowd" added to SELECTABLE_ELEMENTS and a
+  "village" LEGACY_SCENE; the agent hinge scan now skips ALL npc-prefixed joints
+  (npc_ legacy parent AND npc0_..npcN_ crowd) so model.nu stays 21; HumanoidSim.crowd
+  + _agent_reservoirs state; CrowdController constructed when "crowd" is in elements;
+  crowd.apply() driven every substep (alive + lifeless); crowd.events()/entities()
+  merged into scene_events()/snapshot(); apply_action() parses parameters.reservoirs;
+  the legacy parent's timer trigger replaced by _parent_delivery_due (need-threshold
+  with refractory + timer fallback when reservoirs are unknown) + _npc_offers fade;
+  npc_pause/npc_resume now freeze the crowd too.
+- decadic/agents/runtime.py: piggyback normalized reservoirs (0..1) onto the outbound
+  action parameters.reservoirs (body-only telemetry; cognition never reads it back).
+- decadic/api/environment.py: VALID_ELEMENTS gains "crowd"; SCENARIO_PRESETS map
+  (Calm homeostasis / Village -> [crowd, house] / Predator); available_presets in the
+  status payload.
+- dashboard/src/api.ts: EnvironmentStatus.available_presets.
+- dashboard/src/components/EnvironmentPanel.tsx: "Village (8 NPCs)" element label +
+  a one-click scenario-preset <select> that starts a fresh agent in the chosen world.
+- dashboard/src/style.css: .env-preset / .env-preset-select styles.
+
+Tests:
+- tests/test_crowd.py (new): pure (habitats, clamp, behaviors, threshold fade, XML,
+  element-list sync) + MuJoCo-backed (actuator/joint parity, all-perceived-as-npc,
+  collisionless geoms, zone confinement, resource register/respawn, credit isolation,
+  forage FSM transition, parent need-threshold delivery, pickup->offer).
+- tests/test_npc.py: + test_parent_delivery_is_need_threshold_gated (legacy parent).
+- tests/test_environment_supervisor.py: + crowd-in-sync, Village-preset resolves,
+  status exposes presets and the crowd element.
+
+Verification: full pytest 415 passed, 7 skipped (was green before; no regressions);
+dashboard `npm run build` (tsc + vite) OK; crowd scene builds in MuJoCo with model.nu=21,
+8 NPCs confined, 8 perceived as kind:"npc", agent joint vector still 42.
+
+## 2026-06-16 — Event logging: curiosity timeline + log timestamps
+
+Problem: the two autonomous-learning subsystems were asymmetric in the server log.
+Consolidation already logged consolidation_start / consolidation_sync, but curiosity
+had NO discrete event line (only continuous per-cycle telemetry), so there was no
+"when did curiosity take over" timeline. Separately, JsonFormatter emitted only
+level/logger/message -> the log answered "what" but never "when" (no timestamp).
+
+Changes (backups ./backups/ tag 20260616_105813: json_logging.py, runtime.py):
+- decadic/logging/json_logging.py (JsonFormatter): prepend an ISO-8601 UTC "time"
+  field derived from record.created. Applies to every line (stdout + the rotating
+  decadic_server.jsonl), so all events now carry wall-clock time. Message bodies are
+  unchanged, so the existing message-content log assertions still pass.
+- decadic/agents/runtime.py (_apply_cycle_diagnostics): edge-triggered curiosity log.
+  Tracks self._curiosity_investigating and logs curiosity_investigate_enter /
+  curiosity_investigate_exit ONLY on the transitions into/out of the curiosity-driven
+  "investigate" priority (drive / learning_progress / pleasure included), never per
+  cycle. Naturally inert when curiosity is off (the label is never "investigate") ->
+  baseline log byte-identical. Flag initialized in __init__ and cleared on reset().
+
+Tests: tests/test_curiosity_logging.py (5 cases) -- JsonFormatter stamps ISO-8601 UTC
+time; investigate enter logs once; sustained investigate is edge-triggered (no repeat);
+exit logs on leaving investigate; silent when the agent never investigates.
+
+Verification: python -m pytest -q => 395 passed, 7 skipped (390 prior + 5 new;
+message-content assertions in test_plasticity_logging.py unaffected by the new "time"
+field). Lints clean.
+
+## 2026-06-16 — Curiosity + consolidation now default ON in production
+
+Problem: both new autonomous-learning subsystems shipped default OFF (parity-first).
+User decision: they are core behavior, not opt-in -> default ON.
+
+Changes:
+- decadic/config.py: DEFAULT_CURIOSITY_ENABLED False -> True; DEFAULT_CONSOLIDATION_ENABLED
+  False -> True (comments updated: production-on, set DECADIC_*_ENABLED=0 to recover the
+  byte-identical baseline).
+- tests/conftest.py (_baseline_faculties autouse): pin DECADIC_CURIOSITY_ENABLED=0 and
+  DECADIC_CONSOLIDATION_ENABLED=0, exactly as perception-feedback / plasticity are pinned.
+  This keeps the suite written against the dense/oracle/no-loop baseline deterministic
+  while production defaults to on; feature tests still set the flag explicitly in-body.
+- Docs (README.md, decadic_project_brief.md, docs/logical_layer_conformance.md): "OFF by
+  default" wording -> "ON by default in production (set =0 to disable)".
+
+Backups (./backups/, tag 20260616_104245): config.py, conftest.py, README.md,
+decadic_project_brief.md, logical_layer_conformance.md, _change.log.
+
+Verification: python -m pytest -q => see run below (baseline pinned off in conftest ->
+unchanged; curiosity/consolidation suites set the flag explicitly -> unaffected).
+
+## 2026-06-16 — Dual-network memory consolidation (Option B)
+
+Plan: .cursor/plans/curiosity_consolidation_babylon_cleanup_9867a073.plan.md
+(Phase 3 of 3 — final phase.)
+
+Problem: the consolidation subsystem was a no-op stub heartbeat. Salient experience
+was stored in episodic memory but never *re-learned* — there was no replay-based
+long-term learning, no forgetting of stale low-salience experience, and the brief's
+Phase 3 (dual-network setup with periodic weight sync) was unimplemented.
+
+Design: Option B (dual-network). A second cloned cognitive stack replays
+salience-prioritized transitions on its OWN optimizer, recomputing the same
+self-supervised PC / forward-model / interoceptive losses the live cycle uses, then
+periodically Polyak soft-syncs its weights back into the live stack under the agent
+lock. Replay runs in a thread executor (asyncio.to_thread) so the cognitive cycle is
+never blocked. OFF by default -> the runtime keeps the no-op stub heartbeat and live
+weights stay byte-identical to baseline.
+
+New files:
+- decadic/consolidation/replay_buffer.py (~200 lines): Transition (detached CPU
+  latents needed to recompute the cycle's losses + salience) and ReplayBuffer
+  (fixed capacity, salience-prioritized sample() with replacement, lowest-salience
+  eviction when full + a prune-floor = built-in forgetting, threading.Lock for the
+  cross-thread push/sample race).
+- decadic/consolidation/consolidator.py (~290 lines): ConsolidationManager clones the
+  active NeuralCognitiveStack, owns an Adam optimizer, implements replay_loss /
+  held_out_loss / consolidate_once (one gradient step) / soft_sync (Polyak, NaN-safe,
+  zero-tau no-op) and an async run_loop of periodic replay+sync bursts.
+
+Wiring (backups tag 20260616_102120 covers the doc sweep; code edits backed up under
+earlier tags):
+- decadic/config.py: DEFAULT_CONSOLIDATION_* + consolidation_enabled() (default off) /
+  replay_buffer_size() / consolidation_replay_batch() / consolidation_steps_per_burst()
+  / consolidation_sync_tau() / consolidation_sync_interval_s() /
+  consolidation_prune_min_salience() (env DECADIC_CONSOLIDATION_* + DECADIC_REPLAY_BUFFER_SIZE).
+- decadic/cycle/neural_pipeline.py: when consolidation_enabled(), package a detached
+  CPU _transition payload (z0, ep, mem, prev_state, prev_motor, proprio target,
+  prev/next intero, drive_on, salience) into the cycle return dict; zero-cost when off.
+- decadic/agents/runtime.py: build self.replay_buffer iff enabled; per-cycle push of
+  the _transition payload; _consolidation_runner routes to ConsolidationManager.run_loop
+  when enabled (else the existing consolidation_stub_loop heartbeat); _on_consolidation_sync
+  callback feeds replay_count / consolidator_loss / last_sync_cycle / replay_buffer_size
+  into metrics (defaults added to _initial_metrics).
+
+Tests: tests/test_consolidation.py (13 cases) -- ReplayBuffer (capacity, lowest-salience
+eviction, prune floor, prioritized sampling favors high salience, stats), ConsolidationManager
+(clone parity, a replay step reduces held-out loss, soft-sync moves live toward consolidator
+without NaNs, zero-tau no-op), pipeline transition emission when on, and runtime buffer wiring
+(present iff enabled). Assertions are directional/statistical given async timing.
+
+Verification: python -m pytest -q => 390 passed, 7 skipped (377 prior + 13 new; baseline
+unchanged -> parity confirmed with the flag off). Lints clean.
+
+## 2026-06-16 — Need-gated curiosity drive (autonomous epistemic motivation)
+
+Plan: .cursor/plans/curiosity_consolidation_babylon_cleanup_9867a073.plan.md
+(Phase 2 of 3.)
+
+Problem: cognition had no autonomous epistemic motivation. Exploration came only
+from unmet homeostatic need (motor babble) -- a sated, safe agent had no reason
+to investigate the world, and there was no "interest" signal in element B. The
+user asked for curiosity to fire autonomously, as part of the cognition stage,
+as need arises.
+
+Design: curiosity = a *learning-progress* epistemic drive (reward the reduction
+of forward-model prediction error, NOT raw surprise -> avoids the noisy-TV trap),
+folded into the existing pain/pleasure -> element B path as a pleasure-side affect
+and need-gated by survival urgency (suppressed under threat/deprivation, expressed
+when safe and sated). Mirrors the innate homeostatic-drive pattern (phylogeny
+fixes the substrate; "what is interesting" is learned) and Stage 4's risk-vs-
+curiosity arbitration. OFF by default -> byte-identical baseline.
+
+New file:
+- decadic/state/curiosity.py (~230 lines, pure + one small stateful class):
+  learning_progress() (relative fall of PE over a rolling window, clamped [0,1]),
+  survival_urgency()/permission() (the need-gate), epistemic_opportunity()
+  (progress + a small current-error floor so a flat-but-wrong state still probes),
+  curiosity_signal() -> (pain=0, pleasure), and CuriosityState/compute_curiosity()
+  returning the gated drive, pleasure, learning_progress, permission, and an
+  investigate flag.
+
+Thin hooks (backups tag 20260616_095936):
+- decadic/cycle/neural_pipeline.py: import + a single guarded block before the
+  babble gate that updates the bundle's ephemeral PE history (bundle._curiosity,
+  never checkpointed) and computes the drive; its drive is ADDED to the
+  motor_exploration_sigma `drive` arg (so satisfied curiosity lets babble relax);
+  its pleasure is injected into B and floors pleasure_scalar (mirrors drive_pain
+  on the pleasure axis); priority_label flips "explore" -> "investigate" when the
+  epistemic value clears a small threshold and the agent is not avoiding.
+  curiosity_drive/pleasure/learning_progress added to the diagnostics dict (None
+  when off -> parity).
+- decadic/config.py: DEFAULT_CURIOSITY_* + curiosity_enabled() (default off) /
+  curiosity_gain() / curiosity_progress_window() / curiosity_safety_sharpness()
+  (env DECADIC_CURIOSITY_*). [config.py is already >500 lines; refactor flagged
+  for a future pass per PHILOSOPHY #1, additions kept to flat accessors.]
+- decadic/agents/runtime.py: curiosity_drive/pleasure/learning_progress in
+  _initial_metrics + copied from diagnostics in _apply_cycle_diagnostics
+  (only when present -> off-parity), so they surface on GET /agent/{id}/metrics.
+
+Tests: tests/test_curiosity.py (29 cases) -- learning-progress math (short/flat/
+rising/falling/bounded/mastered), urgency+permission gate, opportunity+signal
+(rises with progress, suppressed under pain/low-viability, gain scaling, no pain
+side), stateful investigate decision, and end-to-end via run_neural_cycle
+(parity when off; enters pleasure affect + telemetry; priority -> investigate;
+suppressed under low viability).
+
+Verification: python -m pytest -q => 377 passed, 7 skipped (348 baseline + 29
+new; baseline unchanged -> parity confirmed with the flag off). Lints clean.
+
+## 2026-06-16 — Babylon removal (MuJoCo is the embodiment)
+
+Plan: .cursor/plans/curiosity_consolidation_babylon_cleanup_9867a073.plan.md
+(Phase 1 of 3 — Babylon -> Curiosity -> Consolidation, one focus at a time.)
+
+Problem: the project's embodiment moved to MuJoCo (assets/humanoid_body.xml +
+scripts/mujoco_decadic_adapter.py) long ago, but a stale, unused Babylon.js web
+client (babylon-client/) and scattered "Babylon" references remained in the docs
+and ignore rules. User decision: Babylon is out.
+
+Changes:
+- Deleted babylon-client/ (source backed up first; node_modules/dist excluded
+  as regenerable).
+- .gitignore: removed the babylon-client/node_modules/ and babylon-client/dist/
+  ignore lines.
+- scripts/minerl_decadic_adapter.py: docstring now references mujoco_decadic_adapter
+  as the canonical observation-shape source (was ``babylon-client``). MineRL
+  bridge logic untouched.
+- decadic_project_brief.md: line 52 first-connected-environment is now the MuJoCo
+  physics sim (was "Babylon.js 3D world"); Phase 5 retitled "MuJoCo embodiment"
+  and rewritten to the adapter/humanoid reality (proprio/intero/tactile obs, joint
+  actuators, standing/locomotion + foraging); hiring "nice-to-have" Babylon.js/
+  Three.js -> physics simulation (MuJoCo).
+
+Note: dashboard/node_modules/* still contain third-party "Babylon" strings (e.g.
+three.js KTX texture-format changelogs) — external deps, gitignored, out of scope.
+
+Backups (./backups/, tag 20260616_094929): .gitignore, minerl_decadic_adapter.py,
+decadic_project_brief.md, babylon-client.<tag>.bak/ (src + configs).
+
+Verification: python -m pytest -q => 348 passed, 7 skipped. Scoped grep over
+decadic/, scripts/, docs/, tests/, README.md, decadic_project_brief.md => no
+Babylon references remain in project source/docs.
+
+## 2026-06-16 — Structured logging for neuroplasticity events
+
+Plan: .cursor/plans/plasticity_event_logging_1ac3f473.plan.md
+
+Problem: structural plasticity (sparse rewire, neuron growth) and the instability
+freeze were computed every cycle in apply_plasticity_step and mirrored into
+self.metrics, but never persisted. logs/decadic_server.jsonl carried no record of
+whether/when rewiring or growth fired, or whether the guard froze plasticity.
+
+Changes:
+- decadic/cycle/neural_pipeline.py (apply_plasticity_step): surfaced per-cycle
+  edge flags in the returned diagnostics — rewired/connections_rewired,
+  grew/neurons_woken (captured via an awake-neuron diff around grow_step), and
+  froze (set on the cycle the instability guard transitions frozen False->True).
+  Additive keys only; the metrics mirror and dashboard are unaffected.
+- decadic/agents/runtime.py (_apply_cycle_diagnostics): emit structured log lines
+  in the diagnostics-consume path — plasticity_rewire / plasticity_growth (INFO)
+  and plasticity_frozen (WARNING). Fields go in the message as key=value to match
+  JsonFormatter (which only serializes level/logger/message) and the existing
+  cycle_completed idiom.
+- decadic/config.py: new DEFAULT_PLASTICITY_LOG_EVERY (0=off) + plasticity_log_every()
+  accessor (env DECADIC_PLASTICITY_LOG_EVERY). When >0 the runtime emits a periodic
+  plasticity_snapshot INFO line every N cycles for a continuous time series; a no-op
+  when disabled or when the stack is dense.
+- tests/test_plasticity_logging.py: new — edge flags forced through run_neural_cycle
+  (rewire+growth report non-zero counts; NaN injection sets froze), plus caplog tests
+  asserting plasticity_rewire/growth/frozen/snapshot fire with agent_id and cycle and
+  stay quiet when nothing happens.
+
+Backups (./backups/, tag 20260616_093918): neural_pipeline.py, runtime.py, config.py.
+
+Verification: python -m pytest -q => 348 passed, 7 skipped (incl. the 6 new
+tests/test_plasticity_logging.py cases). Logging-only + additive diagnostics keys;
+no schema change, dashboard build unaffected.
+
+## 2026-06-16 — Saved Agents library (durable save + load-from-UI)
+
+Plan: .cursor/plans/saved_agents_library_09e29602.plan.md
+
+Goal (user request): a place to SAVE agents that is separate from the checkpoint
+system, with agents loadable back in via the UI. Decisions (confirmed): full
+build (backend + dashboard), memory ALWAYS bundled, store at saved_agents/
+(env-overridable via DECADIC_SAVED_DIR).
+
+Why separate: backups/ checkpoints are ephemeral — keyed by the volatile agent
+uuid and pruned to N-most-recent on death (AgentRuntime._prune_tombstones globs
+backups/agent_*_brain.pt), and /restore only works for an id still live in the
+process. The new library is keyed by a stable save_id folder, never auto-pruned,
+and loads into a fresh agent (re-keyed onto a new uuid like the vast restore),
+so saves survive restarts.
+
+Backups of every edited file written to .\backups\ before editing
+(batch tag saved_agents_2026-06-16_091755).
+
+Changes:
+- decadic/memory/episodic_store.py: backup_to()/restore_from() via SQLite's
+  online-backup API (sqlite3.Connection.backup) — safe on a live, open DB and on
+  Windows; in-memory store fallback handled.
+- decadic/agents/runtime.py: path-explicit save_brain_to/load_brain_from/
+  backup_memory_to/restore_memory_from (decoupled from the agent-id filename).
+- decadic/api/saved_agents/ (new pkg): store.py (SavedAgentStore: layout,
+  traversal-proof id, manifest I/O, list/delete) + routes.py
+  (POST /agent/{id}/save, GET /saved-agents, POST /saved-agents/{id}/load,
+  DELETE /saved-agents/{id}) + ai.md.
+- decadic/api/schemas.py: SaveAgentRequest / SavedAgentRecord /
+  SavedAgentListResponse / LoadSavedResponse.
+- decadic/api/app.py: app.state.saved_dir (lifespan, mirrors backups_dir) +
+  register_saved_agents_routes.
+- dashboard/src/api.ts: SavedAgent type + saveAgent/listSavedAgents/
+  loadSavedAgent/deleteSavedAgent.
+- dashboard/src/components/SavedAgentsPanel.tsx (new): list + Load + Delete.
+- dashboard/src/components/AgentAdmin.tsx: "Save" button (name prompt).
+- dashboard/src/App.tsx: "Saved Agents" tab; onLoaded -> select new agent +
+  jump to Overview.
+
+Load ordering invariant: create agent -> reset(preset) [rebuilds arch, wipes the
+empty episodes] -> load_brain_from -> apply_checkpoint_payload -> restore memory.
+agent.plastic_flags can be None (flags resolve from env in the bundle), so the
+manifest sources real flags/faculties from agent.neural and guards asdict.
+
+Verification: new tests/test_saved_agents.py (episodic backup/restore, store
+CRUD + id sanitization, full API save->load round-trip on the neural fixture)
+all pass; dashboard `tsc --noEmit` clean; full suite 342 passed, 7 skipped.
+
+## 2026-06-16 — hf encoder default + always-on vision
+
+Plan: .cursor/plans/hf_default_+_always-on_vision_cb986f54.plan.md
+
+Goal (user request): new agents must default to the 'hf' encoder (real frozen
+CLIP + Whisper, so the brain actually sees/hears), and EVERY scenario must
+stream vision. Decision: default-on with an opt-out kept; 'hf' default is
+sufficient (the 'zeros' path stays for the pytest fixtures and headless/perf).
+
+Root cause: the brain ALREADY defaults to 'hf' (decadic/config.py
+DEFAULT_ENCODER_MODE, decadic/nn/faculties.py encoder_mode field) and every
+dashboard/server-managed scenario already defaults vision ON
+(EnvironmentStartRequest.vision=True, EnvironmentSupervisor.start vision=True,
+dashboard useState(true)). The only real gap was the standalone CLI body, where
+--vision was opt-in (default OFF), plus a stale README claiming 'zeros' default.
+
+Backups of every edited file were written to .\backups\ before editing
+(batch tag 20260616_083529).
+
+Changes:
+- scripts/mujoco_decadic_adapter.py: --vision -> argparse.BooleanOptionalAction
+  default=True (+ auto --no-vision opt-out). dry-run unaffected: the dry_run
+  branch returns before HumanoidSim(vision=...) is constructed, so no MuJoCo/GL
+  renderer is created (contract check stays MuJoCo-free).
+- scripts/launch_decadic.ps1: pinned `$env:DECADIC_ENCODER_MODE = 'hf'` in the
+  server env block (belt-and-suspenders so an inherited shell env can never
+  silently fall back to 'zeros').
+- README.md: reframed so 'hf' is described as the default (sees/hears out of the
+  box, ~1 GB first-run download); documented the escape hatches --no-vision
+  (body) and DECADIC_ENCODER_MODE=zeros (brain, fast/headless); body-run
+  examples drop the now-redundant --vision; both encoder-mode tables flipped.
+- tests/test_environment_scene.py: assert parse_args([]).vision is True,
+  --no-vision -> False, --vision -> True.
+
+Out of scope (per decisions): dashboard vision toggle + supervisor vision=False
+handling retained (opt-out preserved); no runtime rejection of 'zeros' (kept for
+tests/conftest.py and manual perf/headless use).
+
+Verification: full pytest 339 passed, 7 skipped; targeted
+test_environment_scene + test_environment_supervisor 13 passed; lints clean
+on edited files.
+
+## 2026-06-15 — Network-size tiers up to 1B (define-only)
+
+Plan: .cursor/plans/network_size_tiers_6536576f.plan.md
+
+Goal: extend the brain-size ladder from the previous top of ~100M (ultra) to a
+full ~1M -> 1B ladder, define-only (no mixed-precision / 8-bit-Adam / sharded
+training path), with warning guardrails for the heavy tiers.
+
+Backups of every edited file written to .\backups\ before editing
+(tag 20260615_212847: config.py, bundle.py, README.md, PresetPicker.tsx,
+_change.log).
+
+Changes:
+- decadic/nn/config.py: refactored the neural_config_from_env if/elif chain into
+  a data-driven table -- a fixed _INTERFACE dict (State-Bus dims that must NOT
+  scale: emotion_out 32 / state_mind_out 64 / narrative_out 48 / metacog_out 24 /
+  memory_context_dim 32) + an ordered _PRESET_SPECS dict of scalable widths.
+  VALID_PRESETS is now derived from the table. Added 5 new tiers
+  (2_5m, 5m, 10m, 250m, 500m, 1b) on top of the existing six; kept tiny/medium/
+  full/xl/xxl/ultra byte-identical for checkpoint compat (proved by a parity
+  test). A separate "1m" tier was intentionally NOT added: tiny is already
+  ~0.76M-1.1M (the fixed motor/PC/projection heads are the practical floor), so a
+  1m tier would duplicate it. Added HEAVY_PRESETS = {250m, 500m, 1b}.
+- decadic/nn/bundle.py: _warn_if_heavy() logs a loud warning (best-effort live
+  cuda VRAM check via torch.cuda.mem_get_info) when a HEAVY/define-only tier is
+  built, before the optimizer allocation; try_build reuses the param count.
+- dashboard/src/components/PresetPicker.tsx: PRESET_LABELS extended + reordered
+  small->large with measured baseline counts; expanded Info tooltip; a stronger
+  window.confirm warning (VRAM / Cycle wall ms / define-only) for 250m/500m/1b.
+- README.md: replaced the stale 3-row preset table with the full 12-tier ladder
+  (measured neurons + connections), updated the DECADIC_NEURAL_PRESET env row,
+  and added a "Heavy tiers / memory cliff" note.
+- tests/test_neural_presets.py (new): VALID_PRESETS/HEAVY_PRESETS shape, legacy
+  byte-identical parity, fixed-interface-dims, heads|d_model, light-tier
+  build+connection-count tolerance (<=~10M), and opt-in heavy-tier build tests
+  (DECADIC_TEST_HEAVY=1) for 250m/500m/1b.
+
+Measured BASELINE weight-connections (faculties off; matches conftest + labels):
+  tiny 0.76M, 2_5m 2.4M, 5m 4.8M, medium 8.4M, 10m 10.0M, full 25.4M, xl 50.9M,
+  xxl 75.2M, ultra 100.3M, 250m 248.8M, 500m 493.9M, 1b 976.4M. (d_model tuned so
+  each new tier lands within ~15% of its label.)
+
+Verification: full pytest 311 passed, 7 skipped (the 7 are the opt-in heavy
+tests; they pass with DECADIC_TEST_HEAVY=1, building 1b at ~1.0B params on CPU).
+Dashboard tsc + vite build OK. No regressions.
+
+## 2026-06-15 — Regression test: persistent mental image
+
+Added tests/test_persistent_mental_image.py (3 tests) -- integration-level
+coverage of the project's founding question ("is the agent building a persistent
+mental image of its world?"), complementary to the unit-level gate math in
+test_perception_feedback.py and the isolated store in test_working_memory.py.
+
+Asserts, over the real run_neural_cycle loop (feedback on, zeros encoder, tiny
+preset, cpu):
+- A persistent image accumulates from the streaming feed: recurrent state of
+  mind (lstm_h non-zero), one-step world-model memory (prev_state/prev_motor),
+  and the persisting scene latent in working memory; precision gate + perceptual
+  prediction error are reported.
+- Perception fills in under occlusion: with the precision gate forced open
+  (=1) the percept tracks the current input (structured vs blank differ); with
+  the gate closed (=0) the percept is reconstructed from history only and is
+  INVARIANT to the missing input, and equals the top-down prediction (which
+  carries non-trivial learned content).
+- The transient image is separable from the model: reset_recurrent_state()
+  zeroes the GRU/LSTM buffers but leaves ingress/top_down weights untouched.
+
+Verification: new file 3/3 passed (also 3/3 in isolation, repeated). 273 tests
+collected total.
+
+KNOWN PRE-EXISTING FLAKE (not introduced here): test_neural_integration.py::
+test_neural_checkpoint_brain_file_and_restore_cycle intermittently fails under
+full-suite load with `assert 5 == 4` -- an async-cycle-loop timing race
+(sleep-based; the background loop slips one extra tick so cycle_index != c_keep).
+Passes 3/3 in isolation. Recommended fix (pending owner OK): pause the agent
+before checkpoint/restore or relax the exact-equality assertion.
+
+## 2026-06-15 — New-agent default: Standard support, assist 0 (no assistance)
+
+User request: new agents must start every scenario with NO assistance — Support
+system = Standard and Assist level = 0 on the Motor tab.
+
+Root cause: the code already defaults to Standard (config.DEFAULT_CURRICULUM_MODE
+= "legacy") and assist_override = 0.0 (runtime.py). The only thing forcing new
+agents into Guided was the launcher exporting DECADIC_CURRICULUM_MODE = 'guided',
+which both the server runtime (runtime.py:148) and the MuJoCo body subprocess
+(mujoco_decadic_adapter.py:327) inherit.
+
+Change: scripts/launch_decadic.ps1 — DECADIC_CURRICULUM_MODE 'guided' -> 'legacy'
+(+ updated comment). No Python/TS changes needed; per-agent Motor-tab override
+still works. Backup: .\backups\launch_decadic.ps1.20260615_110654.bak
+
+Verification: server restarted with the new env; a freshly created agent reports
+curriculum_mode="legacy" and assist_override=0.0 (assist_gain 0 -> body unload 0).
+
+## 2026-06-15 — Floor condim=6 (arrest rolling glide)
+
+Follow-up to Contacts and No-Glide. The supine body still appeared to "slide on
+glass": the cause was free ROLLING, not sliding. condim=3 contacts only model
+sliding friction; torsional/rolling friction (the 2nd/3rd friction numbers)
+require condim>=4/6. The body is mostly round capsules/spheres, so it rolled
+freely on the floor at any sliding friction.
+
+Change: assets/humanoid_body.xml floor geom condim 3 -> 6 (friction kept at
+"1 .1 .1"). MuJoCo takes the MAX condim of the two contacting geoms, so every
+body-vs-floor contact is now condim=6 and the rolling (0.1) + torsional (0.1)
+coefficients finally apply. Backup: .\backups\humanoid_body.xml.20260615_102908.bak
+
+Verification: headless supine body shoved at linear 2.0 m/s + angular 6.0 rad/s
+decelerates to |w|~1.2 and vx~0.03 over 3 s (travel ~0.49 m) instead of rolling
+freely. pytest (walking/motor/proprio) 52 passed; body geom condim==3 tests
+unaffected (only the floor changed).
+
+## 2026-06-15 — Contacts and No-Glide
+
+Plan: .cursor/plans/contacts_and_no-glide_732814b3.plan.md
+
+Goal: full-body touch sensing fed to perception in all modes, a tactile
+forward-model head so the brain predicts the per-part load it will feel, and an
+end to the supine "glide" by gating the harness when the body is down + explicit
+friction on every geom.
+
+Backups of every edited file were written to .\backups\ before editing
+(timestamps 20260615_090731 and 20260615_092356).
+
+Changes:
+- assets/humanoid_body.xml
+  - Default geom class -> condim=3 friction="1 .1 .1" (whole body + spliced
+    props grip; body-on-body self-contact is now frictional).
+  - Added <site>+<touch> for 12 previously-unsensed regions (torso, head, waist
+    [merged uwaist+lwaist], butt, L/R thigh, L/R shin, L/R upper arm, L/R
+    forearm). Existing 4 (feet/hands) kept FIRST -> exactly 16 contact channels.
+    NPC clone still strips all sites (no duplicate global sensors).
+- scripts/mujoco_decadic_adapter.py
+  - _read_limb_loads() builds self._part_loads for ALL touch sensors; called
+    unconditionally at top of step() so loads are live in guided/standard/off/
+    lifeless. Foot/hand loads derived from it. BodySnapshot.part_loads added and
+    populated; build_body_observation emits world_state.body.part_loads (dict)
+    and proprioception.part_loads (ordered list = tactile target).
+  - SUPINE_UPRIGHT (0.35) + posture_gates(uprightness) -> (g_lift, g_torque).
+    g_lift releases the vertical unload when supine; g_torque releases the
+    balance torque until genuinely upright. Applied to the EMITTED support_frac/
+    upright_assist in BOTH _update_support (raw integrator preserved via
+    _support_raw) and _update_standard_support. Assist-0 zero-wrench guard and
+    vertical-only rule preserved.
+- decadic/config.py: TACTILE_PRED_DIM=16, DEFAULT_AI_TACTILE_FWD_WEIGHT=1.0,
+  ai_tactile_fwd_weight(). forward_pred_dim unchanged (28).
+- decadic/nn/frozen_encoders.py: controllable_tactile_vector(obs, dim) reads
+  proprioception.part_loads (pad/truncate to dim).
+- decadic/nn/neural_stack.py: fwd_tactile_l1/l2 + forward_predict_tactile();
+  forward() computes t_hat and returns it. has_tactile_model flag.
+- decadic/cycle/neural_pipeline.py: tactile PE loss (PE-only, no preference)
+  reusing prev_state/prev_motor; tactile_pred_error in telemetry.
+- decadic/agents/runtime.py: part_loads + tactile_pred_error in metrics; copy
+  part_loads in _capture_locomotion_telemetry; merge tactile_pred_error.
+- dashboard/src/api.ts: Metrics.part_loads + tactile_pred_error.
+- dashboard/src/components/LocomotionPanel.tsx: full-body contact map (16
+  meters), tactile prediction-error readout, removed guided-only caveat.
+- tests/test_walking_curriculum.py + tests/test_embodied_motor.py: 16-channel
+  sensing, posture-gate laws, supine release (both modes), default condim=3
+  friction + body-on-body grip, loads live in standard mode, part_loads in obs,
+  tactile head shapes/gradient/telemetry; forward_pred_dim==28 kept.
+
+Verification:
+- Full pytest: 265 passed. Dashboard: tsc + vite build OK.
+- Headless supine-glide check: a supine body shoved at 2.0 m/s decelerates to
+  ~0 (travel ~0.24 m) with zero horizontal applied force (was an unbounded
+  glide). support_frac/upright_assist gate to 0 while uprightness < 0.35.
+
+## 2026-06-15 — Joint-Brace Guidance System
+
+Plan: .cursor/plans/joint-brace_guidance_system_796a1845.plan.md
+
+Goal: replace the external support harness (vertical lift + balance torque +
+Standard/Guided modes) with a joint-space orthosis. Every hinge is braced toward
+a tuned upright stand pose (q_ref); range of motion starts near-welded (a statue
+that cannot fall or drift) and ratchets open per-joint as that joint's
+proprioceptive forward-model error falls. Braces are MuJoCo-native joint springs
+only -- NO external wrench ever touches the body, so the feet keep 100% of the
+weight and the glide is gone by construction.
+
+Backups of every edited file were written to .\backups\ before editing
+(batch tag 20260615_134114).
+
+Changes:
+- assets/humanoid_body.xml: integrator RK4 -> implicitfast (stiff joint springs
+  integrate stably; explicit RK4 at this dt diverged).
+- scripts/mujoco_decadic_adapter.py
+  - Removed the support harness entirely: _apply_support_harness, _update_support,
+    _update_standard_support, support_step, posture_gates, _set_curriculum_mode
+    and all support_frac/support_cap/upright_assist/_support_raw/_guided state.
+  - brace_ratchet() pure law (EMA + dwell, monotonic loosen). Per-hinge
+    _tightness/_joint_pe_ema/_brace_dwell + _q_ref (from hinge_qpos0),
+    _native_stiff/_native_damp captured at init. _apply_brace_gains() pushes
+    tightness into native jnt_stiffness/dof_damping (BRACE_STIFFNESS/DAMPING at
+    tightness 1 -> native at 0). _update_braces() per control tick; _relax_braces()
+    + reset_braces(). step() runs braces (or relaxes if lifeless) and FORCES
+    xfrc_applied[torso]=0 every substep. apply_action reads params['joint_pe']
+    into the ratchet buffer; assist_gain/curriculum_mode accepted but inert.
+    BodySnapshot/snapshot/build_body_observation emit rom_mean/brace_engaged/
+    rom_frac. recenter() spawns at STAND_ROOT_HEIGHT=1.30 + reset_braces().
+    WebSocket handles "reset_braces".
+- decadic/config.py: DECADIC_BRACE_* accessors; SUPPORT_*/curriculum_mode kept as
+  inert backward-compat placeholders. forward_pred_dim unchanged (28).
+- decadic/cycle/neural_pipeline.py: per-dim proprio forward-model squared error
+  sliced [CONTROLLABLE_PROPRIO_BASE:] -> joint_pred_error (21, finite-scrubbed);
+  added to motor action params (joint_pe) + diagnostics (joint_pred_error).
+- decadic/agents/runtime.py: rom_mean/brace_engaged/joint_rom in metrics;
+  _capture_locomotion_telemetry copies them; _damage_grace() keys off
+  brace_engaged. assist_gain/assist_override/curriculum_mode kept inert.
+- decadic/api/app.py: POST /agent/{id}/body/reset_braces.
+- dashboard/src/api.ts: Metrics gains rom_mean/brace_engaged/joint_rom;
+  resetBraces().
+- dashboard/src/components/LocomotionPanel.tsx: "Locomotion / Joint Braces" --
+  global ROM% + brace-engaged + per-joint ROM bars (JOINT_ORDER); harness rows
+  removed, loads/contact map/PE kept.
+- dashboard/src/components/MotorPanel.tsx: removed Standard/Guided selector +
+  assist buttons; "Joint braces (always on)" + ROM% + Reset-ROM button.
+- tests/test_walking_curriculum.py: retired support-law/harness/posture-gate
+  tests; added brace_ratchet law (loosen under low PE, hold under high PE, dwell
+  reset, floor), braced-statue (upright, feet >0.8 load, drift <0.1 m,
+  xfrc_applied[torso]==0), joint_pe widens/holds ROM, reset_braces re-welds,
+  lifeless relaxes to native, telemetry presence, implicitfast integrator. Kept
+  model/dim/friction tests. tests/test_embodied_motor.py: harness wrench
+  assertions -> no-external-wrench; damage grace keyed to brace_engaged;
+  joint_pe/joint_pred_error flow assertions added.
+
+Verification:
+- Full pytest: 269 passed. Dashboard: tsc + vite build OK.
+- Live brace checks (HumanoidSim): spawns fully welded (brace_engaged~1,
+  rom_mean 0), stands upright on fully-loaded feet with zero external wrench and
+  <0.1 m drift over 5 s; sustained low per-joint PE ratchets ROM open while
+  high PE keeps joints welded; lifeless restores native springs (ragdoll).
+
+## 2026-06-15 — Joint braces master on/off toggle
+
+Follow-up to the Joint-Brace Guidance System: the orthosis was "always on" with
+no way to disable it. Added a master toggle so the operator can run the body
+free (brain alone holds it up, so it can fall) for observation/testing, then
+re-engage the braces without losing earned ROM.
+
+Backups: .\backups\*.20260615_144204.bak (adapter, app, runtime, api.ts,
+MotorPanel).
+
+Changes:
+- scripts/mujoco_decadic_adapter.py: HumanoidSim._braces_enabled (default True)
+  + set_braces_enabled(); OFF -> _relax_braces() (native springs), ON ->
+  _apply_brace_gains(). step() relaxes when lifeless OR braces off (brain still
+  drives actuators when off-but-alive). reset_braces() respects the toggle.
+  BodySnapshot.braces_enabled + snapshot()/build_body_observation emit it. WS
+  commands "braces_on"/"braces_off".
+- decadic/api/app.py: POST /agent/{id}/body/braces?enabled=bool -> queues
+  braces_on/braces_off (mirrors the npc freeze endpoint).
+- decadic/agents/runtime.py: braces_enabled in _initial_metrics + copied in
+  _capture_locomotion_telemetry.
+- dashboard/src/api.ts: Metrics.braces_enabled + setBracesEnabled().
+- dashboard/src/components/MotorPanel.tsx: "Joint braces (on)/(off — free body)"
+  with an On/Off toggle button; Reset ROM disabled while off.
+- tests/test_walking_curriculum.py: test_braces_can_be_switched_off_and_on
+  (off relaxes hinge to native + preserves earned ROM; on re-engages).
+
+Verification: full pytest 273 passed; dashboard tsc + vite build OK.
+
+## 2026-06-15 — Recenter preserves earned ROM
+
+Bug: clicking "Recenter body" wiped the joint-brace ROM curriculum because
+HumanoidSim.recenter() called self.reset_braces() (re-welding every hinge ->
+"Range of motion earned" snapped back to 0%). Recenter should only reposition
+and stand the body up; re-welding is the separate "Reset ROM" button.
+
+Backup: .\backups\mujoco_decadic_adapter.py.20260615_210257.bak
+
+Changes:
+- scripts/mujoco_decadic_adapter.py: removed the reset_braces() call (and its
+  comment) from recenter(). Recenter still teleports the root to
+  STAND_ROOT_HEIGHT in the upright stand pose, zeroes root + hinge velocities,
+  sets hinges to q_ref, clears xfrc_applied and _move_dir/_move_speed, and
+  mj_forward()s -- but per-joint _tightness/_joint_pe_ema/_brace_dwell (the
+  earned ROM) now carry over unchanged. Spawn still welds independently in
+  __init__ (tightness=1.0 + _apply_brace_gains before recenter), so a fresh body
+  still starts as a welded statue. The fence auto-recenter now also preserves
+  ROM (wandering to the edge no longer wipes learning).
+- tests/test_walking_curriculum.py: test_recenter_preserves_earned_rom (loosen
+  ROM under low PE, recenter, assert rom_mean preserved + body re-posed upright
+  at stand height with zero drift; reset_braces() still re-welds to 0).
+
+Verification: full pytest 274 passed.
+
+Rollout: takes effect on newly spawned bodies (per-scenario subprocess); restart
+the scenario/body or server to apply to a running body. No UI change.
+
+## 2026-06-15 — UI-driven Vast.ai GPU deployment (rent / run / watch)
+
+Feature: a new "Deploy / GPU" dashboard tab makes the whole rent-a-GPU flow
+terminal-free. Paste a Vast.ai API key once, search for GPUs, click Rent, and the
+local server provisions a cloud box, ships the brain + headless MuJoCo body,
+runs them on CUDA, opens an ssh tunnel, and reverse-proxies agent traffic so the
+existing panels show the REMOTE agent learning live. Stop/Destroy from the UI.
+
+Architecture: local server = control plane + proxy. The dashboard keeps one base
+URL; while a deployment is `ready` the server forwards /agents, /agent/* and
+/environment* to the tunnelled remote. The proxy middleware is added INNER so the
+CORS middleware stays OUTERMOST and owns CORS headers for proxied responses too.
+
+Backups (pre-edit, per house rules) in .\backups\ (timestamp 20260615_*):
+- app.py.<ts>.bak, App.tsx.<ts>.bak, .gitignore.<ts>.bak, pyproject.toml.<ts>.bak
+
+New files:
+- decadic/api/vast/{__init__,settings_store,cli,controller,proxy,routes}.py
+  - settings_store: 0600 JSON at ~/.decadic/vast.json (DECADIC_CONFIG_DIR
+    override); key masked on read, never logged; deploy defaults.
+  - cli: async vastai wrappers (search/create/show/ssh-url/copy/destroy/stop) +
+    ssh exec/tunnel helpers; --api-key injected per call, argv redacted in logs.
+  - controller: VastController state machine (creating -> waiting -> uploading ->
+    installing -> serving -> tunnelling -> starting_agent -> ready) as a
+    background task with a log ring buffer; auto-destroys on bad status/failure.
+  - proxy: VastProxyMiddleware forwards agent/environment traffic to the tunnel.
+  - routes: GET/POST /vast/settings, /vast/account, /vast/offers,
+    /vast/local-checkpoints, POST /vast/deploy, GET /vast/deployment,
+    POST /vast/deployment/{stop,destroy}.
+- deploy/vast/{setup_remote.sh,run_remote.sh,README.md,ai.md}.
+- dashboard/src/vastApi.ts + components/DeploymentPanel.tsx +
+  components/vast/{VastCredentials,GpuSearch,RunConfig,DeployProgress,
+  ActiveDeployment}.tsx.
+
+Edits:
+- decadic/api/app.py: import the vast package; create VastSettingsStore +
+  VastController on app.state in the lifespan (+ shutdown hook that tears down the
+  tunnel/task but leaves the paid box running); install proxy middleware before
+  CORS; register_vast_routes(application).
+- dashboard/src/App.tsx: new "deploy" tab (no agent required) wired to
+  DeploymentPanel; "Watch agent" jumps to Overview.
+- pyproject.toml: httpx>=0.27 promoted to a runtime dep (proxy + controller).
+- .gitignore: ignore *.vast.json, .decadic/, deploy/vast/_run_server.sh.
+
+Prereqs to actually rent: `pip install vastai` + an ssh client on the server host,
+and an SSH key registered with Vast.ai. See deploy/vast/README.md.
+
+Verification: `create_app()` OK (44 routes, all /vast/* present); dashboard
+`npm run build` (tsc + vite) OK; full pytest 311 passed, 7 skipped; TestClient
+smoke OK (CORS outermost + proxy inner; /vast/settings mask, /vast/deployment
+idle, /vast/local-checkpoints, /agents served locally while inactive). No live
+Vast.ai rent exercised in this environment (needs `pip install vastai` + a key).
+
+## 2026-06-16 — Fix "vastai CLI not found" (bundle + PATH-independent detection)
+
+Bug: the Deploy/GPU tab reported "The vastai CLI was not found on the server"
+even though it should ship with the project. Root causes: (1) vastai was not a
+dependency, so it was never installed; (2) detection used only
+shutil.which("vastai"), which misses a venv/user-site install whose Scripts dir
+is off PATH; (3) the invocation fallback used `python -m vastai`, but the package
+has no __main__ so that never worked.
+
+Why (7 levels): not found -> available() False -> only checked PATH -> the
+console script (vastai.exe) installs to a user-site Scripts dir
+(C:\Users\...\AppData\Roaming\Python\Python313\Scripts) that is not on PATH ->
+pip put it there because the package was installed ad hoc, not as a project dep
+-> it was never declared in pyproject -> the feature shipped assuming a manual
+install. Fix all three.
+
+Backups (pre-edit) in .\backups\ (timestamp 20260616_*):
+- pyproject.toml.<ts>.bak, cli.py.<ts>.bak
+
+Changes:
+- pyproject.toml: add `vastai>=1.0` to runtime dependencies (bundled).
+- decadic/api/vast/cli.py: resolve_vastai_bin() is now PATH-independent —
+  override -> PATH -> console script in any interpreter-adjacent scripts dir
+  (incl. the user-site one) -> run the entry point `vastai.cli.main:main` via the
+  server's own interpreter (`python -c` shim) whenever the package is importable.
+  available() returns True if vastai is on PATH OR importable OR a script is
+  found. Dropped the broken `python -m vastai` fallback.
+- deploy/vast/README.md: prereqs note vastai is bundled (no manual install /
+  PATH edit) + a restart reminder for an already-running server.
+- Installed vastai-1.0.13 into the server interpreter (C:\Python313, user site).
+
+Verification: VastCli().available() -> True; resolve_vastai_bin() ->
+[python, -c, <shim>]; async `_run(['--version'])` -> (0, '1.0.13', ''); cli.py
+lint clean.
+
+Action required: restart the running Decadic server window so the controller
+re-resolves the CLI (the live process cached the old not-found state at startup).
+
+## 2026-06-16 — GPU model is now a live dropdown (pulled from Vast)
+
+Feature: the Deploy/GPU "GPU model" field is a dropdown populated from Vast's
+live marketplace instead of free-typing. Distinct rentable model names + an
+availability count, e.g. "RTX 5090 (236)". An "Any GPU" option searches across
+all models; a ↻ button refreshes the list.
+
+Why deduped offers (not `metrics gpu`): `vastai metrics gpu` is a host command
+requiring the machine_read permission group, which a normal renter key lacks
+(verified live: 401). So the names are derived from a broad
+`search offers rentable=true -n --limit N` and deduped on `gpu_name`. Vast
+reports names with spaces ("RTX 5090") but query filters need underscores
+("RTX_5090"), so the API returns both (value=underscored, name=spaced).
+
+Backups (pre-edit) in .\backups\ (timestamp 20260616_*):
+- cli.py.<ts>.bak, routes.py.<ts>.bak, vastApi.ts.<ts>.bak, GpuSearch.tsx.<ts>.bak
+
+Changes:
+- decadic/api/vast/cli.py: search_offers() gains no_default + limit kwargs
+  (maps to vastai -n / --limit).
+- decadic/api/vast/routes.py: new GET /vast/gpu-names -> {gpu_names:[{name,value,
+  count}]} sorted by availability; _build_offer_filter now underscores gpu_name
+  defensively.
+- dashboard/src/vastApi.ts: GpuName type + fetchGpuNames().
+- dashboard/src/components/vast/GpuSearch.tsx: GPU model text input replaced by a
+  <select> populated from /vast/gpu-names (Any GPU + per-model count + refresh);
+  falls back to a free-text box if the list can't load.
+
+Verification: cli/routes/ts lint clean; full dashboard `npm run build` OK;
+TestClient live call (real key) GET /vast/gpu-names -> 200, 83 models (api key
+redacted to *** in logs); server restarted, live GET on :8765 -> 83 models.
+
+## 2026-06-15 — Walking Curriculum Trainer (faithful, observation-only)
+
+Feature: a "developmental curriculum" that makes walking EMERGE from the existing
+predictive-coding + homeostatic-drive machinery (never an external gait reward),
+driven by a server-side CurriculumSupervisor and controlled from a new "Training"
+dashboard tab (enable/disable, phase badge, per-gate progress bars, history, manual
+phase override). Guiding invariant: the trainer is a "parent that shapes the world
+and reads gates" — it only (a) retunes live config knobs that REWEIGHT the existing
+self-supervised objective, (b) places satisfiers a step ahead, and (c) reads
+observational gates. It NEVER adds a term to the loss; cognition is untouched.
+
+Backups (pre-edit, per house rules) in .\backups\ (timestamp 20260615_22*):
+- runtime.py, types.py, neural_pipeline.py, config.py, api/app.py,
+  scripts/mujoco_decadic_adapter.py, tests/test_api_dashboard.py.
+- dashboard/{api.ts,App.tsx,style.css} -> .\backups\dashboard\.
+
+New files:
+- decadic/curriculum/{__init__,gates,phases,supervisor}.py
+  - gates: pure, side-effect-free Criterion/GateResult logic (<= / >= / trend>=)
+    over a rolling window of eval-only metrics; unit-testable, no I/O.
+  - phases: PhaseConfig/SatisfierPolicy/Phase dataclasses + the default 4-phase
+    table (0 self-model -> 1 postural -> 2 locomotion onset -> 3 sustained forage),
+    an optional affective stretch phase (phase 4, needs a threat), and a JSON
+    override loader so thresholds/knobs tune without code edits.
+  - supervisor: CurriculumSupervisor (single-slot asyncio state machine mirroring
+    EnvironmentSupervisor) — samples metrics, places satisfiers on a cadence,
+    promotes at an open gate after a min dwell, demotes + revives on death, and
+    checkpoints at phase boundaries; writes a decision log to
+    logs/curriculum_<agent>.log. Call surface is read/configure/world/checkpoint
+    only (enforced by tests/test_curriculum_faithfulness.py).
+- dashboard/src/components/CurriculumPanel.tsx — the Training tab UI.
+- tests/test_curriculum_{gates,supervisor,faithfulness}.py.
+
+Edits (surgical; originals backed up):
+- decadic/agents/runtime.py: eval-only locomotion/gait telemetry in a new
+  _capture_gait_and_motion (distance_traveled, net_displacement, fall_rate,
+  gait_regularity from L/R foot alternation) + a consume_events counter; live
+  overrides ai_intero_pref_weight / drive_priority_gain / motor_babble_sigma on
+  configure() + capacity_config(), threaded into CycleContext. None of the new
+  metrics are ever read by cognition.
+- decadic/cycle/types.py: three optional curriculum-override fields on
+  CycleContext (default None -> env parity).
+- decadic/cycle/neural_pipeline.py: prefer ctx overrides for the intero
+  preference weight, drive priority gain, and motor babble ceiling, else fall
+  back to the env reads (exact parity when unset). No new loss term.
+- decadic/config.py: motor_exploration_sigma gains an optional sigma_max override.
+- decadic/api/app.py: build CurriculumSupervisor on app.state in the lifespan
+  (stopped before the body on shutdown); GET /curriculum + POST
+  /curriculum/{start,pause,resume,stop,phase}; three new /config query params.
+- scripts/mujoco_decadic_adapter.py: --baseline {random,cpg} drives the body with
+  a reactive, NON-learning controller (random babble or a fixed alternating-leg
+  CPG) while emitting identical telemetry (braces off, brain ignored) for the
+  apples-to-apples distinctness comparison.
+- dashboard/src/api.ts: Curriculum* types + fetch/start/pause/resume/stop/phase
+  client; locomotion/gait + override fields on Metrics.
+- dashboard/src/App.tsx: register the "Training" tab (works with no selected
+  agent, like Environment).
+- dashboard/src/style.css: curriculum panel styles (.cur-*).
+
+Verification: full pytest 339 passed, 7 skipped; dashboard `npm run build`
+(tsc + vite) OK; TestClient smoke OK (start binds agent + applies phase-0 immortal
+live, second start 409, pause/resume, manual phase->1 applies metabolic, stop).
+Live-config parity confirmed (sigma_max=None == env default). Faithfulness tests
+green: no curriculum import in the gradient path, supervisor call-surface is
+read/config/world/checkpoint only, eval-only metrics absent from cognition.
+
+## 2026-06-16 — Fix: GPU offer "RAM" column showed MB labeled as GB
+
+Symptom: the Find-a-GPU table rendered VRAM like "24576G"/"23040G" for a 24 GB
+Quadro RTX 6000. Root cause (verified live against the Vast API): `vastai search
+offers --raw` reports `gpu_ram`/`cpu_ram` in MB (24564 for a 24 GB 4090, 49140 for
+a 48 GB modded 4090), even though the query parser interprets `gpu_ram>=N` in GB.
+So the value was MB but the column appended "G". The "Min GPU RAM (GB)" filter was
+already correct (query side is GB) and is left untouched.
+
+- decadic/api/vast/routes.py: add _mb_to_gb() (MB -> GB, round 1dp); _normalize_offer
+  now emits gpu_ram_gb and cpu_ram_gb instead of raw gpu_ram/cpu_ram.
+- dashboard/src/vastApi.ts: VastOffer.gpu_ram -> gpu_ram_gb (+ cpu_ram_gb), documented.
+- dashboard/src/components/vast/GpuSearch.tsx: fmtGb() helper (drops trailing .0,
+  keeps .5); column header "RAM" -> "VRAM"; cell uses fmtGb(o.gpu_ram_gb).
+
+Verification: live /vast/offers now returns Q RTX 6000 = 24.0 GB and 22.5 GB (was
+24576/23040); RTX 4090 = 24.0/48.0 GB. tsc + vite build clean; server hard-restarted
+so the new field ships. Backups: backups/{routes.py,GpuSearch.tsx,vastApi.ts}.20260616_222257.bak
+
+## 2026-06-16 — Fix: supine "back-glide" (heavier body + higher floor friction)
+
+Symptom: the agent would glide horizontally across the floor on its back as a
+quasi-rigid unit with seemingly static limbs, despite the torso never receiving
+an external wrench. Root cause: light body (~42.8 kg) + low rolling/torsional
+floor friction let the actuator/brace torque out-muscle the friction ceiling on
+the rounded back capsules, so saturated motor commands acted as a steady
+thruster. Per scope, the ROM brace logic/params and the brain objective
+(neural_pipeline.py) were deliberately NOT touched (another dev owns the braces).
+
+- scripts/mujoco_decadic_adapter.py: new BODY_MASS_KG constant (200 lb ~= 90.7 kg,
+  env override DECADIC_BODY_MASS_KG). In HumanoidSim.__init__ the agent's kinematic
+  subtree (bodies rooted at the torso free joint -- excludes the spliced NPC clone
+  and scene props) is rescaled to that total: body_mass and body_inertia multiplied
+  by the same factor, body_subtreemass[torso] set so _body_weight (and touch-load
+  normalization) stay consistent. Measured: 42.8 kg (420 N) -> 90.7 kg (890 N).
+- assets/humanoid_body.xml: floor geom friction "1 .1 .1" -> "1 .5 .5" (sliding
+  unchanged; torsional/rolling 0.1 -> 0.5). condim=6 already engages these; the
+  contact friction is the element-wise max of the two geoms, so the single floor
+  edit covers every body-vs-floor contact.
+
+Verification: pytest tests/test_walking_curriculum.py 26 passed; full suite 465
+passed, 7 skipped. Numeric check: agent subtree mass = 90.7 kg, weight = 889.8 N,
+braced statue holds at z=1.29 m with feet bearing ~1.0 of weight. Driven-glide
+check (constant fully-saturated motor command): braced body drifts only 0.14 m
+over 5 s while staying upright; even a brace-free, fully collapsed body manages
+~0.17 m/s of residual sliding instead of free gliding. Backups:
+backups/{mujoco_decadic_adapter.py,humanoid_body.xml}.20260616_234900.bak
