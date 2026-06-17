@@ -328,10 +328,15 @@ association from its own experience.
 
 - **Homeostatic drive.** Viability is derived from three reservoirs — hydration, energy,
   integrity (`decadic/state/viability.py`). A depleted reservoir is felt as innate, convex
-  deprivation **pain**; a learned interoceptive world model lets the policy act to reduce its
-  *predicted* internal drive toward the full setpoint. The satisfier (food/water) is never
-  labeled — it is discovered from experienced transitions. Damage events (collisions, falls)
-  are event-driven and hit element B on the **fast path**. `DECADIC_VIABILITY_MODE=immortal`
+  deprivation **pain**; its positive complement is a phasic **relief** reward — pleasure
+  proportional to the per-cycle *reduction* in that drive (homeostatic RL à la Keramati & Gutkin;
+  `drive_reduction_reward`, `DECADIC_DRIVE_REWARD_ENABLED=1`) — so moving back toward the setpoint
+  feels good, with no external or labeled satisfier. A learned interoceptive world model lets the
+  policy act to reduce its *predicted* internal drive toward the full setpoint. The satisfier
+  (food/water) is never labeled — it is discovered from experienced transitions. Damage events
+  (collisions, falls) are event-driven and hit element B on the **fast path**. The cycle's other
+  phasic affect is the agent's genuine predictive-coding surprise; the legacy cycle-counter PE
+  oscillation is removed by default (`DECADIC_PE_STUB_WEIGHT=0`). `DECADIC_VIABILITY_MODE=immortal`
   pins reservoirs full for long uninterrupted learning runs.
 - **Need-gated curiosity.** See *Curiosity & memory consolidation* above — rewards learning
   progress (PE reduction), gated by survival urgency.
@@ -477,7 +482,8 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu126  
 | `DECADIC_CYCLE_INTERVAL_S` | Cycle tick interval |
 | `DECADIC_CONSOLIDATION_STUB_INTERVAL_S` | Heartbeat cadence for the consolidation runner when consolidation is OFF (`0` disables) |
 | `DECADIC_CYCLE_TRACE_EVERY` | Cycle trace JSONL every N cycles (`0` off) |
-| `DECADIC_PE_STUB_EMA_ALPHA` | EMA on blended viability/stub signal for metrics |
+| `DECADIC_PE_STUB_EMA_ALPHA` | EMA on the prediction-error magnitude surfaced as a metric (`DECADIC_PE_EMA_ALPHA` alias) |
+| `DECADIC_PE_STUB_WEIGHT` | Blend weight of the legacy cycle-counter PE oscillation in the cycle's PE affect. Default `0.0` (removed — the predictive-coding loss is the genuine surprise); tests pin `0.25` for a byte-identical neural baseline |
 | `DECADIC_CURIOSITY_ENABLED` | Need-gated curiosity drive (default `1` on; `0` → byte-identical no-curiosity cycle) |
 | `DECADIC_CURIOSITY_GAIN` | Pleasure scale of a fully-permitted, fully-learning state (default `1.0`) |
 | `DECADIC_CURIOSITY_PROGRESS_WINDOW` | Forward-model PE samples used to estimate learning progress (default `8`) |
@@ -505,6 +511,8 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu126  
 | Variable | Purpose |
 |----------|---------|
 | `DECADIC_VIABILITY_MODE` | `metabolic` (default; wall-clock reservoir drain + death) or `immortal` (reservoirs pinned full for long learning runs) |
+| `DECADIC_DRIVE_REWARD_ENABLED` | Intrinsic homeostatic-relief reward — phasic pleasure ∝ the per-cycle *reduction* in drive pressure (the positive complement to deprivation pain; default `1` on, pinned off in tests where the legacy periodic placeholder is used) |
+| `DECADIC_DRIVE_REWARD_GAIN` | Scale of the drive-reduction relief, clamped to `[0,1]` (default `1.0`, symmetric with `DECADIC_DRIVE_PAIN_GAIN`) |
 | `DECADIC_GOAL_ONSET_DEFICIT` | Weighted deficit (`1 − reservoir`) above which a goal latches (default `0.15`) |
 | `DECADIC_GOAL_SATISFY_LEVEL` | Reservoir level (0..1) at/above which a goal is achieved (default `0.92`) |
 | `DECADIC_GOAL_ABANDON_CYCLES` | Cycles the dominant deficit may differ before the goal is abandoned (default `40`) |

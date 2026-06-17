@@ -203,6 +203,22 @@ class NeuralCognitiveStack(nn.Module):
         self._tactile_dim = int(_cfg.TACTILE_PRED_DIM)
         self.fwd_tactile_l1 = nn.Linear(cfg.d_model + cfg.n_actuators, cfg.motor_hidden)
         self.fwd_tactile_l2 = nn.Linear(cfg.motor_hidden, self._tactile_dim)
+        # Successor-features head (long-horizon value / incentive salience):
+        # psi(state, command) -> discounted future reservoir-change features. Built
+        # unconditionally like the other world-model heads, but its OUTPUT layer is
+        # zero-initialized and it is NEVER called from forward(), so the stack is
+        # byte-identical until the consolidator's TD(lambda) loss grows it. The
+        # substantive code lives in decadic/nn/successor_features.py (FORBIDDEN #3).
+        from decadic.nn.successor_features import SuccessorFeaturesHead
+
+        self.has_successor_model = True
+        self._sf_dim = int(_cfg.INTERO_PRED_DIM)
+        self.sf_head = SuccessorFeaturesHead(
+            state_dim=cfg.d_model,
+            action_dim=cfg.n_actuators,
+            feat_dim=self._sf_dim,
+            hidden=cfg.motor_hidden,
+        )
         # Object-centric perception (discovered mode): slot attention over the
         # egocentric patch-feature map + a learned agency head. Built only in
         # discovered mode, so the oracle-mode state_dict is byte-identical to the
@@ -501,6 +517,17 @@ class NeuralCognitiveStack(nn.Module):
             w1, b1, w2, b2 = w1.detach(), b1.detach(), w2.detach(), b2.detach()
         hidden = F.gelu(F.linear(x, w1, b1))
         return F.linear(hidden, w2, b2)
+
+    def successor_predict(
+        self, state: torch.Tensor, u: torch.Tensor, *, detach_params: bool = False
+    ) -> torch.Tensor:
+        """Predict discounted future reservoir-change features psi(state, command).
+
+        Mirrors :meth:`forward_predict`; delegates to the SF head (its own module).
+        Used by the consolidator's TD(lambda) loss (params trainable) and by the
+        live policy value-shaping term (``detach_params=True``, anti-hallucination).
+        """
+        return self.sf_head.predict(state, u, detach_params=detach_params)
 
     def forward(
         self,

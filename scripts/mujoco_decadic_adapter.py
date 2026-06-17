@@ -1426,22 +1426,35 @@ class HumanoidSim:
         self._mj.mj_forward(self.model, self.data)
         return True
 
+    @staticmethod
+    def _is_scatterable_prop(name: str) -> bool:
+        """True for the agent's own open-arena consumables (the camping targets).
+
+        Excludes (a) gift bodies -- the parent's free-joint provisions, whose pose
+        lives in qpos and is driven by the delivery FSM, not ``body_pos`` -- and
+        (b) habitat resources (``prop_food_h*`` / ``prop_water_h*``), which belong
+        to the NPC ecology: the scripted crowd forages them *in-zone*, so moving
+        them out of their habitat would break the foragers (a real bug, not just a
+        test artifact). Only the open static props (e.g. the ``prop_food_s*`` ring)
+        are scattered for anti-camping.
+        """
+        return "gift" not in name and "_h" not in name
+
     def _randomize_resources(self, seed: "int | None" = None) -> int:
-        """Scatter all static (non-gift) food/water props to fresh positions.
+        """Scatter the agent's open static food/water props to fresh positions.
 
         Anti-camping: the location of relief must not be memorizable across lives,
         so each new life re-scatters the consumables and only the SKILL of seeking
-        transfers. Gift bodies (the parent's free-joint provisions) are left alone
-        -- their pose lives in qpos and is driven by the delivery FSM, not
-        ``body_pos``. Returns the RNG seed used (so the life is reproducible /
-        telemetered), or -1 as a no-op when disabled or the scenario has no static
-        consumables.
+        transfers. Habitat resources and gift bodies are deliberately left in place
+        (see ``_is_scatterable_prop``). Returns the RNG seed used (so the life is
+        reproducible / telemetered), or -1 as a no-op when disabled or the scenario
+        has no scatterable consumables.
         """
         if not randomize_resources_enabled():
             return -1
         name_to_bid: dict[str, int] = {}
         for nm, bid in {**self.food_bodies, **self.water_bodies}.items():
-            if "gift" not in nm:
+            if self._is_scatterable_prop(nm):
                 name_to_bid[nm] = bid
         if not name_to_bid:
             return -1

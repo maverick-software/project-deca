@@ -1,5 +1,29 @@
 # Decadic change log (human-readable; maintained per house RULE #2)
 
+## 2026-06-17 — Git: initial repo + push to GitHub (maverick-software/project-deca)
+
+Goal (user request): connect this codebase to https://github.com/maverick-software/project-deca
+(an empty repo) and upload to `main`.
+
+Pre-flight (RULE #3 caution): the directory was NOT a git repo yet, and the existing .gitignore
+was missing major excludes. Inspected disk first to avoid pushing dependency trees / large
+binaries / runtime state. Found and excluded: `dashboard/node_modules/`, `dashboard/dist/`,
+`*.egg-info/`, local `backups/` (house-rule safety copies stay local), runtime `saved_agents/`
+and `presets/`, model `*.pt`, all runtime logs (`logs/*` except `_change.log` + `.gitkeep`),
+runtime traces (`*.jsonl`, incl. a stray 1.8 MB `probe_capture_test.jsonl`), `MUJOCO_LOG.TXT`,
+and local `.env` files (kept `.env.example`). Git global identity already set
+(Charles Sears <charles.r.sears@gmail.com>) so no config change was needed (git config never
+touched).
+
+Steps: rewrote `.gitignore`; `git init -b main`; staged + VERIFIED the staged set before
+committing (215 source files; confirmed no excluded dir leaked and no >2 MB artifacts); commit
+`d45c563` "Initial commit: Decadic Cycle cognitive architecture (Project Deca)";
+`git remote add origin …project-deca.git`; `git push -u origin main`.
+
+Verification: `git ls-remote origin main` == local HEAD (`d45c563`); `git status` clean,
+`main` tracking `origin/main`. Note: source files are LF in the working tree; git reported the
+usual Windows LF->CRLF checkout notice (cosmetic; no `.gitattributes` added).
+
 ## 2026-06-17 — README comprehensive sync (document drifted features)
 
 Goal (user request): "Update the README." The README was well-maintained for what it covered
@@ -87,6 +111,104 @@ Phase 2 — Goal lifecycle state + telemetry.
   `goal_episodes`, `goal_last_outcome` in metrics (added to `_initial_metrics`). Added the
   four goal config imports + `GoalState`.
 Smoke test confirmed latch/achieve/abandon+reopen/death transitions.
+
+Phase 3 — Episodic replay timeline (distal credit assignment).
+- `decadic/consolidation/replay_buffer.py`: extended `Transition` with additive,
+  inert-by-default fields: `feat` (per-step phi = reservoir change), `reward` (innate-
+  weighted phi = drive reduction), `episode_id`/`step_idx`/`goal_id`, and `ret`/`sf_target`
+  (lambda-return scalar + discounted-future-feature vector, filled on episode close;
+  `ret=None` until then gates the SF loss).
+- NEW `decadic/consolidation/returns.py` (pure): forward-view `lambda_returns` (scalar) and
+  `lambda_returns_vec` (vector successor-feature targets), terminal bootstrap 0, optional
+  value bootstrap for TD(lambda). Unit-tested (MC limit, lam<1 smear, TD(0)).
+- NEW `decadic/consolidation/episodes.py`: `EpisodeAccumulator` collects ordered transitions
+  per open goal, stamps episode/step/goal ids, and on close computes returns and writes
+  `ret`/`sf_target` back IN PLACE (the same refs already in the replay buffer -> no second
+  push, existing one-step consolidation data flow untouched). Bounded retained refs.
+- `decadic/cycle/neural_pipeline.py`: transition payload now carries `feat` (phi) + `reward`
+  computed from the realized reservoir transition with the innate preference weights.
+- `decadic/agents/runtime.py`: owns one `EpisodeAccumulator` (built in `__init__`, rebuilt on
+  `reset()`, dangling episode dropped on `revive()`); `_cycle_loop` builds the `Transition`,
+  pushes it, then routes it + the goal events through `_accumulate_episode` (add-then-apply
+  so an achieving step lands in the episode it completes); `die()` closes the open episode as
+  "died". New telemetry `episodes_closed`/`episode_last_len`/`episode_last_return`. A no-op
+  `_maybe_hindsight_relabel` hook is reserved for Phase 5.
+Smoke test confirmed distal reward propagation, in-place annotation, and stats.
+
+Phase 4 — Successor-features head + value + policy shaping (Layer-2).
+- NEW `decadic/nn/successor_features.py`: `SuccessorFeaturesHead.predict(state, u, detach_params)`
+  -- twin of the proprio/intero forward heads (two linears + functional detach trick); OUTPUT
+  layer zero-initialized so psi == 0 (and value == 0) at birth.
+- `decadic/nn/neural_stack.py`: thin wiring only -- instantiate `self.sf_head` next to the
+  forward heads (`has_successor_model=True`) and a delegating `successor_predict(...)`. The SF
+  head is NEVER called from `forward()`, so the stack's forward output is byte-identical.
+- `decadic/cycle/neural_pipeline.py`: added the value-shaping term inside the drive block --
+  `v = (innate_deficit_gated_w * psi(z5, motor_u, detach_params=True)).sum()`, `loss -= vw*v`
+  with `vw = sf_value_weight_for_cycle(cycle)` ramping 0->max. SF weights detached
+  (anti-hallucination); finiteness-guarded. New diagnostics `sf_value` + `sf_value_weight`.
+- `decadic/consolidation/consolidator.py`: `replay_batch_loss` now adds the SF TD(lambda)
+  regression `MSE(psi(prev_state, prev_motor), sf_target)` for return-annotated transitions
+  (`sf_target` filled on episode close). SF is therefore trained off the critical path and
+  flows to the live stack via the existing Polyak soft-sync (sf_head is in the state_dict).
+- `decadic/agents/runtime.py`: copies `sf_value`/`sf_value_weight` from diagnostics into
+  metrics (defaults added to `_initial_metrics`).
+Smoke test confirmed psi zero-init parity, learnability, and state_dict round-trip.
+
+Phase 5 — Hindsight relabeling (HER).
+- `decadic/consolidation/episodes.py`: `achieved_feature(steps)` = net per-channel phi over the
+  episode; `build_hindsight_copies(steps, achieved, gamma, lam, k)` recomputes SF/return targets
+  with the achieved terminal feature as the success bootstrap and emits `k` relabeled COPIES
+  (shared detached tensor refs; only credit fields + goal tag differ).
+- `decadic/agents/runtime.py`: `_maybe_hindsight_relabel` (the Phase-3 hook) now fires on a
+  non-achieved close when the trajectory still accrued relief in some channel (e.g. latched on
+  thirst but actually ate), pushing the relabeled copies into the salience buffer so the SF head
+  trains more on the off-goal relief it really found. Gated by `her_enabled`/`her_relabel_k`; new
+  metrics `her_relabels`/`her_last`. Note: because the SF target is goal-INDEPENDENT and
+  physically real, HER here densifies real near-miss relief rather than fabricating innate reward.
+Smoke test confirmed achieved-feature, k copies, ref-sharing, and bootstrap-shifted targets.
+
+Phase 6 — Model-based imagined replay (Dreamer-lite, gated, default OFF).
+- NEW `decadic/consolidation/imagination.py`: `imagined_sf_loss(stack, batch, gamma, horizon,
+  device)` rolls the interoceptive forward model forward (start state+action held) under
+  no_grad to build an imagined discounted successor-feature target, and regresses the trainable
+  SF head toward it. Bounded horizon; honest note that no latent-dynamics model exists so only
+  the interoceptive channel is imagined.
+- `decadic/consolidation/consolidator.py`: `consolidate_once` adds the trust-weighted imagined
+  SF loss (gated by `sf_enabled` AND `imagination_enabled`, default off) OUTSIDE the shared
+  `replay_loss` so the loss-landscape probe still scores the pure lived objective. New
+  `last_imagined_loss` telemetry.
+Smoke test confirmed finite imagined loss, backprop into the SF head, and no-op on non-drive.
+
+Phase 7 — Telemetry, dashboard, tests, docs (closeout).
+- Telemetry/UI: `dashboard/src/api.ts` `Metrics` extended with the new fields
+  (`resource_seed`; `goal`/`goal_status`/`goal_dwell`/`goal_episodes`/`goal_last_outcome`;
+  `episodes_closed`/`episode_last_len`/`episode_last_return`; `sf_value`/`sf_value_weight`;
+  `her_relabels`/`her_last`). `dashboard/src/components/MotorPanel.tsx` gained a
+  "Goals & long-horizon value" card (active goal + dwell, episodes closed + last outcome,
+  last return, SF value + ramped weight, HER relabels, per-life resource seed), with tooltips.
+- Corrective fix (do-no-harm, RULE #3 — backed up `mujoco_decadic_adapter.py.20260617_101000.bak`):
+  the full pytest run surfaced 3 `test_crowd.py` failures — the init-time scatter was moving
+  HABITAT resources (`prop_food_h*`/`prop_water_h*`), which the scripted crowd forages IN-ZONE,
+  so the NPC foragers could no longer find in-zone food (a real production bug, not just a test
+  artifact). Added `HumanoidSim._is_scatterable_prop(name)` (excludes gifts AND habitat `_h`
+  props) and routed `_randomize_resources` through it; the agent's open static props (the
+  `prop_food_s*` ring — the actual camping target) still scatter, the habitat ecology stays put.
+- Tests (all pure / torch-gated, honor `tests/conftest.py` env pins): NEW
+  `tests/test_goal_lifecycle.py` (latch/achieve/reopen/abandon/truncate/die + dwell),
+  `tests/test_episodic_returns.py` (lambda-returns MC limit / lam<1 smear / TD(0); vector==scalar;
+  Transition inert defaults; accumulator in-place annotation + featureless-step skip + reset;
+  achieved-feature + HER copy independence/bootstrap + buffer push), and
+  `tests/test_successor_features.py` (SF in state_dict; psi/value zero-init parity; learnability;
+  detach_params freezes SF weights but keeps action grad; value-weight 0->max ramp; imagined loss
+  finite+backprops and no-ops without drive). `tests/test_resource_placement.py` from Phase 1.
+- Docs: created `decadic/state/ai.md`, `decadic/nn/ai.md`, `decadic/consolidation/ai.md`; updated
+  `decadic/embodiment/ai.md` (resource_placement.py + the `_is_scatterable_prop` exclusion).
+- File-size audit (FORBIDDEN #3): every NEW module is well under 500 lines (resource_placement 81,
+  goal_lifecycle 163, returns 99, episodes 160, imagination 67, successor_features 60); the large
+  pre-existing files (runtime/adapter/neural_pipeline/neural_stack/config) received only thin
+  wiring, as the plan mandated — no new >500-line files introduced.
+- Verification: full `pytest` = 520 passed, 7 skipped (was 3 failed before the crowd fix);
+  dashboard `npm run build` (tsc + vite) clean.
 
 ## 2026-06-17 — Async cycle speedups: take the non-learning work off the cognitive lock
 
@@ -1438,3 +1560,49 @@ check (constant fully-saturated motor command): braced body drifts only 0.14 m
 over 5 s while staying upright; even a brace-free, fully collapsed body manages
 ~0.17 m/s of residual sliding instead of free gliding. Backups:
 backups/{mujoco_decadic_adapter.py,humanoid_body.xml}.20260616_234900.bak
+
+## 2026-06-17 — Real cycle affect: replace the PE and reward stubs
+
+Two live placeholders in the neural cognitive cycle were arbitrary scaffolding
+that contaminated the affect channel; both are now grounded in the agent's own
+dynamics (intrinsic only — no external/labeled reward, no clock):
+
+- `stub_prediction_error_penalty` added a deterministic cycle-counter oscillation
+  on top of the genuine surprise signal (the predictive-coding loss). It is now
+  blended at `config.pe_stub_weight()` — default 0.0 (removed) in production; tests
+  pin 0.25 for a byte-identical neural baseline. `pe_delta = -viability_pe_scale()*pc`.
+- `reward_success_stub` granted a fixed pleasure pulse every 50 cycles regardless of
+  behaviour. Replaced (when `config.drive_reward_enabled()`, default ON) by the
+  intrinsic homeostatic-relief reward `viability.drive_reduction_reward(prev, cur,
+  gain)` — phasic pleasure ∝ the per-cycle *reduction* in interoceptive drive
+  pressure (Keramati & Gutkin homeostatic RL; the positive complement to the tonic
+  `interoceptive_drive_pain`), bounded to [0,1] and floored into `pleasure_scalar`
+  like curiosity so a real relief is felt. The legacy placeholder is retained on the
+  disabled/legacy path so the test baseline is unchanged.
+
+Files:
+- decadic/config.py: + `pe_stub_weight()` (default 0.0), `drive_reward_enabled()`
+  (default True), `drive_reward_gain()` (default 1.0); DEFAULT_DRIVE_REWARD_* consts.
+- decadic/state/viability.py: + pure bounded `drive_reduction_reward()`; `*_stub`
+  docstrings marked non-neural (numpy Phase-1 path).
+- decadic/state/state_bus.py: + `prev_drive_pressure` field + snapshot key (so the
+  relief delta is per-cycle and continuous across restarts).
+- decadic/cycle/neural_pipeline.py: `pe_delta` uses `pe_stub_weight()`; reward block
+  computes the drive-reduction relief from `prev_drive_pressure` vs the current drive
+  pressure (no-op when drive off / homeostasis None), keeps the legacy stub when
+  disabled; diagnostics add real keys `prediction_error_delta` / `drive_reward_delta`
+  with `stub_*` back-compat aliases.
+- decadic/agents/runtime.py: restore `prev_drive_pressure` in apply_checkpoint_payload;
+  metric init + `_apply_cycle_diagnostics` feed real keys (`prediction_error_last/ema`,
+  `drive_reward_last`) plus the legacy `*_stub_*` aliases.
+- tests/conftest.py: pin `DECADIC_DRIVE_REWARD_ENABLED=0` + `DECADIC_PE_STUB_WEIGHT=0.25`
+  for the deterministic baseline.
+- tests/test_homeostatic_reward.py: NEW — reward unit behaviour (fires on falling
+  drive, zero on rising/flat, bounded, gain), pe_stub_weight config, checkpoint
+  round-trip of prev_drive_pressure, and end-to-end neural parity/relief/disabled-path.
+- README.md + decadic/state/ai.md: documented the relief reward, the PE-stub removal,
+  and the three new env vars.
+
+Verification: pytest tests/test_homeostatic_reward.py = 11 passed; full suite = 531
+passed, 7 skipped (unchanged baseline; new flags pinned off in conftest). Backups:
+backups/{config.py,viability.py,state_bus.py,neural_pipeline.py,runtime.py,conftest.py}.20260617_110939.bak

@@ -42,6 +42,14 @@ the crowd logic is unit-testable without the body process.
   `motion_ref(...phase...)` interpolates/wraps keyframes; `catalog()`/`get_stance()`
   for the API/UI. Imported by BOTH `scripts/mujoco_decadic_adapter.py` and
   `decadic/api/app.py`.
+- `resource_placement.py` — **pure** anti-camping scatterer (NO MuJoCo). Given prop
+  names, an RNG, `fence_radius`, `min_dist`, `margin`, `mode` (`arena`|`zone`), and
+  optional `zones`, returns `{name: (x, y)}` inside the usable arena. `arena` samples
+  uniformly in the annulus `[min_dist, fence_radius - margin]`; `zone` picks a habitat
+  zone then a point within it (still clamped to the arena). Deterministic for a fixed
+  seed. Consumed only by `scripts/mujoco_decadic_adapter.py::_randomize_resources`,
+  which scatters ONLY the agent's open static props (`_is_scatterable_prop`: excludes
+  gifts AND habitat `prop_*_h*` resources, so the NPC ecology forages in-zone intact).
 
 ## Invariants (do not break)
 - Adding the crowd must NOT change `model.nu` (stays 21) or the agent's 42-value

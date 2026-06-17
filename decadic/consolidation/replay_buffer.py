@@ -41,6 +41,19 @@ class Transition:
     - ``prev_intero`` / ``intero_now``: the reservoir transition (only when the
       homeostatic drive was active that cycle; else ``None``).
     - ``salience``: sampling/eviction priority (higher = revisited more, evicted last).
+
+    Episodic / credit-assignment fields (filled by the goal-episode accumulator;
+    inert defaults keep a plain one-step transition byte-identical to before):
+
+    - ``feat``: the per-step feature vector phi (reservoir change this cycle), the
+      successor-features basis; ``reward`` is its innate-weighted sum (drive
+      reduction). Both captured live by the neural pipeline.
+    - ``episode_id`` / ``step_idx`` / ``goal_id``: position within a closed goal
+      episode (assigned on accumulation).
+    - ``ret`` / ``sf_target``: the lambda-return (scalar) and the discounted future
+      feature target (vector), filled when the owning episode closes. ``ret`` is
+      ``None`` until then, which the consolidator's SF loss uses as a "trainable"
+      gate -- only return-annotated transitions feed it.
     """
 
     z0: Any
@@ -53,6 +66,14 @@ class Transition:
     prev_intero: Any | None = None
     intero_now: Any | None = None
     salience: float = 0.0
+    # --- episodic credit assignment (additive; defaults keep old behavior) ---
+    feat: Any | None = None
+    reward: float = 0.0
+    episode_id: int = -1
+    step_idx: int = 0
+    goal_id: str = ""
+    ret: float | None = None
+    sf_target: Any | None = None
 
 
 class ReplayBuffer:

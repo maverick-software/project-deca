@@ -9,9 +9,13 @@ def _baseline_faculties(monkeypatch):
     hf encoders), the A/B/C neuroplasticity subsystems, and the autonomous-learning
     subsystems (need-gated curiosity, dual-network consolidation) now default ON in
     production. The loss-landscape probe is pinned off here too (visualization-only,
-    expensive). The performance knobs (GPU/bf16 encoders, write-behind episodic +
+    expensive).     The performance knobs (GPU/bf16 encoders, write-behind episodic +
     write-behind LTM consolidation) are pinned to the CPU/fp32/synchronous baseline so
-    the suite stays byte-identical and never downloads CLIP/Whisper. The existing suite was written against the dense,
+    the suite stays byte-identical and never downloads CLIP/Whisper. The cycle-affect
+    knobs are pinned to their pre-real-affect baseline too: the intrinsic
+    drive-reduction reward is OFF (the legacy periodic placeholder is used instead)
+    and the PE stub weight is held at its legacy 0.25, so the neural affect path is
+    byte-identical to before. The existing suite was written against the dense,
     oracle, no-loop baseline, so we restore that here for determinism. Tests that
     exercise a faculty or subsystem set its env / pass explicit flags in the test
     body, which override these (this autouse fixture is set up before the
@@ -31,6 +35,8 @@ def _baseline_faculties(monkeypatch):
     monkeypatch.setenv("DECADIC_EPISODIC_ASYNC", "0")
     monkeypatch.setenv("DECADIC_LTM_ASYNC", "0")
     monkeypatch.setenv("DECADIC_CYCLE_PROFILE", "0")
+    monkeypatch.setenv("DECADIC_DRIVE_REWARD_ENABLED", "0")
+    monkeypatch.setenv("DECADIC_PE_STUB_WEIGHT", "0.25")
 
 
 @pytest.fixture

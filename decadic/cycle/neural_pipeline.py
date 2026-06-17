@@ -35,6 +35,7 @@ from decadic.nn.frozen_encoders import (
 from decadic.state.curiosity import CuriosityState, compute_curiosity
 from decadic.state.viability import (
     apply_pain_pleasure_to_B,
+    drive_reduction_reward,
     ema_affect,
     interoceptive_drive_pain,
     reward_success_stub,
@@ -369,6 +370,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     l_fwd_tactile = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_fwd_intero = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_pref_intero = torch.zeros((), device=z0.device, dtype=z0.dtype)
+    # Successor-features value shaping (Layer-2). sf_value_last: scalar value of the
+    # chosen action; sf_value_w: the (ramped) shaping weight actually applied. 0 until
+    # the SF head has learned and the ramp has opened, so behavior starts identical.
+    sf_value_last = 0.0
+    sf_value_w = 0.0
     # Per-joint proprioceptive forward-model error: the squared error of each
     # predicted joint qpos channel. Feeds the body's joint-brace ROM curriculum
     # (a joint earns range of motion only once the brain predicts it well). The
@@ -471,6 +477,24 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 + C.ai_intero_fwd_weight() * l_fwd_intero
                 + pref_w * l_pref_intero
             )
+
+            # --- Successor-features value shaping (Layer-2 incentive salience) ---
+            # psi(z5, motor_u) predicts the discounted FUTURE reservoir change this
+            # action leads to; composed with the innate, deficit-gated drive weights
+            # it is a scalar value v. Pulling the policy toward higher v makes
+            # APPROACHING a seen resource rewarding BEFORE consumption -- the cue
+            # inherits value from the relief it predicts. SF weights are detached
+            # (the policy can't inflate its own value), and the weight ramps from 0,
+            # so a naive agent is byte-identical to today until experience grows it.
+            if C.sf_enabled() and getattr(bundle.stack, "has_successor_model", False):
+                sf_value_w = C.sf_value_weight_for_cycle(int(ctx.state_bus.cycle_index))
+                if sf_value_w > 0.0:
+                    psi = bundle.stack.successor_predict(z5_t, motor_u, detach_params=True)
+                    w_gated = (w_pref_i * deficit_i).detach()
+                    value = (w_gated * psi).sum()
+                    if torch.isfinite(value):
+                        loss = loss - sf_value_w * value  # maximize value
+                        sf_value_last = float(value.detach().item())
 
     # --- Cognitive trace: capture the raw "why" arrays from the action-producing
     # (pre-optimizer-step) weights. Read-only and gated, so the oracle/no-trace
@@ -637,8 +661,22 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             "salience": float(pc_val + l_fwd_val + intero_pe_val),
         }
         if drive_on and bundle.prev_intero is not None:
-            transition_payload["prev_intero"] = bundle.prev_intero.detach().to("cpu")
-            transition_payload["intero_now"] = intero_now.detach().to("cpu")
+            prev_i_cpu = bundle.prev_intero.detach().to("cpu")
+            now_i_cpu = intero_now.detach().to("cpu")
+            transition_payload["prev_intero"] = prev_i_cpu
+            transition_payload["intero_now"] = now_i_cpu
+            # Per-step feature phi = reservoir change this cycle (successor-features
+            # basis); its innate-weighted sum is the per-step drive-reduction reward
+            # r_t (positive on reservoir gain, ~0 on slow drain, spikes on consume).
+            # The goal-episode accumulator spreads r_t backward as a lambda-return so
+            # distal relief credits the approach that earned it. No new innate signal
+            # -- this is the SAME interoceptive setpoint, just propagated over time.
+            phi = (now_i_cpu - prev_i_cpu).reshape(-1)
+            w_i = torch.as_tensor(
+                intero_preference_weights(int(C.INTERO_PRED_DIM)), dtype=phi.dtype
+            )
+            transition_payload["feat"] = phi
+            transition_payload["reward"] = float((w_i * phi).sum().item())
 
     # Perception-feedback telemetry (None when the loop is off).
     gate_mean = (
@@ -899,7 +937,10 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     pe_stub = stub_prediction_error_penalty(
         ctx.perceptual.integration_ticks, ctx.state_bus.cycle_index
     )
-    pe_delta = -viability_pe_scale() * pc_val + 0.25 * pe_stub
+    # The genuine surprise term is the predictive-coding loss; the cycle-counter
+    # oscillation (pe_stub) is a Phase-1 placeholder blended in only at
+    # pe_stub_weight() (default 0.0 -> removed in production; 0.25 in tests).
+    pe_delta = -viability_pe_scale() * pc_val + C.pe_stub_weight() * pe_stub
 
     # Prediction error no longer drains viability (the homeostatic reservoirs own
     # survival). It still produces affect, and feeds the metabolic stress term.
@@ -908,14 +949,43 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         ctx.state_bus.emotion_physio, p_pe, pl_pe
     )
 
-    reward_stub = reward_success_stub(ctx.state_bus.cycle_index)
-    p_rw, pl_rw = viability_delta_to_signals(reward_stub)
+    # Homeostatic relief reward: phasic pleasure proportional to the per-cycle
+    # *reduction* in interoceptive drive pressure (drive-reduction reward; the
+    # positive complement to the tonic deprivation pain applied below). Grounded
+    # solely in the agent's own reservoirs vs. innate setpoints -- no external
+    # satisfier, no clock. When disabled (or no body streams reservoirs) the
+    # legacy periodic placeholder is retained so the test baseline is unchanged.
+    reward_drive_on = drive_on and C.drive_reward_enabled()
+    if reward_drive_on:
+        cur_drive_pressure = interoceptive_drive_pain(
+            ctx.homeostasis,
+            comfort=C.drive_comfort_setpoint(),
+            gain=C.drive_pain_gain(),
+            exponent=C.drive_pain_exponent(),
+        )
+        reward_delta = drive_reduction_reward(
+            ctx.state_bus.prev_drive_pressure,
+            cur_drive_pressure,
+            gain=C.drive_reward_gain(),
+        )
+        ctx.state_bus.prev_drive_pressure = cur_drive_pressure
+    else:
+        reward_delta = reward_success_stub(ctx.state_bus.cycle_index)
+    p_rw, pl_rw = viability_delta_to_signals(reward_delta)
     ctx.state_bus.emotion_physio = apply_pain_pleasure_to_B(
         ctx.state_bus.emotion_physio, p_rw, pl_rw
     )
 
     ctx.state_bus.pain_scalar = ema_affect(ctx.state_bus.pain_scalar, p_pe + p_rw)
     ctx.state_bus.pleasure_scalar = ema_affect(ctx.state_bus.pleasure_scalar, pl_pe + pl_rw)
+    # Floor the felt pleasure at a genuine relief so it registers rather than
+    # washing out in the slow pleasure EMA (mirrors the curiosity floor below).
+    # Phasic and gated: applied only on cycles where the drive actually dropped
+    # and only when enabled, so the disabled/legacy path stays byte-identical.
+    if reward_drive_on and pl_rw > 0.0:
+        ctx.state_bus.pleasure_scalar = max(
+            ctx.state_bus.pleasure_scalar, min(1.0, pl_rw)
+        )
 
     # Curiosity: a survival-gated, pleasure-side epistemic affect. Mirror the innate
     # drive-pain pattern on the pleasure axis -- inject into B and floor the felt
@@ -964,8 +1034,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         gpu_mem = int(torch.cuda.max_memory_allocated(bundle.device))
 
     diagnostics = {
+        "prediction_error_delta": pe_delta,
+        "drive_reward_delta": reward_delta,
+        # Back-compat aliases (legacy metric names; identical values).
         "stub_prediction_error_delta": pe_delta,
-        "stub_reward_delta": reward_stub,
+        "stub_reward_delta": reward_delta,
         "stage_timing_ms_total": round(fwd_ms + bwd_ms + ms10, 4),
         "viability_value": ctx.viability.value,
         "salience_hint": float(tr10.payload.get("salience", 0.0)),
@@ -997,6 +1070,10 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         "homeostatic_drive": bool(drive_on),
         "intero_drive": (round(drive_pain, 6) if drive_on else None),
         "intero_pred_error": (round(intero_pe_val, 6) if drive_on else None),
+        # Successor-features value of the chosen action and the active (ramped)
+        # value-shaping weight (None until the homeostatic drive is on).
+        "sf_value": (round(sf_value_last, 6) if drive_on else None),
+        "sf_value_weight": (round(float(sf_value_w), 6) if drive_on else None),
         # Need-gated curiosity (None when the drive is disabled -> parity).
         "curiosity_drive": (round(float(cur_out.drive), 6) if cur_out is not None else None),
         "curiosity_pleasure": (round(float(cur_out.pleasure), 6) if cur_out is not None else None),

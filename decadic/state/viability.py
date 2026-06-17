@@ -232,6 +232,24 @@ def interoceptive_drive_pain(
     return float(min(1.0, gain * pressure))
 
 
+def drive_reduction_reward(
+    prev_pressure: float, cur_pressure: float, *, gain: float = 1.0
+) -> float:
+    """Phasic homeostatic relief: reward = the per-cycle *reduction* in drive.
+
+    The positive complement to :func:`interoceptive_drive_pain`. In homeostatic
+    reinforcement learning (Keramati & Gutkin) the rewarding event is the
+    *decrease* of drive - the agent moving its reservoirs back toward their
+    innate setpoints. Only drops are rewarded (a rising drive is already felt as
+    the tonic deprivation pain), and the result is bounded to ``[0, 1]`` so it
+    composes with the other affect scalars. It references no external satisfier
+    and no clock - only the agent's own drive pressure across two cycles - so it
+    keeps the motivation wholly intrinsic.
+    """
+    drop = max(0.0, float(prev_pressure) - float(cur_pressure))
+    return float(min(1.0, max(0.0, gain) * drop))
+
+
 def apply_pain_pleasure_to_B(
     emotion_vec: np.ndarray, pain: float, pleasure: float, decay: float = 0.92
 ) -> np.ndarray:
@@ -245,7 +263,13 @@ def apply_pain_pleasure_to_B(
 
 
 def stub_prediction_error_penalty(perceptual_ticks: int, cycle_index: int) -> float:
-    """Placeholder PE→viability coupling (Phase 1 wiring)."""
+    """Placeholder PE coupling for the non-neural numpy pipeline (Phase 1 wiring).
+
+    A cycle-counter oscillation that gives the stub cycle non-zero affect dynamics
+    without a trained network. The neural pipeline no longer relies on it: there
+    the genuine surprise is the predictive-coding loss, and this term is blended in
+    at ``config.pe_stub_weight()`` (default 0.0, i.e. removed).
+    """
     # Mild oscillation so logs show non-zero dynamics without training
     phase = float((perceptual_ticks + cycle_index) % 17)
     return -0.02 * (phase / 17.0)
@@ -291,5 +315,12 @@ def nourishment_from_events(events: list[dict], threshold: float) -> float:
 
 
 def reward_success_stub(cycle_index: int) -> float:
-    """Tiny viability uptick placeholder when cycles complete cleanly."""
+    """Periodic placeholder reward for the non-neural numpy pipeline (Phase 1).
+
+    A tiny pulse every 50 cycles so the stub cycle shows reward dynamics without a
+    trained network. The neural pipeline replaces this with the intrinsic
+    :func:`drive_reduction_reward` (homeostatic relief) whenever
+    ``config.drive_reward_enabled()`` is set; it is retained only for the legacy /
+    disabled path and the byte-identical test baseline.
+    """
     return 0.01 if cycle_index % 50 == 0 else 0.0

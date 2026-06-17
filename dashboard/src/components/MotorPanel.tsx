@@ -203,6 +203,63 @@ export default function MotorPanel(props: {
         </div>
       </div>
 
+      <div className="strip-label" style={{ marginTop: 6 }}>
+        <span>
+          Goals &amp; long-horizon value
+          <Info tip="The agent latches its dominant unmet need as an explicit GOAL, then learns the path that relieved it: a successor-features head spreads the eventual relief back over the approach (credit assignment), so a SEEN resource acquires value before it is consumed. Resources are re-scattered each life so it cannot camp a fixed spot." />
+        </span>
+        <span>{m?.goal && m.goal !== "none" ? `${m.goal} (${m?.goal_status ?? "idle"})` : "idle"}</span>
+      </div>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", margin: "6px 0 4px" }}>
+        <div className="statrow" style={{ gap: 8 }}>
+          <span className="k">
+            Goal dwell
+            <Info tip="Cycles the current goal has been actively pursued (0 when idle). Longer dwell with fewer flips = the agent is committing to a need and seeing it through instead of thrashing." />
+          </span>
+          <span className="v">{m?.goal_dwell ?? 0}</span>
+        </div>
+        <div className="statrow" style={{ gap: 8 }}>
+          <span className="k">
+            Episodes
+            <Info tip="Closed goal episodes (achieved / abandoned / truncated / died). Each closed episode is annotated with lambda-returns and is what the successor-features learner trains on." />
+          </span>
+          <span className="v">
+            {m?.episodes_closed ?? 0}
+            {m?.goal_last_outcome ? ` · ${m.goal_last_outcome}` : ""}
+          </span>
+        </div>
+        <div className="statrow" style={{ gap: 8 }}>
+          <span className="k">
+            Last return
+            <Info tip="The lambda-return at the onset of the most recent episode: the discounted future drive-relief that the episode's opening actions ultimately led to. Rising over time = the agent is finding paths that pay off." />
+          </span>
+          <span className="v">{m?.episode_last_return != null ? m.episode_last_return.toFixed(4) : "—"}</span>
+        </div>
+        <div className="statrow" style={{ gap: 8 }}>
+          <span className="k">
+            SF value
+            <Info tip="The successor-features value of the action just chosen = predicted discounted future reservoir gain, gated by current need. As it learns, approaching a seen resource should read as valuable BEFORE contact (incentive salience)." />
+          </span>
+          <span className="v">{m?.sf_value != null ? m.sf_value.toFixed(4) : "—"}</span>
+        </div>
+        <div className="statrow" style={{ gap: 8 }}>
+          <span className="k">
+            Value weight
+            <Info tip="How strongly the value estimate is allowed to shape the policy right now. Ramps 0 -> max over training, so a fresh agent behaves identically to the pre-value baseline and the influence grows only as the value head earns trust." />
+          </span>
+          <span className="v">{m?.sf_value_weight != null ? m.sf_value_weight.toFixed(3) : "—"}</span>
+        </div>
+        <div className="statrow" style={{ gap: 8 }}>
+          <span className="k">
+            HER · seed
+            <Info tip="Hindsight relabels pushed (failed episodes that still found relief, re-used as positive examples), and the current life's resource-scatter RNG seed (-1 = randomization off)." />
+          </span>
+          <span className="v">
+            {m?.her_relabels ?? 0} · {m?.resource_seed ?? -1}
+          </span>
+        </div>
+      </div>
+
       {hasFwd && (
         <>
           <div className="strip-label" style={{ marginTop: 6 }}>

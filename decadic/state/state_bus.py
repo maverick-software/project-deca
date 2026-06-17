@@ -52,6 +52,10 @@ class StateBus:
     emotion_physio: np.ndarray = field(default_factory=lambda: _zeros(EMOTION_DIM))
     pain_scalar: float = 0.0
     pleasure_scalar: float = 0.0
+    # Last cycle's interoceptive drive pressure, so the homeostatic-relief reward
+    # (drive-reduction) can be measured as a per-cycle delta. Persisted across
+    # restarts so relief is continuous, not spuriously triggered on resume.
+    prev_drive_pressure: float = 0.0
     # C — Internal narrative (embedding stub)
     narrative_emb: np.ndarray = field(default_factory=lambda: _zeros(NARRATIVE_EMB_DIM))
     narrative_text_stub: str = ""
@@ -73,6 +77,7 @@ class StateBus:
             "B_emotion_physio": _finite_list(self.emotion_physio),
             "B_pain_scalar": _finite(self.pain_scalar),
             "B_pleasure_scalar": _finite(self.pleasure_scalar),
+            "prev_drive_pressure": _finite(self.prev_drive_pressure),
             "C_narrative_emb": _finite_list(self.narrative_emb),
             "C_narrative_text_stub": self.narrative_text_stub,
             "D_priority_scalar": _finite(self.priority_scalar),

@@ -378,6 +378,42 @@ def drive_priority_gain() -> float:
     )
 
 
+# --- Cycle affect: real predictive-coding surprise + homeostatic relief ------
+# The phasic pain/pleasure assembled in the neural cycle (decadic/cycle/
+# neural_pipeline.py) must be grounded in the agent's own dynamics, never in
+# arbitrary scaffolding:
+#   * pe_stub_weight() blends in the legacy cycle-counter PE oscillation. The
+#     real surprise signal is the predictive-coding loss; that oscillation is a
+#     Phase-1 confound, so the production default is 0.0 (removed). Tests pin it
+#     to its legacy 0.25 for a byte-identical neural baseline.
+#   * the drive-reduction (homeostatic relief) reward is the positive complement
+#     to the tonic interoceptive_drive_pain: phasic pleasure proportional to the
+#     per-cycle reduction in drive pressure (Keramati & Gutkin homeostatic RL).
+#     It replaces the old fixed periodic placeholder reward. ON by default in
+#     production; pinned OFF in tests, where the legacy placeholder is retained
+#     so the deterministic baseline is unchanged.
+DEFAULT_DRIVE_REWARD_ENABLED = True
+DEFAULT_DRIVE_REWARD_GAIN = 1.0  # relief scale; symmetric with DEFAULT_DRIVE_PAIN_GAIN
+
+
+def pe_stub_weight() -> float:
+    """Blend weight of the legacy cycle-counter PE oscillation in ``pe_delta``.
+
+    Defaults to 0.0 (the placeholder confound is removed; the predictive-coding
+    loss is the genuine surprise term). Pinned to 0.25 in tests for a
+    byte-identical neural baseline.
+    """
+    return max(0.0, float(os.environ.get("DECADIC_PE_STUB_WEIGHT", "0.0")))
+
+
+def drive_reward_enabled() -> bool:
+    return _env_bool("DECADIC_DRIVE_REWARD_ENABLED", DEFAULT_DRIVE_REWARD_ENABLED)
+
+
+def drive_reward_gain() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_DRIVE_REWARD_GAIN", str(DEFAULT_DRIVE_REWARD_GAIN))))
+
+
 # --- Need-gated curiosity (autonomous epistemic drive) ----------------------
 # Curiosity is a learning-progress epistemic drive folded into element B as a
 # pleasure-side affect (see decadic/state/curiosity.py). It is ON by default in

@@ -412,6 +412,27 @@ export type Metrics = {
   fall_rate?: number;
   gait_regularity?: number;
   consume_events?: number;
+  // Anti-camping: RNG seed of the current life's resource scatter (-1 if off).
+  resource_seed?: number;
+  // Goal lifecycle (explicit latched intent for credit assignment): active goal
+  // label or "none", idle|active status, cycles the goal has been open, episodes
+  // closed, and the last close reason (achieved|abandoned|truncated|died).
+  goal?: string;
+  goal_status?: string;
+  goal_dwell?: number;
+  goal_episodes?: number;
+  goal_last_outcome?: string;
+  // Episodic replay timeline: closed goal episodes annotated with lambda-returns.
+  episodes_closed?: number;
+  episode_last_len?: number;
+  episode_last_return?: number;
+  // Successor-features value (Layer-2 incentive salience): predicted value of the
+  // chosen action and the active (ramped 0->max) value-shaping weight.
+  sf_value?: number;
+  sf_value_weight?: number;
+  // Hindsight relabeling: cumulative relabeled transitions and the last episode's.
+  her_relabels?: number;
+  her_last?: number;
   // Live curriculum overrides (null -> follow the process-env default).
   ai_intero_pref_weight?: number | null;
   drive_priority_gain?: number | null;

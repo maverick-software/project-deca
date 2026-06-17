@@ -80,6 +80,21 @@ def replay_batch_loss(stack: NeuralCognitiveStack, batch: list, device) -> torch
             )
             l_pref = (w_pref * (pred_pref - s_pref).pow(2)).mean()
             loss = loss + ai_intero_fwd_weight() * l_fwd_i + ai_intero_pref_weight() * l_pref
+        # Successor-features TD(lambda) regression: the SF head learns the discounted
+        # future feature target (the episode's lambda-return of phi) for the realized
+        # (state, action). This is the reward-free predictive structure that lets a
+        # seen cue inherit value. Only return-annotated transitions (sf_target filled
+        # on episode close) feed it; the rest train the one-step objective as before.
+        if (
+            C.sf_enabled()
+            and getattr(stack, "has_successor_model", False)
+            and t.sf_target is not None
+        ):
+            sf_target = torch.as_tensor(
+                [t.sf_target], device=dev, dtype=prev_state.dtype
+            )
+            psi = stack.successor_predict(prev_state, prev_motor)
+            loss = loss + C.sf_loss_weight() * F.mse_loss(psi, sf_target)
         losses.append(loss)
     return torch.stack(losses).mean()
 
@@ -97,6 +112,7 @@ class ConsolidationManager:
         self.cons_opt = torch.optim.Adam(self.cons_stack.parameters(), lr=lr)
         self.replay_steps = 0
         self.last_loss = 0.0
+        self.last_imagined_loss = 0.0
         self.last_sync_cycle = 0
         self.syncs = 0
 
@@ -142,6 +158,24 @@ class ConsolidationManager:
         self.cons_stack.train()
         self.cons_opt.zero_grad(set_to_none=True)
         loss = self.replay_loss(batch)
+        # Model-based imagined replay (gated, default OFF): add a trust-weighted SF
+        # loss against short imagined interoceptive rollouts from the batch's real
+        # start states. Kept OUT of the shared replay_loss so the loss-landscape
+        # probe still scores the pure lived objective.
+        self.last_imagined_loss = 0.0
+        if C.sf_enabled() and C.imagination_enabled():
+            from decadic.consolidation.imagination import imagined_sf_loss
+
+            il = imagined_sf_loss(
+                self.cons_stack,
+                batch,
+                gamma=C.sf_gamma(),
+                horizon=C.imagination_horizon(),
+                device=self.device,
+            )
+            if il is not None and torch.isfinite(il):
+                loss = loss + C.imagination_weight() * il
+                self.last_imagined_loss = float(il.detach().cpu().item())
         if not torch.isfinite(loss):
             return None
         loss.backward()

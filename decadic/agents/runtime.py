@@ -33,6 +33,8 @@ from decadic.config import (
     goal_max_cycles,
     goal_onset_deficit,
     goal_satisfy_level,
+    her_enabled,
+    her_relabel_k,
     heal_min_reserve,
     hydration_empty_s,
     integrity_heal_full_s,
@@ -53,6 +55,8 @@ from decadic.config import (
     probe_capture_enabled,
     randomize_resources_enabled,
     replay_buffer_size,
+    sf_gamma,
+    sf_lambda,
     stress_gain,
     tombstone_keep,
     viability_mode_default,
@@ -60,6 +64,11 @@ from decadic.config import (
 )
 from decadic.consolidation.consolidator import ConsolidationManager
 from decadic.consolidation.landscape import LossLandscapeProbe
+from decadic.consolidation.episodes import (
+    EpisodeAccumulator,
+    achieved_feature,
+    build_hindsight_copies,
+)
 from decadic.consolidation.replay_buffer import ReplayBuffer, Transition
 from decadic.consolidation.stub_loop import consolidation_stub_loop
 from decadic.cycle.neural_pipeline import run_neural_cycle
@@ -277,6 +286,10 @@ class AgentRuntime:
             abandon_cycles=goal_abandon_cycles(),
             max_cycles=goal_max_cycles(),
         )
+        # Ordered goal-episode accumulator: collects the live transitions of each
+        # open goal and writes lambda-returns back into them (in the replay buffer)
+        # when it closes -- the distal credit-assignment timeline.
+        self._episode_acc = EpisodeAccumulator(gamma=sf_gamma(), lam=sf_lambda())
         self._consolidator: ConsolidationManager | None = None
         # Live loss-landscape probe (visualization only): a flagged background task
         # evaluates a filter-normalized 2D slice of the live objective on its own
@@ -299,6 +312,10 @@ class AgentRuntime:
             "last_cycle_wall_ms": 0.0,
             "last_observation_iso": None,
             "fast_path_hits": 0,
+            "prediction_error_last": 0.0,
+            "prediction_error_ema": 0.0,
+            "drive_reward_last": 0.0,
+            # Legacy metric aliases (identical values; kept for back-compat consumers).
             "prediction_error_stub_last": 0.0,
             "prediction_error_stub_ema": 0.0,
             "reward_stub_last": 0.0,
@@ -354,6 +371,11 @@ class AgentRuntime:
             "curiosity_drive": 0.0,
             "curiosity_pleasure": 0.0,
             "curiosity_learning_progress": 0.0,
+            # Successor-features value (Layer-2): sf_value is the predicted value of
+            # the chosen action; sf_value_weight is the active (ramped) shaping
+            # weight. Both 0 until the SF head learns and the ramp opens.
+            "sf_value": 0.0,
+            "sf_value_weight": 0.0,
             # Locomotion / gait telemetry (eval-only; never read by cognition).
             # distance_traveled: cumulative XY path length (m). net_displacement:
             # straight-line distance from the run origin (m). fall_rate: fraction
@@ -379,6 +401,16 @@ class AgentRuntime:
             "goal_dwell": 0,
             "goal_episodes": 0,
             "goal_last_outcome": "",
+            # Episodic replay timeline (closed goal episodes annotated with returns).
+            # episodes_closed: total annotated episodes; episode_last_len: steps in
+            # the last episode; episode_last_return: its lambda-return at onset.
+            "episodes_closed": 0,
+            "episode_last_len": 0,
+            "episode_last_return": 0.0,
+            # Hindsight relabeling (HER): cumulative relabeled transitions pushed and
+            # the count from the most recent failed-but-relief episode.
+            "her_relabels": 0,
+            "her_last": 0,
             # NaN firewall: cumulative count of cycles where a non-finite forward
             # pass / recurrent state was detected, recovered, and the update skipped.
             "nan_recovery_events": 0,
@@ -1024,6 +1056,16 @@ class AgentRuntime:
             return
         self.status = "dead"
         self.died_at_cycle = int(self.state_bus.cycle_index)
+        # Close any open goal episode as "died" so the journey still earns credit
+        # (truncated returns) and can feed hindsight relabeling -- the body failed,
+        # but the path it took is still a real example of how it moved.
+        try:
+            death_events = self.goal_state.update(
+                self._reservoirs_norm(), int(self.state_bus.cycle_index), alive=False
+            )
+            self._accumulate_episode(None, death_events)
+        except Exception:  # death handling must never raise
+            pass
         self._write_tombstone()
         try:
             self.out_queue.put_nowait(
@@ -1109,6 +1151,9 @@ class AgentRuntime:
             self.queue_body_command("recenter")
             if self.queue_body_command(f"randomize_resources:{seed}"):
                 self.metrics["resource_seed"] = seed
+        # Drop any dangling open episode from the prior life (death already closed
+        # it); the new life starts the goal timeline fresh.
+        self._episode_acc.reset()
         self.ensure_cycle_worker()
 
     async def reset(self, preset: str | None = None) -> None:
@@ -1136,6 +1181,15 @@ class AgentRuntime:
             self._curiosity_investigating = False
             self._last_landscape = None
             self._landscape_probe = None
+            # Fresh mind: wipe the goal timeline and any open episode so credit
+            # assignment starts from a clean slate alongside the new weights.
+            self.goal_state = GoalState(
+                onset_deficit=goal_onset_deficit(),
+                satisfy_level=goal_satisfy_level(),
+                abandon_cycles=goal_abandon_cycles(),
+                max_cycles=goal_max_cycles(),
+            )
+            self._episode_acc = EpisodeAccumulator(gamma=sf_gamma(), lam=sf_lambda())
             self._cognitive_history.clear()
             self._obs_buffer.clear()
             self._loco_last_xy = None
@@ -1251,13 +1305,29 @@ class AgentRuntime:
             self.ltm_graph.restore_from(path)
 
     def _apply_cycle_diagnostics(self, diagnostics: dict[str, Any]) -> None:
-        pe = float(diagnostics.get("stub_prediction_error_delta", 0.0))
-        self.metrics["prediction_error_stub_last"] = pe
+        pe = float(
+            diagnostics.get(
+                "prediction_error_delta",
+                diagnostics.get("stub_prediction_error_delta", 0.0),
+            )
+        )
+        self.metrics["prediction_error_last"] = pe
+        self.metrics["prediction_error_stub_last"] = pe  # legacy alias
         mag = abs(pe)
-        alpha = float(os.environ.get("DECADIC_PE_STUB_EMA_ALPHA", "0.08"))
-        prev = float(self.metrics.get("prediction_error_stub_ema", 0.0))
-        self.metrics["prediction_error_stub_ema"] = (1.0 - alpha) * prev + alpha * mag
-        self.metrics["reward_stub_last"] = float(diagnostics.get("stub_reward_delta", 0.0))
+        alpha = float(
+            os.environ.get(
+                "DECADIC_PE_EMA_ALPHA", os.environ.get("DECADIC_PE_STUB_EMA_ALPHA", "0.08")
+            )
+        )
+        prev = float(self.metrics.get("prediction_error_ema", 0.0))
+        ema = (1.0 - alpha) * prev + alpha * mag
+        self.metrics["prediction_error_ema"] = ema
+        self.metrics["prediction_error_stub_ema"] = ema  # legacy alias
+        rw = float(
+            diagnostics.get("drive_reward_delta", diagnostics.get("stub_reward_delta", 0.0))
+        )
+        self.metrics["drive_reward_last"] = rw
+        self.metrics["reward_stub_last"] = rw  # legacy alias
         self.metrics["last_stage_timing_ms_total"] = float(
             diagnostics.get("stage_timing_ms_total", 0.0)
         )
@@ -1284,6 +1354,9 @@ class AgentRuntime:
             "curiosity_drive",
             "curiosity_pleasure",
             "curiosity_learning_progress",
+            # Successor-features value telemetry (Layer-2 incentive salience).
+            "sf_value",
+            "sf_value_weight",
         ):
             if diagnostics.get(key) is not None:
                 self.metrics[key] = float(diagnostics[key])
@@ -1478,6 +1551,55 @@ class AgentRuntime:
             self.metrics["goal_last_outcome"] = gs.last_outcome
         return events
 
+    def _accumulate_episode(self, transition: Any, events: list) -> None:
+        """Route the current transition + lifecycle events through the episode timeline.
+
+        The current step is added to whatever episode is open FIRST (so an
+        achieving step's reward lands inside the episode it completes), then the
+        events are applied: a close annotates the ordered episode with
+        lambda-returns, an open starts the next one.
+        """
+        acc = self._episode_acc
+        acc.add(transition)
+        for ev in events:
+            if ev.kind == "closed":
+                closed = acc.on_close(ev.outcome or "")
+                self._on_episode_closed(closed, ev.outcome or "")
+            elif ev.kind == "opened":
+                acc.on_open(ev.goal_id, ev.onset_cycle)
+
+    def _on_episode_closed(self, steps: list, outcome: str) -> None:
+        """Surface closed-episode stats; hindsight relabeling hooks in here (Phase 5)."""
+        acc = self._episode_acc
+        self.metrics["episodes_closed"] = acc.episodes_closed
+        self.metrics["episode_last_len"] = acc.last_len
+        self.metrics["episode_last_return"] = round(acc.last_return, 5)
+        self._maybe_hindsight_relabel(steps, outcome)
+
+    def _maybe_hindsight_relabel(self, steps: list, outcome: str) -> None:
+        """Hindsight-relabel a failed/abandoned episode that still found relief.
+
+        A non-achieved episode whose trajectory nonetheless accrued reservoir gain
+        in some channel (e.g. latched on thirst but actually ate) is relabeled with
+        that achieved terminal feature and re-pushed (with recomputed SF/return
+        targets) so the SF head trains more on the real, off-goal relief it found --
+        the literal "the journey still taught me." Gated; no fabricated reward.
+        """
+        if outcome == "achieved" or not steps:
+            return
+        if self.replay_buffer is None or not her_enabled() or her_relabel_k() <= 0:
+            return
+        achieved = achieved_feature(steps)
+        if not achieved or max(achieved) <= 1e-6:
+            return  # nothing was actually achieved -> no hindsight success to learn
+        copies = build_hindsight_copies(
+            steps, achieved, gamma=sf_gamma(), lam=sf_lambda(), k=her_relabel_k()
+        )
+        pushed = sum(1 for c in copies if self.replay_buffer.push(c))
+        if pushed:
+            self.metrics["her_relabels"] = int(self.metrics.get("her_relabels", 0)) + pushed
+            self.metrics["her_last"] = pushed
+
     async def _cycle_loop(self) -> None:
         while self.running:
             await asyncio.sleep(self.cycle_interval_s)
@@ -1515,11 +1637,16 @@ class AgentRuntime:
                 transition = msg.pop("_transition", None)
                 # Dual-network consolidation: feed the realized transition to the
                 # replay buffer (no-op unless the feature is enabled).
+                tr = None
                 if transition is not None and self.replay_buffer is not None:
-                    self.replay_buffer.push(Transition(**transition))
-                # Advance the explicit goal lifecycle (telemetry + episode
-                # boundaries for return-based credit assignment).
-                self._advance_goal(transition)
+                    tr = Transition(**transition)
+                    self.replay_buffer.push(tr)
+                # Advance the explicit goal lifecycle (telemetry) and route the
+                # transition through the goal-episode accumulator so closed episodes
+                # get lambda-return credit assignment (in-place on the same buffer
+                # refs -- no second push, existing one-step consolidation unchanged).
+                events = self._advance_goal(transition)
+                self._accumulate_episode(tr, events)
                 outbound = dict(msg)
                 # Piggyback the agent's reservoir levels (normalized 0..1) onto the
                 # outbound action so the body's scripted parent can provision on a
@@ -1950,6 +2077,8 @@ class AgentRuntime:
             self.state_bus.pain_scalar = float(sb["B_pain_scalar"])
         if "B_pleasure_scalar" in sb:
             self.state_bus.pleasure_scalar = float(sb["B_pleasure_scalar"])
+        if "prev_drive_pressure" in sb:
+            self.state_bus.prev_drive_pressure = float(sb["prev_drive_pressure"])
         if "C_narrative_emb" in sb:
             self.state_bus.narrative_emb = np.asarray(sb["C_narrative_emb"], dtype=np.float32)
         if "E_metacognition" in sb:
