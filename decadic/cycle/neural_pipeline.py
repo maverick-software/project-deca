@@ -395,6 +395,18 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         out = bundle.stack(z0, ep, mem_t, self_prev=self_prev_fed, repself_prev=repself_fed)
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 
+    # Autocast can leave the forward's float outputs in bf16 on CUDA. The rest of
+    # the pipeline (NumPy extraction -> NumPy has no bf16, the State Bus, the
+    # active-inference losses) expects fp32, so normalize the top-level floating
+    # tensors back to fp32 here, where the autocast region has ended. The bf16
+    # forward activations are already realized (the memory saving stands) and the
+    # cast preserves the grad graph so backward still works. No-op on the
+    # fp32/CPU/test path (train_autocast is a nullcontext there).
+    out = {
+        k: (v.float() if isinstance(v, torch.Tensor) and v.is_floating_point() else v)
+        for k, v in out.items()
+    }
+
     # NaN firewall (always on, independent of plasticity): if the forward pass or
     # the persistent recurrent buffers went non-finite, this cycle's update is
     # skipped and the recurrent state is reset below, so a single NaN can't lock

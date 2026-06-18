@@ -1893,3 +1893,33 @@ pinned (CPU/no-bnb path falls back to fp32 Adam + nullcontext == byte-identical)
 Verification: targeted self-model tests = 56 passed; full suite = 587 passed,
 7 skipped (unchanged skip baseline). Backups: backups/20260617_164026/{config.py,
 launch_decadic.ps1,README.md}.
+
+=== 2026-06-17 22:22 — Fix: bf16 autocast leaked into NumPy (brain stalled on CUDA) ===
+Symptom: after defaulting DECADIC_MEMORY_EFFICIENT_TRAINING ON, the cognition
+worker crashed EVERY cycle on the RTX 3080 with
+  TypeError: Got unsupported ScalarType BFloat16
+at neural_pipeline.py:777 `out["emotion"].detach().cpu().numpy()`. Cycles stayed
+at 0 (dashboard "Cycles 0 / Cycles/s 0.0") even though the server + agent + cycle
+websocket were all up. The tests never caught it because train_autocast() is a
+nullcontext on CPU, so the bf16 outputs only appear on CUDA.
+
+Root cause (7 whys): Phase-6 wraps the stack forward in a bf16 torch.autocast on
+CUDA -> the forward's float outputs come back bf16 -> downstream host code
+(.cpu().numpy(), State Bus, active-inference losses) assumes fp32 -> NumPy has no
+bf16 dtype -> .numpy() raises -> the per-cycle Task dies -> cycle counter frozen
+-> "brain not running".
+
+Fix (decadic/cycle/neural_pipeline.py, after the `with bundle.train_autocast()`
+block): normalize the top-level floating tensors of `out` back to fp32 with a
+dict comprehension (`v.float()` iff Tensor and is_floating_point). The bf16
+forward activations are already realized (memory saving preserved), the cast keeps
+the autograd graph (backward still works), and it is a strict no-op on the
+fp32/CPU/test path (train_autocast is a nullcontext there -> byte-identical).
+pc_parts / stage_metrics are consumed via float()/round() so they tolerate bf16;
+only the top-level .numpy() sites needed fp32.
+
+Verification: restarted server (CUDA, all self-model flags ON, mem-efficient ON);
+created a probe agent -> 150 cycles in ~8 s, ~45-50 ms/cycle (~20 Hz), no BFloat16
+error (one benign cycle-11 pc_ema warmup `plasticity_frozen`, no recurrence);
+deleted the probe agent. Full suite = 587 passed, 7 skipped (unchanged). Backup:
+backups/20260617_222235/neural_pipeline.py.
