@@ -14,11 +14,13 @@ import pytest
 torch = pytest.importorskip("torch")
 
 
-def test_config_defaults_off(monkeypatch):
+def test_config_default_on(monkeypatch):
     from decadic import config as C
 
+    # Ships ON by default; on CPU/no-bnb it falls back to fp32 so it stays
+    # byte-identical regardless (conftest does not need to pin it).
     monkeypatch.delenv("DECADIC_MEMORY_EFFICIENT_TRAINING", raising=False)
-    assert C.memory_efficient_training_enabled() is False
+    assert C.memory_efficient_training_enabled() is True
 
 
 def test_build_optimizer_default_is_fp32_adam():

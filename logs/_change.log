@@ -1863,3 +1863,33 @@ Files:
 Verification: pytest tests/test_homeostatic_reward.py = 11 passed; full suite = 531
 passed, 7 skipped (unchanged baseline; new flags pinned off in conftest). Backups:
 backups/{config.py,viability.py,state_bus.py,neural_pipeline.py,runtime.py,conftest.py}.20260617_110939.bak
+
+=== 2026-06-17 16:40 — Self-model program flipped ON by default ===
+Per user request ("Make them all default on now"), all six self-model program
+pathways (Phases 1-6) now ship enabled for every new agent.
+
+Files:
+- decadic/config.py: DEFAULT_SELF_MODEL_FEEDBACK, DEFAULT_GWT_ENABLED,
+  DEFAULT_PREDICTIVE_AFFECT, DEFAULT_REPRESENTED_SELF,
+  DEFAULT_MEMORY_EFFICIENT_TRAINING -> True; DEFAULT_INTEGRATION_WINDOW_MS
+  0.0 -> 200.0 (human-scale window). Comments updated to note default ON +
+  conftest pinning. Dataclass field defaults in CognitionFaculties left False
+  (explicit-construction baseline for tests); only the from_env() fallbacks moved,
+  which is the runtime path for new agents (registry -> bundle -> from_env()).
+- scripts/launch_decadic.ps1: server env block now pins all six flags (=1 / 200)
+  so an inherited shell env can't silently disable them; still per-agent toggles.
+- tests/{test_self_model_feedback,test_predictive_affect,test_represented_self,
+  test_memory_efficient_training}.py: renamed test_config_defaults_off ->
+  test_config_default_on and asserted the new ON default after delenv.
+- README.md: env table defaults updated to `1`/`200` with "(Pinned `0` in tests)".
+- docs/logical_layer_conformance.md: flag-column header + cross-cutting note
+  updated to "default ON, pinned OFF in tests"; called out GWT + window as the two
+  non-zero-init defaults that change cognition immediately (intended).
+
+Note: conftest still pins all five booleans + the window to OFF/0, so the
+byte-identical parity assays stay deterministic. Memory-efficient training is not
+pinned (CPU/no-bnb path falls back to fp32 Adam + nullcontext == byte-identical).
+
+Verification: targeted self-model tests = 56 passed; full suite = 587 passed,
+7 skipped (unchanged skip baseline). Backups: backups/20260617_164026/{config.py,
+launch_decadic.ps1,README.md}.

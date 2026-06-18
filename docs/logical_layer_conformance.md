@@ -402,7 +402,7 @@ scaffolds the Section-7 P1–P5 signature assays and is **capability-gated** —
 assay auto-activates when its phase lands and skips before then. All seven phases
 have now shipped, so every assay in `tests/test_signatures.py` is live (0 skips).
 
-| Phase | Mechanism | Flag (default OFF) | Signature assay | Status |
+| Phase | Mechanism | Flag (default ON; pinned OFF in tests) | Signature assay | Status |
 |-------|-----------|--------------------|-----------------|--------|
 | 0 | PCI/Φ proxy + signature scaffold | n/a (always-available instrument) | `test_pci_metric_wellformed`, determinism, no-clobber | ✅ shipped |
 | 1 | Self-state feedback spine (A‖C‖E → next cycle) | `DECADIC_SELF_MODEL_FEEDBACK` | `test_severing_self_loop_changes_self_report`, `test_self_feedback_raises_integration` | ✅ shipped |
@@ -418,8 +418,13 @@ a *learned* spine raises the PCI proxy (demo: tiny preset, mean Δ ≈ +0.07 ove
 seeds 0–2), while a zero-init spine gives an exact 0 delta — so the claim "closing
 the feedback loop raises integration" is measured, not asserted.
 
-Cross-cutting discipline: each new pathway is a new faculty/flag defaulting OFF
-with zero-init or additive injection, so the baseline `state_dict` and numerics
-stay byte-identical; any shape change rebuilds on toggle (reset semantics);
-feedback is detached first to avoid cross-cycle BPTT; and every new flag is
-pinned OFF in `tests/conftest.py`.
+Cross-cutting discipline: each new pathway is a new faculty/flag built with
+zero-init or additive injection, so the baseline `state_dict` and numerics stay
+byte-identical at birth; any shape change rebuilds on toggle (reset semantics);
+and feedback is detached first to avoid cross-cycle BPTT. The pathways now ship
+**ON by default** for every new agent (the program is the product), but every flag
+is still pinned OFF in `tests/conftest.py` so the byte-identical parity assays
+(EMA-vs-ignition, zero-window timing, zero-init spines) remain deterministic. The
+two non-zero-init defaults — the global workspace (replaces the EMA blend) and the
+200 ms integration window (commits a held "now") — change cognition immediately
+when on, which is the intended behavior, not a parity regression.

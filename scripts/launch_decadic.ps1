@@ -84,6 +84,15 @@ Set-Location '$RepoRoot'
 # (no assistance) -- the agent must hold itself up from birth. Switch a given
 # agent to 'guided' (assist-as-needed vertical-only support) from the Motor tab.
 `$env:DECADIC_CURRICULUM_MODE = 'legacy'
+# Self-model program (Phases 1-6): all six pathways ship ON for new agents. These
+# match the code defaults in decadic/config.py; pinned here so an inherited shell
+# env can't silently turn one off. Each remains a per-agent toggle in the dashboard.
+`$env:DECADIC_SELF_MODEL_FEEDBACK = '1'   # Phase 1: self-state feedback spine
+`$env:DECADIC_GWT_ENABLED = '1'           # Phase 2: real global workspace (ignition)
+`$env:DECADIC_INTEGRATION_WINDOW_MS = '200'  # Phase 3: committed "now" (human-scale window)
+`$env:DECADIC_PREDICTIVE_AFFECT = '1'     # Phase 4: predicted affect colours perception
+`$env:DECADIC_REPRESENTED_SELF = '1'      # Phase 5: self as a represented object
+`$env:DECADIC_MEMORY_EFFICIENT_TRAINING = '1'  # Phase 6: 8-bit Adam + bf16 on CUDA
 python -m uvicorn decadic.api.app:app --host 127.0.0.1 --port $ServerPort
 Write-Host ''
 Write-Host 'Server stopped. Press any key to close this window.' -ForegroundColor Yellow
@@ -141,4 +150,5 @@ if (-not $NoBrowser) {
 
 Write-Host ""
 Write-Host "Done. Server and Web UI run in their own windows; close them to stop." -ForegroundColor Cyan
-Start-Sleep -Seconds 3
+Write-Host "Press any key to close this launcher window..." -ForegroundColor DarkGray
+[void][System.Console]::ReadKey($true)

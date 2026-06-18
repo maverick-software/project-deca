@@ -79,11 +79,12 @@ def test_from_env_threads_faculty(monkeypatch):
     assert CognitionFaculties.from_env().predictive_affect is True
 
 
-def test_config_defaults_off(monkeypatch):
+def test_config_default_on(monkeypatch):
     from decadic import config as C
 
+    # Self-model program ships ON by default (conftest pins it OFF for tests).
     monkeypatch.delenv("DECADIC_PREDICTIVE_AFFECT", raising=False)
-    assert C.predictive_affect_enabled() is False
+    assert C.predictive_affect_enabled() is True
 
 
 def test_configure_rebuilds_on_toggle_and_reports(monkeypatch):

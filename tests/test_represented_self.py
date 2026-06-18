@@ -132,11 +132,12 @@ def test_from_env_threads_faculty(monkeypatch):
     assert CognitionFaculties.from_env().represented_self is True
 
 
-def test_config_defaults_off(monkeypatch):
+def test_config_default_on(monkeypatch):
     from decadic import config as C
 
+    # Self-model program ships ON by default (conftest pins it OFF for tests).
     monkeypatch.delenv("DECADIC_REPRESENTED_SELF", raising=False)
-    assert C.represented_self_enabled() is False
+    assert C.represented_self_enabled() is True
 
 
 def test_configure_rebuilds_on_toggle_and_reports(monkeypatch):

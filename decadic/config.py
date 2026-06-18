@@ -293,8 +293,10 @@ def perception_feedback_enabled() -> bool:
 # next rebuild (configure() / reset()), exactly like perception_feedback. The
 # projection is zero-initialized, so even with the flag ON the first cycle is
 # byte-identical until learning moves it off parity; the fed-back vector is
-# detached (no cross-cycle BPTT).
-DEFAULT_SELF_MODEL_FEEDBACK = False
+# detached (no cross-cycle BPTT). Default ON (the self-model program ships
+# enabled for every new agent); tests pin it OFF via conftest for deterministic
+# baselines, and it is still a per-agent toggle in the dashboard.
+DEFAULT_SELF_MODEL_FEEDBACK = True
 
 
 def self_model_feedback_enabled() -> bool:
@@ -307,10 +309,12 @@ def self_model_feedback_enabled() -> bool:
 # dominant coalition (share of the salience mass >= threshold) "ignites" and is
 # globally broadcast (blended into A, fed back via the spine, boosts the episodic
 # salience, and is described by the narrative). Below threshold there is no
-# ignition: A holds its prior (nothing reaches global broadcast). Default OFF: the
-# off-branch is the existing EMA blend, byte-identical to before. It is a live
-# per-agent toggle (a pipeline branch, not an architecture change -> no rebuild).
-DEFAULT_GWT_ENABLED = False
+# ignition: A holds its prior (nothing reaches global broadcast). Default ON (the
+# off-branch is the legacy EMA blend). Unlike the zero-init faculties this changes
+# cognition immediately, so it is a deliberate behavioral default. It is a live
+# per-agent toggle (a pipeline branch, not an architecture change -> no rebuild);
+# tests pin it OFF via conftest so the EMA-parity assertions still hold.
+DEFAULT_GWT_ENABLED = True
 
 
 def gwt_enabled() -> bool:
@@ -342,9 +346,11 @@ def gwt_salience_boost() -> float:
 # the agent accumulates the bottom-up percept over this many wall-clock
 # milliseconds (or DECADIC_INTEGRATION_WINDOW_MAX_FRAMES cycles, whichever comes
 # first) and commits ONE bound "now" latent on close; between commits it acts on
-# the last committed moment (perception is held). 0 = off = today (the freshest
-# percept is always "now"), byte-identical. A live per-agent setting.
-DEFAULT_INTEGRATION_WINDOW_MS = 0.0
+# the last committed moment (perception is held). 0 = off = the freshest percept
+# is always "now". Default 200 ms (a human-scale integration window; capped at
+# DECADIC_INTEGRATION_WINDOW_MAX_FRAMES cycles so fast cycles still commit). A
+# live per-agent setting; tests pin it to 0 via conftest for deterministic timing.
+DEFAULT_INTEGRATION_WINDOW_MS = 200.0
 
 
 def integration_window_ms() -> float:
@@ -359,10 +365,11 @@ def integration_window_max_frames() -> int:
 # predicts the next-step affective context (viability/pain/pleasure/priority) from
 # the previous cycle's actual affect, and the predicted delta is added to the
 # episodic proxy before it is projected into the stack -- so the agent perceives
-# in light of how it expects to feel. Default OFF; the predictor's output layer is
+# in light of how it expects to feel. Default ON; the predictor's output layer is
 # zero-init so on is byte-identical until it learns. Rebuilds the brain on toggle
-# (the predictor is a stack submodule, checkpointed with the brain).
-DEFAULT_PREDICTIVE_AFFECT = False
+# (the predictor is a stack submodule, checkpointed with the brain). Tests pin it
+# OFF via conftest for deterministic baselines.
+DEFAULT_PREDICTIVE_AFFECT = True
 
 
 def predictive_affect_enabled() -> bool:
@@ -379,9 +386,10 @@ def predictive_affect_gain() -> float:
 # content onto the egocentric self-node, "controls" edges bind the self to its
 # learned body parts, and a compact self-node embedding is fed back through a
 # dedicated zero-init spine ingress -- so the self becomes a represented object the
-# agent models, not just an implicit process. Default OFF; the ingress is zero-init
+# agent models, not just an implicit process. Default ON; the ingress is zero-init
 # (byte-identical until learned). Rebuilds the brain on toggle (stack submodule).
-DEFAULT_REPRESENTED_SELF = False
+# Tests pin it OFF via conftest for deterministic baselines.
+DEFAULT_REPRESENTED_SELF = True
 
 
 def represented_self_enabled() -> bool:
@@ -393,10 +401,11 @@ def represented_self_enabled() -> bool:
 # bitsandbytes is importable on CUDA (halving the optimizer-moment memory, the
 # single largest training cost for the heavy presets) and (b) a bf16 autocast
 # around the stack forward on CUDA (cutting activation memory). Both fall back
-# silently to the fp32 path when unavailable (no bnb / CPU), and the flag defaults
-# OFF, so the standard path is byte-identical. Aimed at fitting the 250m/500m/1b
-# tiers on a single consumer GPU.
-DEFAULT_MEMORY_EFFICIENT_TRAINING = False
+# silently to the fp32 path when unavailable (no bnb / CPU), so on a CPU/test box
+# it is byte-identical regardless. Default ON to fit the 250m/500m/1b tiers on a
+# single consumer GPU; on CUDA with bitsandbytes this switches to 8-bit Adam +
+# bf16 forward.
+DEFAULT_MEMORY_EFFICIENT_TRAINING = True
 
 
 def memory_efficient_training_enabled() -> bool:
