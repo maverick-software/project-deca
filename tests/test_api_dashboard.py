@@ -478,6 +478,19 @@ def test_agent_defaults_apply_to_new_agents_only(api_app_neural):
         assert m_before3["growth_enabled"] is False
 
 
+def test_create_agent_accepts_explicit_neural_preset(api_app_neural):
+    with TestClient(api_app_neural) as client:
+        aid = client.post("/agent?preset=2_5m").json()["agent_id"]
+        m = client.get(f"/agent/{aid}/metrics").json()["metrics"]
+        assert m["preset"] == "2_5m"
+
+
+def test_create_agent_rejects_unknown_neural_preset(api_app_neural):
+    with TestClient(api_app_neural) as client:
+        r = client.post("/agent?preset=not-real")
+        assert r.status_code == 422
+
+
 def test_configure_viability_mode(api_app):
     with TestClient(api_app) as client:
         aid = client.post("/agent").json()["agent_id"]
@@ -540,39 +553,22 @@ def test_locomotion_telemetry_surfaced(api_app):
             assert key in m
 
 
-def test_curriculum_status_default_and_unknown_agent(api_app):
+def test_curriculum_endpoints_removed(api_app):
     with TestClient(api_app) as client:
-        st = client.get("/curriculum").json()
-        assert st["state"] == "stopped"
-        assert st["running"] is False
-        # Starting against a non-existent agent is a 409.
-        r = client.post("/curriculum/start", json={"agent_id": "nope"})
-        assert r.status_code == 409
+        assert client.get("/curriculum").status_code == 404
+        assert client.post("/curriculum/start", json={"agent_id": "nope"}).status_code == 404
+        assert client.post("/curriculum/pause").status_code == 404
+        assert client.post("/curriculum/resume").status_code == 404
+        assert client.post("/curriculum/stop").status_code == 404
+        assert client.post("/curriculum/phase", json={"index": 1}).status_code == 404
 
 
-def test_curriculum_lifecycle_and_phase_override(api_app):
+def test_migrated_locomotion_skills_available_from_dojo(api_app):
     with TestClient(api_app) as client:
-        aid = client.post("/agent").json()["agent_id"]
-        # Start binds to the agent and applies phase 0 (immortal) immediately.
-        st = client.post("/curriculum/start", json={"agent_id": aid}).json()
-        assert st["state"] == "running"
-        assert st["phase_index"] == 0
-        assert st["phase_name"] == "Self-modeling"
-        m = client.get(f"/agent/{aid}/metrics").json()["metrics"]
-        assert m["viability_mode"] == "immortal"
-
-        # A second start while running is rejected.
-        assert client.post("/curriculum/start", json={"agent_id": aid}).status_code == 409
-
-        # Pause / resume round-trips.
-        assert client.post("/curriculum/pause").json()["paused"] is True
-        assert client.post("/curriculum/resume").json()["paused"] is False
-
-        # Manual phase override jumps to phase 1 (metabolic) and applies its config.
-        st1 = client.post("/curriculum/phase", json={"index": 1}).json()
-        assert st1["phase_index"] == 1
-        m1 = client.get(f"/agent/{aid}/metrics").json()["metrics"]
-        assert m1["viability_mode"] == "metabolic"
-
-        stopped = client.post("/curriculum/stop").json()
-        assert stopped["state"] == "stopped"
+        skills = client.get("/dojo/skills").json()["skills"]
+        by_id = {s["skill_id"]: s for s in skills}
+        assert "developmental_locomotion" in by_id
+        assert "affective_locomotion" in by_id
+        phase = by_id["developmental_locomotion"]["phases"][2]
+        assert phase["periodic_body_commands"][0]["command"] == "give_food_near"
+        assert phase["demote_on_death"] is True

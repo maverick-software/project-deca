@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -23,6 +25,7 @@ def test_store_seeds_builtins_on_first_init(tmp_path):
     ids = {r["id"] for r in records}
     assert {"calm", "village", "mind"} <= ids
     assert all(r["builtin"] for r in records)
+    assert all(r["braces"] is False for r in records)
 
 
 def test_store_mind_only_has_no_elements(tmp_path):
@@ -68,6 +71,30 @@ def test_store_persists_across_instances(tmp_path):
     ids = {r["id"] for r in second.list()}
     assert created["id"] in ids
     assert len([r for r in second.list() if r["id"] == "calm"]) == 1
+
+
+def test_store_migrates_builtin_braces_off_without_rewriting_user_presets(tmp_path):
+    first = PresetStore(tmp_path)
+    user = first.create(
+        {
+            "name": "Manual braces scene",
+            "elements": ["house"],
+            "braces": True,
+        }
+    )
+    payload = {
+        "schema_version": 1,
+        "presets": [
+            {**r, "braces": True} if r["builtin"] else r
+            for r in first.list()
+        ],
+    }
+    first.path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    second = PresetStore(tmp_path)
+    records = second.list()
+    assert all(r["braces"] is False for r in records if r["builtin"])
+    assert second.get(user["id"])["braces"] is True
 
 
 def test_store_create_mind_only_clears_elements(tmp_path):

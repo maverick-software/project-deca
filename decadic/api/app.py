@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 from decadic.agents.registry import AgentRegistry
 from decadic.api.environment import EnvironmentControlError, EnvironmentSupervisor
 from decadic.embodiment import stances as stance_lib
-from decadic.curriculum.supervisor import CurriculumError, CurriculumSupervisor
 from decadic.api.schemas import (
     AgentCreateResponse,
     AgentStateResponse,
@@ -35,9 +34,13 @@ from decadic.api.vast.controller import VastController
 from decadic.api.vast.proxy import install_vast_proxy
 from decadic.api.vast.routes import register_vast_routes
 from decadic.api.vast.settings_store import VastSettingsStore
+from decadic.training.routes import register_skill_dojo_routes
+from decadic.training.store import UploadedSkillStore
+from decadic.training.supervisor import SkillDojoSupervisor
 from decadic.logging import setup_logging, stop_logging
 from decadic.memory.embeddings import query_vector_from_state_bus
 from decadic.nn.faculties import CognitionFaculties
+from decadic.nn.config import VALID_PRESETS
 from decadic.nn.plastic import PlasticityFlags
 
 logger = logging.getLogger(__name__)
@@ -86,6 +89,21 @@ def _agent_defaults_dict(registry: AgentRegistry) -> dict[str, object]:
     }
 
 
+def _validate_neural_preset(preset: str | None) -> str | None:
+    """Validate an explicit neural architecture preset for new-agent creation."""
+    if preset is None:
+        return None
+    name = preset.strip().lower()
+    if not name:
+        return None
+    if name not in VALID_PRESETS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown preset {preset!r}; choose from {list(VALID_PRESETS)}",
+        )
+    return name
+
+
 def _cors_origins() -> list[str]:
     raw = os.environ.get(
         "DECADIC_CORS_ORIGINS",
@@ -105,28 +123,14 @@ class EnvironmentStartRequest(BaseModel):
     elements: list[str] = Field(default_factory=list)
     vision: bool = True
     audio: bool = False
-    # Whether the joint-brace orthosis starts engaged (off -> free body that can
-    # fall from t=0). Default on preserves the established spawn behaviour.
-    braces: bool = True
+    # Whether the manual joint-brace orthosis starts engaged. Default off keeps
+    # new bodies free unless the operator explicitly enables the scaffold.
+    braces: bool = False
     # When true, supersede a running body instead of erroring; the old agent is
     # kept (now bodiless) and a new agent+body is started in its place.
     replace: bool = False
-
-
-class CurriculumStartRequest(BaseModel):
-    """Start the walking curriculum for one agent (observation-only trainer)."""
-
-    agent_id: str
-    # Opt into the stretch 'affective gait' phase (requires a threat in scene).
-    include_affective: bool = False
-    # Optional per-phase JSON tuning (thresholds/knobs) merged onto the defaults.
-    overrides: dict[str, object] | None = None
-
-
-class CurriculumPhaseRequest(BaseModel):
-    """Manual phase override (experiments)."""
-
-    index: int
+    # Optional neural architecture preset for the fresh mind.
+    preset: str | None = None
 
 
 @asynccontextmanager
@@ -149,11 +153,18 @@ async def lifespan(app: FastAPI):
     presets_dir.mkdir(parents=True, exist_ok=True)
     app.state.presets_dir = presets_dir
     app.state.preset_store = PresetStore(presets_dir)
+    skills_dir = Path(os.environ.get("DECADIC_SKILLS_DIR", data_dir / "skills"))
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    app.state.skills_dir = skills_dir
+    app.state.skill_store = UploadedSkillStore(skills_dir)
     app.state.environment = EnvironmentSupervisor(app.state.registry, log_dir=log_dir)
-    # Walking-curriculum supervisor: shapes the world + reads gates only (never
-    # touches the loss). Bound to one agent at a time via /curriculum/start.
-    app.state.curriculum = CurriculumSupervisor(
-        app.state.registry, backups_dir=backups_dir, log_dir=log_dir
+    # Skill Dojo: generalized skill-training curricula (teacher hints enter only
+    # replay/consolidation metadata; the live cognitive loop stays self-supervised).
+    app.state.skill_dojo = SkillDojoSupervisor(
+        app.state.registry,
+        backups_dir=backups_dir,
+        log_dir=log_dir,
+        skill_loader=app.state.skill_store.get_any,
     )
     # Vast.ai GPU deployment control plane (UI-driven). The settings store
     # persists the API key + deploy defaults; the controller owns at most one
@@ -161,11 +172,10 @@ async def lifespan(app: FastAPI):
     app.state.vast_settings = VastSettingsStore()
     app.state.vast_controller = VastController(app.state.vast_settings, log_dir=log_dir)
     yield
-    # Stop the curriculum loop before the body so no late config/give fires.
     try:
-        await app.state.curriculum.stop()
+        await app.state.skill_dojo.stop()
     except Exception:
-        logger.exception("curriculum_shutdown_failed")
+        logger.exception("skill_dojo_shutdown_failed")
     # Shut down any managed body process so it does not outlive the server.
     try:
         await app.state.environment.stop()
@@ -197,10 +207,10 @@ def create_app() -> FastAPI:
     )
 
     @application.post("/agent", response_model=AgentCreateResponse)
-    async def create_agent() -> AgentCreateResponse:
+    async def create_agent(preset: str | None = None) -> AgentCreateResponse:
         registry: AgentRegistry = application.state.registry
         agent_id = str(uuid.uuid4())
-        registry.create_agent(agent_id)
+        registry.create_agent(agent_id, preset=_validate_neural_preset(preset))
         return AgentCreateResponse(agent_id=agent_id)
 
     @application.get("/settings/agent-defaults")
@@ -315,8 +325,6 @@ def create_app() -> FastAPI:
         agent = registry.get(agent_id)
         if agent is None:
             raise HTTPException(status_code=404, detail="Unknown agent")
-        from decadic.nn.config import VALID_PRESETS
-
         name = preset.strip().lower()
         if name not in VALID_PRESETS:
             raise HTTPException(
@@ -610,6 +618,15 @@ def create_app() -> FastAPI:
         agent = registry.get(agent_id)
         if agent is None:
             raise HTTPException(status_code=404, detail="Unknown agent")
+        sup: EnvironmentSupervisor = application.state.environment
+        if not sup.is_running() or sup.status().get("agent_id") != agent_id:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "No running body for this agent; start or restart an environment "
+                    "before opening the MuJoCo live window."
+                ),
+            )
         cmd = "open_viewer" if open else "close_viewer"
         if not agent.queue_body_command(cmd):
             raise HTTPException(status_code=503, detail="Command queue full")
@@ -678,6 +695,7 @@ def create_app() -> FastAPI:
                 audio=req.audio,
                 braces=req.braces,
                 replace=req.replace,
+                preset=_validate_neural_preset(req.preset),
             )
         except EnvironmentControlError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -708,53 +726,6 @@ def create_app() -> FastAPI:
     async def delete_environment() -> JSONResponse:
         sup: EnvironmentSupervisor = application.state.environment
         return JSONResponse(await sup.delete())
-
-    @application.get("/curriculum")
-    async def get_curriculum() -> JSONResponse:
-        sup: CurriculumSupervisor = application.state.curriculum
-        return JSONResponse(sup.status())
-
-    @application.post("/curriculum/start")
-    async def start_curriculum(req: CurriculumStartRequest) -> JSONResponse:
-        sup: CurriculumSupervisor = application.state.curriculum
-        try:
-            status = await sup.start(
-                req.agent_id,
-                include_affective=req.include_affective,
-                overrides=req.overrides,
-            )
-        except CurriculumError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return JSONResponse(status)
-
-    @application.post("/curriculum/pause")
-    async def pause_curriculum() -> JSONResponse:
-        sup: CurriculumSupervisor = application.state.curriculum
-        try:
-            return JSONResponse(sup.pause())
-        except CurriculumError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    @application.post("/curriculum/resume")
-    async def resume_curriculum() -> JSONResponse:
-        sup: CurriculumSupervisor = application.state.curriculum
-        try:
-            return JSONResponse(sup.resume())
-        except CurriculumError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    @application.post("/curriculum/stop")
-    async def stop_curriculum() -> JSONResponse:
-        sup: CurriculumSupervisor = application.state.curriculum
-        return JSONResponse(await sup.stop())
-
-    @application.post("/curriculum/phase")
-    async def set_curriculum_phase(req: CurriculumPhaseRequest) -> JSONResponse:
-        sup: CurriculumSupervisor = application.state.curriculum
-        try:
-            return JSONResponse(await sup.set_phase(req.index))
-        except CurriculumError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @application.get("/agent/{agent_id}/state", response_model=AgentStateResponse)
     async def get_state(agent_id: str) -> AgentStateResponse:
@@ -892,6 +863,7 @@ def create_app() -> FastAPI:
     register_vast_routes(application)
     register_saved_agents_routes(application)
     register_preset_routes(application)
+    register_skill_dojo_routes(application)
 
     return application
 

@@ -26,6 +26,7 @@ class AgentRegistry:
     def create_agent(
         self,
         agent_id: str,
+        preset: str | None = None,
         flags: PlasticityFlags | None = None,
         faculties: CognitionFaculties | None = None,
     ) -> AgentRuntime:
@@ -37,6 +38,7 @@ class AgentRegistry:
             agent_id,
             episodic_db_path=db_path,
             graph_db_path=graph_db_path,
+            preset=preset,
             flags=flags if flags is not None else self.new_agent_flags,
             faculties=faculties if faculties is not None else self.new_agent_faculties,
         )

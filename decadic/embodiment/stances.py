@@ -109,6 +109,22 @@ _KNEEL_BASE: dict[str, float] = {
 _KNEEL_LEFT_JOINTS: dict[str, float] = {**_KNEEL_BASE, "abdomen_z": 25.0}
 _KNEEL_RIGHT_JOINTS: dict[str, float] = {**_KNEEL_BASE, "abdomen_z": -25.0}
 
+# Upright kneel: torso vertical, hips/knees folded under the body. This is the
+# correct intermediate for floor-to-stand practice: the agent is sitting up on
+# its knees, not pitched forward on hands and knees.
+_UPRIGHT_KNEEL_JOINTS: dict[str, float] = {
+    "right_hip_y": -35.0,
+    "left_hip_y": -35.0,
+    "right_knee": -125.0,
+    "left_knee": -125.0,
+    "right_ankle_y": 30.0,
+    "left_ankle_y": 30.0,
+    "right_shoulder1": -10.0,
+    "left_shoulder1": 10.0,
+    "right_elbow": -10.0,
+    "left_elbow": -10.0,
+}
+
 STANCES: dict[str, Stance] = {
     "stand": Stance(
         name="stand",
@@ -145,6 +161,15 @@ STANCES: dict[str, Stance] = {
         root_z=0.55,
         root_quat=_pitch_quat(90.0),
         fall_z=0.25,
+    ),
+    "kneel_upright": Stance(
+        name="kneel_upright",
+        label="Sit upright on knees",
+        description="Torso upright with both knees folded under the body; floor-to-stand intermediate.",
+        joints=_UPRIGHT_KNEEL_JOINTS,
+        root_z=0.82,
+        root_quat=UPRIGHT_QUAT,
+        fall_z=0.35,
     ),
     "crawl": Stance(
         name="crawl",
@@ -198,6 +223,65 @@ STANCES: dict[str, Stance] = {
                     "left_hip_y": -15.0,
                     "right_knee": -15.0,
                     "left_knee": -15.0,
+                    "right_elbow": 0.0,
+                    "left_elbow": 0.0,
+                },
+            ),
+        ),
+    ),
+    "kneel_to_stand": Stance(
+        name="kneel_to_stand",
+        label="Kneel to stand (motion)",
+        description="One-shot rise from upright kneeling: tuck feet under, extend hips/knees, and settle into stand.",
+        joints=_UPRIGHT_KNEEL_JOINTS,
+        root_z=0.82,
+        root_quat=UPRIGHT_QUAT,
+        fall_z=0.35,
+        period_s=4.0,
+        loop=False,
+        keyframes=(
+            (0.0, dict(_UPRIGHT_KNEEL_JOINTS)),
+            (
+                0.35,
+                {
+                    "right_hip_y": -70.0,
+                    "left_hip_y": -70.0,
+                    "right_knee": -115.0,
+                    "left_knee": -115.0,
+                    "right_ankle_y": 40.0,
+                    "left_ankle_y": 40.0,
+                    "right_shoulder1": -5.0,
+                    "left_shoulder1": 5.0,
+                    "right_elbow": -5.0,
+                    "left_elbow": -5.0,
+                },
+            ),
+            (
+                0.7,
+                {
+                    "right_hip_y": -35.0,
+                    "left_hip_y": -35.0,
+                    "right_knee": -55.0,
+                    "left_knee": -55.0,
+                    "right_ankle_y": 12.0,
+                    "left_ankle_y": 12.0,
+                    "right_shoulder1": 0.0,
+                    "left_shoulder1": 0.0,
+                    "right_elbow": 0.0,
+                    "left_elbow": 0.0,
+                },
+            ),
+            (
+                1.0,
+                {
+                    "right_hip_y": -5.0,
+                    "left_hip_y": -5.0,
+                    "right_knee": -5.0,
+                    "left_knee": -5.0,
+                    "right_ankle_y": 0.0,
+                    "left_ankle_y": 0.0,
+                    "right_shoulder1": 0.0,
+                    "left_shoulder1": 0.0,
                     "right_elbow": 0.0,
                     "left_elbow": 0.0,
                 },

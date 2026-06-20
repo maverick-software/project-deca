@@ -32,12 +32,14 @@ class FakeRegistry:
     def __init__(self) -> None:
         self.agents: dict[str, FakeAgent] = {}
         self.created: list[str] = []
+        self.created_presets: dict[str, str | None] = {}
         self.deleted: list[str] = []
 
-    def create_agent(self, agent_id: str) -> FakeAgent:
+    def create_agent(self, agent_id: str, preset: str | None = None) -> FakeAgent:
         agent = FakeAgent()
         self.agents[agent_id] = agent
         self.created.append(agent_id)
+        self.created_presets[agent_id] = preset
         return agent
 
     def get(self, agent_id: str) -> FakeAgent | None:
@@ -146,6 +148,18 @@ def test_start_with_no_valid_elements_raises(tmp_path, monkeypatch):
     asyncio.run(go())
 
 
+def test_start_forwards_neural_preset_to_created_agent(tmp_path, monkeypatch):
+    reg = FakeRegistry()
+    _patch_spawn(monkeypatch, FakeProc())
+    sup = EnvironmentSupervisor(reg, log_dir=tmp_path)
+
+    async def go():
+        st = await sup.start(["house"], preset="medium")
+        assert reg.created_presets[st["agent_id"]] == "medium"
+
+    asyncio.run(go())
+
+
 def test_pause_without_running_raises(tmp_path):
     reg = FakeRegistry()
     sup = EnvironmentSupervisor(reg, log_dir=tmp_path)
@@ -228,15 +242,15 @@ def test_status_exposes_braces_option_no_legacy_presets(tmp_path, monkeypatch):
         st = await sup.start(["crowd", "house"])
         assert st["elements"] == ["crowd", "house"]
         assert "crowd" in st["available_elements"]
-        # Braces default on is surfaced in the options; the retired in-tab preset
-        # map is gone (presets now live in the dedicated preset store).
-        assert st["options"]["braces"] is True
+        # Braces default off is surfaced in the options; the retired in-tab
+        # preset map is gone (presets now live in the dedicated preset store).
+        assert st["options"]["braces"] is False
         assert "available_presets" not in st
 
     asyncio.run(go())
 
 
-def test_start_braces_off_passes_no_braces_flag(tmp_path, monkeypatch):
+def test_start_braces_on_passes_braces_flag(tmp_path, monkeypatch):
     reg = FakeRegistry()
     captured: list[list[str]] = []
 
@@ -251,13 +265,13 @@ def test_start_braces_off_passes_no_braces_flag(tmp_path, monkeypatch):
     sup = EnvironmentSupervisor(reg, log_dir=tmp_path)
 
     async def go():
-        st = await sup.start(["house"], braces=False)
-        assert "--no-braces" in captured[-1]
+        st = await sup.start(["house"])
+        assert "--braces" not in captured[-1]
         assert st["options"]["braces"] is False
 
         await sup.stop()
         await sup.start(["house"], braces=True)
-        assert "--no-braces" not in captured[-1]
+        assert "--braces" in captured[-1]
 
     asyncio.run(go())
 

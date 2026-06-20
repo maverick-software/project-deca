@@ -1,0 +1,418 @@
+{
+  "skill_id": "stand_up_from_floor_balance",
+  "version": "1.0",
+  "name": "Stand Up From Floor and Balance",
+  "description": "Practice rising from upright kneeling into standing, then hold autonomous balance for a sustained dwell.",
+  "target_behavior": "Start sitting upright on the knees, push through the feet into a stand, and balance without teacher hints.",
+  "teacher": "stand_teacher",
+  "required_sensors": ["proprioception", "contacts"],
+  "checkpoint_on_graduate": true,
+  "phases": [
+    {
+      "index": 0,
+      "name": "Upright Kneel Familiarization",
+      "description": "Start sitting upright on the knees with teacher guidance and no manual brace scaffold.",
+      "teacher_weight": 1.0,
+      "teacher_adaptation": {
+        "enabled": true,
+        "min_weight": 0.0,
+        "max_weight": 1.0,
+        "rise_rate": 0.7,
+        "fade_rate": 0.08,
+        "stable_dwell_s": 3.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {
+          "root_height_min": 0.65,
+          "torso_tilt_max": 0.8,
+          "fall_rate_max": 0.2,
+          "forward_model_error_max": 5.0,
+          "tactile_pred_error_max": 5.0
+        },
+        "stability_thresholds": {
+          "root_height_min": 0.7,
+          "torso_tilt_max": 0.45,
+          "fall_rate_max": 0.1,
+          "forward_model_error_max": 2.0,
+          "tactile_pred_error_max": 2.0
+        }
+      },
+      "config": {
+        "viability_mode": "immortal",
+        "motor_babble_sigma": 0.08
+      },
+      "body_commands": ["set_stance:kneel_upright", "recenter"],
+      "reset_commands": ["set_stance:kneel_upright", "recenter"],
+      "timeout_s": 90,
+      "max_attempts": 5,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.35,
+          "label": "collapsed below upright-kneel floor",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.3,
+          "label": "torso tipped over",
+          "unit": "rad"
+        }
+      ],
+      "min_dwell_s": 20,
+      "gate": {
+        "min_samples": 8,
+        "criteria": [
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.1,
+            "label": "stable floor posture",
+            "unit": ""
+          },
+          {
+            "key": "root_height",
+            "comparator": ">=",
+            "threshold": 0.7,
+            "label": "root above upright-kneel floor",
+            "unit": "m"
+          },
+          {
+            "key": "forward_model_error",
+            "comparator": "<=",
+            "threshold": 1.5,
+            "label": "kneel body model bounded",
+            "unit": ""
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    },
+    {
+      "index": 1,
+      "name": "Kneel to Stand Push-Off",
+      "description": "Run the upright-root kneel-to-stand motion: feet tuck under, hips and knees extend, and the body pushes up into standing.",
+      "teacher_weight": 0.8,
+      "teacher_adaptation": {
+        "enabled": true,
+        "min_weight": 0.0,
+        "max_weight": 0.9,
+        "rise_rate": 0.8,
+        "fade_rate": 0.09,
+        "stable_dwell_s": 3.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {
+          "root_height_min": 0.65,
+          "torso_tilt_max": 0.85,
+          "fall_rate_max": 0.25,
+          "stance_phase_delta_min": 0.02,
+          "forward_model_error_max": 5.0,
+          "tactile_pred_error_max": 5.0
+        },
+        "stability_thresholds": {
+          "root_height_min": 0.9,
+          "torso_tilt_max": 0.5,
+          "fall_rate_max": 0.15,
+          "forward_model_error_max": 2.0,
+          "tactile_pred_error_max": 2.0
+        }
+      },
+      "config": {
+        "viability_mode": "immortal",
+        "motor_babble_sigma": 0.12
+      },
+      "body_commands": ["set_stance:kneel_to_stand", "recenter"],
+      "reset_commands": ["set_stance:kneel_to_stand", "recenter"],
+      "timeout_s": 120,
+      "max_attempts": 5,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.35,
+          "label": "collapsed during kneel-to-stand",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.3,
+          "label": "torso tipped over",
+          "unit": "rad"
+        },
+        {
+          "key": "fall_rate",
+          "comparator": ">=",
+          "threshold": 0.5,
+          "label": "too many falls during rise",
+          "unit": ""
+        }
+      ],
+      "min_dwell_s": 30,
+      "gate": {
+        "min_samples": 10,
+        "criteria": [
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.15,
+            "label": "rise without repeated falls",
+            "unit": ""
+          },
+          {
+            "key": "stance_phase",
+            "comparator": ">=",
+            "threshold": 0.95,
+            "label": "kneel-to-stand motion completed",
+            "unit": ""
+          },
+          {
+            "key": "forward_model_error",
+            "comparator": "<=",
+            "threshold": 1.5,
+            "label": "transition model bounded",
+            "unit": ""
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "name": "Assisted Standing Balance",
+      "description": "Switch into the validated stand posture, keep a small teacher hint, and require stable upright metrics before final evaluation.",
+      "teacher_weight": 0.35,
+      "teacher_adaptation": {
+        "enabled": true,
+        "min_weight": 0.0,
+        "max_weight": 0.45,
+        "rise_rate": 0.5,
+        "fade_rate": 0.15,
+        "stable_dwell_s": 2.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {
+          "root_height_min": 0.95,
+          "torso_tilt_max": 0.6,
+          "fall_rate_max": 0.18,
+          "forward_model_error_max": 5.0,
+          "tactile_pred_error_max": 5.0
+        },
+        "stability_thresholds": {
+          "root_height_min": 1.05,
+          "torso_tilt_max": 0.4,
+          "fall_rate_max": 0.08,
+          "forward_model_error_max": 2.0,
+          "tactile_pred_error_max": 2.0
+        }
+      },
+      "config": {
+        "viability_mode": "metabolic",
+        "motor_babble_sigma": 0.08
+      },
+      "body_commands": ["set_stance:stand", "recenter"],
+      "reset_commands": ["set_stance:stand", "recenter"],
+      "timeout_s": 150,
+      "max_attempts": 5,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.65,
+          "label": "collapsed below standing floor",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.2,
+          "label": "torso tipped over",
+          "unit": "rad"
+        },
+        {
+          "key": "fall_rate",
+          "comparator": ">=",
+          "threshold": 0.5,
+          "label": "too many falls while standing",
+          "unit": ""
+        }
+      ],
+      "min_dwell_s": 35,
+      "gate": {
+        "min_samples": 12,
+        "criteria": [
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.08,
+            "label": "rare falls while standing",
+            "unit": ""
+          },
+          {
+            "key": "root_height",
+            "comparator": ">=",
+            "threshold": 1.05,
+            "label": "standing root height",
+            "unit": "m"
+          },
+          {
+            "key": "torso_tilt",
+            "comparator": "<=",
+            "threshold": 0.45,
+            "label": "upright torso",
+            "unit": "rad"
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "name": "Autonomous Balance Dwell",
+      "description": "Teacher disabled. Hold upright balance for a sustained dwell and tolerate small perturbations before graduating.",
+      "teacher_weight": 0.0,
+      "teacher_adaptation": {
+        "enabled": false,
+        "min_weight": 0.0,
+        "max_weight": 0.0,
+        "rise_rate": 0.0,
+        "fade_rate": 0.0,
+        "stable_dwell_s": 0.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {},
+        "stability_thresholds": {}
+      },
+      "config": {
+        "viability_mode": "metabolic",
+        "motor_babble_sigma": 0.04
+      },
+      "body_commands": ["set_stance:stand", "perturb:small"],
+      "reset_commands": ["set_stance:stand", "recenter"],
+      "timeout_s": 180,
+      "max_attempts": 5,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.65,
+          "label": "collapsed below standing floor",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.2,
+          "label": "torso tipped over",
+          "unit": "rad"
+        },
+        {
+          "key": "fall_rate",
+          "comparator": ">=",
+          "threshold": 0.5,
+          "label": "too many autonomous falls",
+          "unit": ""
+        }
+      ],
+      "min_dwell_s": 60,
+      "is_terminal": true,
+      "gate": {
+        "min_samples": 16,
+        "criteria": [
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.05,
+            "label": "autonomous low fall rate",
+            "unit": ""
+          },
+          {
+            "key": "root_height",
+            "comparator": ">=",
+            "threshold": 1.05,
+            "label": "root remains standing-high",
+            "unit": "m"
+          },
+          {
+            "key": "torso_tilt",
+            "comparator": "<=",
+            "threshold": 0.35,
+            "label": "torso tilt bounded",
+            "unit": "rad"
+          },
+          {
+            "key": "teacher_override_fraction",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "teacher disabled",
+            "unit": ""
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    }
+  ]
+}

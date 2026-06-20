@@ -129,6 +129,18 @@ def test_checkpoint_reinitializes_motor_forward_heads_on_actuator_change(
 # --- MuJoCo-backed brace behavior ------------------------------------------
 
 
+def test_body_spawns_with_braces_off_by_default(monkeypatch):
+    pytest.importorskip("mujoco")
+    mod = _load_adapter(monkeypatch)
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        s = sim.snapshot()
+        assert s.braces_enabled is False
+        assert s.brace_engaged == pytest.approx(0.0)
+    finally:
+        sim.close()
+
+
 def test_body_stands_as_braced_statue_with_no_external_wrench(monkeypatch):
     """The core no-glide guarantee: with no brain command the braces hold the body
     upright on FULLY loaded feet, the root never receives an external wrench, and
@@ -137,7 +149,7 @@ def test_body_stands_as_braced_statue_with_no_external_wrench(monkeypatch):
 
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         s0 = sim.snapshot()
         assert s0.brace_engaged == pytest.approx(1.0)  # spawns fully welded
@@ -164,7 +176,7 @@ def test_joint_pe_from_brain_widens_rom(monkeypatch):
     open: sustained low PE frees the joints (the curriculum's whole point)."""
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         nu, nH = sim.model.nu, len(sim.hinge_qpos_adr)
         for _ in range(int(20.0 / 0.05)):
@@ -184,7 +196,7 @@ def test_joint_pe_from_brain_widens_rom(monkeypatch):
 def test_high_joint_pe_keeps_braces_welded(monkeypatch):
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         nu, nH = sim.model.nu, len(sim.hinge_qpos_adr)
         for _ in range(int(20.0 / 0.05)):
@@ -204,7 +216,7 @@ def test_recenter_preserves_earned_rom(monkeypatch):
     re-welding is the separate reset_braces() action, not recentering."""
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         nu, nH = sim.model.nu, len(sim.hinge_qpos_adr)
         for _ in range(int(15.0 / 0.05)):
@@ -235,7 +247,7 @@ def test_recenter_preserves_earned_rom(monkeypatch):
 def test_reset_braces_rewelds(monkeypatch):
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         nu, nH = sim.model.nu, len(sim.hinge_qpos_adr)
         for _ in range(int(15.0 / 0.05)):
@@ -257,10 +269,10 @@ def test_braces_can_be_switched_off_and_on(monkeypatch):
     brain alone holds up) while preserving earned ROM; ON re-engages the braces."""
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         jid6 = sim.hinge_jid[6]
-        # Default: braces on -> hinge far stiffer than native.
+        # Explicit braces=True -> hinge far stiffer than native.
         assert sim.snapshot().braces_enabled is True
         assert float(sim.model.jnt_stiffness[jid6]) > sim._native_stiff[6] + 1.0
 
@@ -294,7 +306,7 @@ def test_braces_can_be_switched_off_and_on(monkeypatch):
 def test_lifeless_relaxes_braces_to_native(monkeypatch):
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         # Welded by default: a braced hinge is much stiffer than its native spring.
         jid = sim.hinge_jid[6]
@@ -310,7 +322,7 @@ def test_lifeless_relaxes_braces_to_native(monkeypatch):
 def test_snapshot_and_observation_expose_brace_telemetry(monkeypatch):
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         sim.step(0.05)
         snap = sim.snapshot()
@@ -330,7 +342,7 @@ def test_snapshot_and_observation_expose_brace_telemetry(monkeypatch):
 def test_model_has_ankles_box_feet_sensors_and_bears_weight(monkeypatch):
     mujoco = pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         assert sim.model.nu == 21  # 21-actuator contract (ankles added)
 
@@ -388,7 +400,7 @@ def test_model_has_ankles_box_feet_sensors_and_bears_weight(monkeypatch):
 def test_arms_have_traction_and_stronger_actuators(monkeypatch):
     mujoco = pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         assert sim.model.nu == 21  # friction/gear changes do NOT alter the contract
 
@@ -420,7 +432,7 @@ def test_uses_implicitfast_integrator(monkeypatch):
     integrator that integrates them stably (explicit RK4 at this dt diverges)."""
     mujoco = pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         assert int(sim.model.opt.integrator) == int(
             mujoco.mjtIntegrator.mjINT_IMPLICITFAST
@@ -432,7 +444,7 @@ def test_uses_implicitfast_integrator(monkeypatch):
 def test_part_loads_live_and_flow_into_observation(monkeypatch):
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         max_total = 0.0
         for _ in range(120):
@@ -458,7 +470,7 @@ def test_default_geom_is_frictional_and_body_on_body_grips(monkeypatch):
     body-on-body self-contact."""
     mujoco = pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         gid = mujoco.mj_name2id(sim.model, mujoco.mjtObj.mjOBJ_GEOM, "torso1")
         assert int(sim.model.geom_condim[gid]) == 3
@@ -503,9 +515,19 @@ def test_stance_catalog_and_motion_flags():
     from decadic.embodiment import stances as st
 
     names = {c["name"] for c in st.catalog()}
-    assert {"stand", "all_fours", "kneel_left", "kneel_right", "crawl", "sit_to_stand"} <= names
+    assert {
+        "stand",
+        "all_fours",
+        "kneel_left",
+        "kneel_right",
+        "kneel_upright",
+        "crawl",
+        "sit_to_stand",
+        "kneel_to_stand",
+    } <= names
     assert st.get_stance("stand").is_motion is False
     assert st.get_stance("crawl").is_motion is True
+    assert st.get_stance("kneel_to_stand").is_motion is True
     assert st.get_stance("does_not_exist").name == "stand"  # safe fallback
 
 
@@ -528,13 +550,23 @@ def test_motion_ref_interpolates_and_wraps():
     held = st.motion_ref(rise, 1.5, _HINGE_NAMES, defaults)
     assert held == pytest.approx(end)  # one-shot holds the final keyframe
 
+    kneel_rise = st.get_stance("kneel_to_stand")
+    assert kneel_rise.root_quat == st.UPRIGHT_QUAT
+    start = st.motion_ref(kneel_rise, 0.0, _HINGE_NAMES, defaults)
+    end = st.motion_ref(kneel_rise, 1.0, _HINGE_NAMES, defaults)
+    held = st.motion_ref(kneel_rise, 1.5, _HINGE_NAMES, defaults)
+    assert held == pytest.approx(end)
+    right_knee = _HINGE_NAMES.index("right_knee")
+    right_hip_y = _HINGE_NAMES.index("right_hip_y")
+    assert abs(end[right_knee]) < abs(start[right_knee])
+    assert abs(end[right_hip_y]) < abs(start[right_hip_y])
 
-def test_set_stance_reposes_and_rewelds(monkeypatch):
-    """Selecting a stance re-poses the body into the stance start pose, re-welds
-    every joint brace, and reports the stance in telemetry."""
+
+def test_set_stance_reposes_without_rewelding(monkeypatch):
+    """Selecting a stance re-poses the body but preserves manual brace state."""
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         from decadic.embodiment import stances as st
 
@@ -547,11 +579,12 @@ def test_set_stance_reposes_and_rewelds(monkeypatch):
             sim.step(0.05)
         assert sim.snapshot().rom_mean > 0.0
 
+        earned = sim.snapshot().rom_mean
         sim.set_stance("all_fours")
         s = sim.snapshot()
         assert s.stance == "all_fours"
-        assert s.rom_mean == pytest.approx(0.0)  # re-welded for the new skill
-        assert s.brace_engaged == pytest.approx(1.0)
+        assert s.rom_mean == pytest.approx(earned)
+        assert s.brace_engaged == pytest.approx(1.0 - earned)
         # The body is posed at the stance's spawn height (a low quadruped).
         spawn_z = st.get_stance("all_fours").root_z
         assert s.position[2] == pytest.approx(spawn_z, abs=0.15)
@@ -566,7 +599,7 @@ def test_every_stance_finite_with_no_external_wrench(monkeypatch):
 
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         from decadic.embodiment import stances as st
 
@@ -586,7 +619,7 @@ def test_motion_stance_advances_phase_and_retargets(monkeypatch):
     reference (q_ref) from the trajectory; a static stance leaves q_ref fixed."""
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         sim.set_stance("stand")
         q_static = list(sim._q_ref)
@@ -610,7 +643,7 @@ def test_stance_sets_posture_aware_fall_floor(monkeypatch):
     perpetually flagged as a fall (which standing's 0.7 m floor would do)."""
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         sim.set_stance("stand")
         assert sim._stance_fall_z == pytest.approx(0.7)
@@ -626,7 +659,7 @@ def test_movement_hold_keeps_braces_welded(monkeypatch):
     release -- so the movement is driven rigidly until disabled."""
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         sim.set_movement_hold(True)
         nu, nH = sim.model.nu, len(sim.hinge_qpos_adr)
@@ -657,7 +690,7 @@ def test_movement_hold_loops_one_shot_motion(monkeypatch):
     past 1.0 instead of clamping, so the movement runs continuously."""
     pytest.importorskip("mujoco")
     mod = _load_adapter(monkeypatch)
-    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
     try:
         from decadic.embodiment import stances as st
 

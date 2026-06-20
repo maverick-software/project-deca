@@ -584,7 +584,7 @@ class BodySnapshot:
     rom_mean: float = 0.0  # mean per-joint range of motion earned (0 welded -> 1 free)
     brace_engaged: float = 1.0  # mean per-joint brace tightness (1 fully welded -> 0 free)
     rom_frac: list[float] = field(default_factory=list)  # per-hinge ROM (1 - tightness)
-    braces_enabled: bool = True  # master toggle; off -> native springs, free body
+    braces_enabled: bool = False  # manual scaffold toggle; off -> native springs, free body
     stance: str = "stand"  # active braced posture/motion (stance library name)
     stance_phase: float = 0.0  # motion-stance phase in [0, 1] (0 for static stances)
     movement_hold: bool = False  # hold mode: welded + looping until disabled
@@ -592,6 +592,14 @@ class BodySnapshot:
     foot_load_r: float = 0.0  # right foot load / body weight
     hand_load_l: float = 0.0  # left hand load / body weight
     hand_load_r: float = 0.0  # right hand load / body weight
+    teacher_support_active: bool = False
+    teacher_support_force: float = 0.0
+    teacher_support_torque: float = 0.0
+    teacher_drop_m: float = 0.0
+    teacher_target_drop_m: float = 0.25
+    teacher_height_error_m: float = 0.0
+    teacher_vertical_velocity: float = 0.0
+    teacher_support_mode: str = "off"
     # Full-body touch: per-part contact load (sensor short-name -> force/body weight),
     # live in ALL modes. Feeds perception (the tactile sense) and the dashboard map.
     part_loads: dict[str, float] = field(default_factory=dict)
@@ -725,6 +733,14 @@ def build_body_observation(
                 "foot_load_r": round(float(snap.foot_load_r), 5),
                 "hand_load_l": round(float(snap.hand_load_l), 5),
                 "hand_load_r": round(float(snap.hand_load_r), 5),
+                "teacher_support_active": bool(snap.teacher_support_active),
+                "teacher_support_force": round(float(snap.teacher_support_force), 5),
+                "teacher_support_torque": round(float(snap.teacher_support_torque), 5),
+                "teacher_drop_m": round(float(snap.teacher_drop_m), 5),
+                "teacher_target_drop_m": round(float(snap.teacher_target_drop_m), 5),
+                "teacher_height_error_m": round(float(snap.teacher_height_error_m), 5),
+                "teacher_vertical_velocity": round(float(snap.teacher_vertical_velocity), 5),
+                "teacher_support_mode": str(snap.teacher_support_mode),
                 "part_loads": {
                     k: round(float(v), 5) for k, v in snap.part_loads.items()
                 },
@@ -791,7 +807,7 @@ class HumanoidSim:
         view: bool = False,
         scene: str = "default",
         elements: "list[str] | None" = None,
-        braces: bool = True,
+        braces: bool = False,
     ) -> None:
         import mujoco
         import numpy as np
@@ -933,11 +949,9 @@ class HumanoidSim:
         self._joint_pe_ema: list[float] = [1.0] * nH  # start high: stay braced until proven
         self._brace_dwell: list[float] = [0.0] * nH
         self._joint_pe_buf: list[float] | None = None  # latest per-joint PE from the brain
-        # Master on/off for the orthosis. On (default): hinges are braced and the
-        # ROM curriculum runs. Off: hinges relax to native springs and the brain
-        # alone holds the body up (it can fall) -- earned ROM is preserved. The
-        # spawn-time default is configurable (--no-braces / preset) so a scenario
-        # can start as a free body from t=0.
+        # Master on/off for the manual orthosis. Off (default): hinges relax to
+        # native springs and the brain alone holds the body up (it can fall).
+        # Earned ROM is preserved when the operator toggles braces manually.
         self._braces_enabled = bool(braces)
         # "Hold movement" mode: when on, the active stance/motion keeps running
         # with every joint brace fully welded (the ROM curriculum is suspended --
@@ -1123,6 +1137,18 @@ class HumanoidSim:
         # brain, mapped into each driven joint's range. The brain's targets ride
         # on top of the joint braces, which do the standing work.
         self._motor_targets: "np.ndarray | None" = None  # noqa: F821
+        # Skill Dojo live teacher spotter. Separate from manual braces: it adds
+        # only temporary vertical support and upright torque while teacher assist
+        # is active, never horizontal locomotion.
+        self._teacher_assist = 0.0
+        self._teacher_live = False
+        self._teacher_support_force = 0.0
+        self._teacher_support_torque = 0.0
+        self._teacher_drop_m = 0.0
+        self._teacher_target_drop_m = 0.25
+        self._teacher_height_error_m = 0.0
+        self._teacher_vertical_velocity = 0.0
+        self._teacher_support_mode = "off"
         # When the brain is dead (or sending no commands) the body must go
         # passive: only the brain drives this body, so with no driver it falls
         # limp instead of replaying its last command forever.
@@ -1223,15 +1249,14 @@ class HumanoidSim:
             self.model.qpos_spring[self.hinge_qpos_adr[h]] = self._q_ref[h]
 
     def set_stance(self, name: str) -> None:
-        """Re-pose the body into a stance and restart its ROM curriculum.
+        """Re-pose the body into a stance without changing brace state.
 
         A stance defines the per-joint reference the braces hold (a static
         posture, or, for a motion stance, the base pose its phase trajectory
         rides on) plus the spawn root height/orientation and a posture-aware
         fall floor. Switching re-poses the body into the stance's start pose and
-        re-welds every joint brace (``reset_braces``): a new posture is a new
-        skill, so its range of motion is earned from fully braced. The root is
-        never forced, so the no-glide invariant holds in every stance.
+        updates the spring reference, but does not enable, disable, hold, or
+        re-weld braces. ``reset_braces`` remains a separate manual command.
         """
         stance = stance_lib.get_stance(name)
         self._stance_name = stance.name
@@ -1244,19 +1269,17 @@ class HumanoidSim:
         )
         self._seed_stance_spring()
         print(f"[body] stance -> {stance.name} ({stance.label})", flush=True)
-        # Re-pose into the stance start pose, then re-weld the braces (respecting
-        # the master on/off toggle) so the new posture is learned from scratch.
         self.recenter()
-        self.reset_braces()
 
     def apply_action(self, action: Any) -> None:
         """Store the latest Decadic action.
 
         The brain emits ``type="motor"`` with a per-actuator PD-target vector
         (``ctrl``) and, for the joint-brace curriculum, a per-joint forward-model
-        error vector (``joint_pe``) used to ratchet each hinge's ROM open. Legacy
-        ``assist_gain`` / ``curriculum_mode`` params are accepted but inert (the
-        external support harness was replaced by the internal joint braces).
+        error vector (``joint_pe``) used to ratchet each hinge's ROM open.
+        ``teacher_assist`` / ``teacher_live`` drive the Skill Dojo spotter during
+        non-autonomous training phases. Legacy ``assist_gain`` and
+        ``curriculum_mode`` remain accepted for telemetry/backcompat.
         """
         if not isinstance(action, dict):
             return
@@ -1271,6 +1294,12 @@ class HumanoidSim:
             if vec.shape[0] < self.model.nu:
                 vec = np.pad(vec, (0, self.model.nu - vec.shape[0]))
             self._motor_targets = np.clip(vec, -1.0, 1.0)
+        try:
+            assist = float(params.get("teacher_assist", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            assist = 0.0
+        self._teacher_assist = max(0.0, min(1.0, assist))
+        self._teacher_live = bool(params.get("teacher_live", False)) and self._teacher_assist > 0.0
         # Per-joint proprioceptive forward-model error from the brain. Drives the
         # ROM curriculum: a joint loosens (earns range of motion) only once its own
         # prediction error stays low. Stored finite; the ratchet reads it next tick.
@@ -1344,6 +1373,7 @@ class HumanoidSim:
                 self._apply_npc()
                 if self.crowd is not None:
                     self.crowd.apply()
+                self._apply_teacher_spotter()
                 self._apply_motor()
             self._mj.mj_step(self.model, self.data)
         if self.viewer is not None:
@@ -2014,6 +2044,100 @@ class HumanoidSim:
             lo_c, hi_c = self.model.actuator_ctrlrange[a]
             self.data.ctrl[a] = max(float(lo_c), min(float(hi_c), ctrl))
 
+    def _apply_teacher_spotter(self) -> None:
+        """Dojo live spotter: vertical support plus roll/pitch stabilization.
+
+        This intentionally applies no horizontal force. It can keep the learner
+        from face-planting while the skill is being taught, but it cannot walk the
+        body toward resources or satisfy a locomotion objective by itself.
+        """
+        self._teacher_support_force = 0.0
+        self._teacher_support_torque = 0.0
+        self._teacher_drop_m = 0.0
+        self._teacher_target_drop_m = 0.25
+        self._teacher_height_error_m = 0.0
+        self._teacher_vertical_velocity = 0.0
+        self._teacher_support_mode = "off"
+        assist = max(0.0, min(1.0, self._teacher_assist if self._teacher_live else 0.0))
+        if assist <= 1e-5:
+            return
+
+        pos = self.data.xpos[self.torso_id]
+        vel = self.data.cvel[self.torso_id][3:]
+        xmat = self.data.xmat[self.torso_id].reshape(3, 3)
+        roll = math.atan2(xmat[2, 1], xmat[2, 2])
+        pitch = math.asin(max(-1.0, min(1.0, -float(xmat[2, 0]))))
+        ang = self.data.cvel[self.torso_id][:3]
+        if not all(
+            math.isfinite(float(v))
+            for v in (
+                pos[2],
+                vel[2],
+                roll,
+                pitch,
+                ang[0],
+                ang[1],
+                self._stance_root_z,
+                self._body_weight,
+            )
+        ):
+            return
+
+        # Height-band spotter: let the learner load its feet while staying inside
+        # a parent-hold band. It catches before a full fall instead of waiting for
+        # the phase failure gate.
+        target_drop = 0.25
+        emergency_drop = 0.30
+        release_drop = 0.15
+        drop = max(-0.25, min(0.75, float(self._stance_root_z) - float(pos[2])))
+        downward_v = max(0.0, -float(vel[2]))
+        height_error = max(0.0, drop - target_drop)
+        catch_error = max(0.0, drop - emergency_drop)
+        if drop >= emergency_drop or downward_v > 0.8:
+            mode = "catch"
+        elif height_error > 0.0:
+            mode = "recover"
+        elif drop >= release_drop:
+            mode = "hold_band"
+        else:
+            mode = "observe"
+
+        if mode == "observe":
+            base_unload = 0.08
+        elif mode == "hold_band":
+            base_unload = 0.22
+        elif mode == "recover":
+            base_unload = 0.35
+        else:
+            base_unload = 0.5
+        upward = assist * (
+            self._body_weight * base_unload
+            + 420.0 * height_error
+            + 75.0 * downward_v
+            + 900.0 * catch_error
+        )
+        upward = max(0.0, min(1.35 * self._body_weight, upward))
+        # MuJoCo xfrc_applied is [force_x, force_y, force_z, torque_x,
+        # torque_y, torque_z]. Keep teacher support vertical-only.
+        self.data.xfrc_applied[self.torso_id, 2] += upward
+
+        # Upright spotter: resist roll/pitch only. Yaw is left alone.
+        tx = assist * (-45.0 * roll - 5.0 * float(ang[0]))
+        ty = assist * (-45.0 * pitch - 5.0 * float(ang[1]))
+        cap = 35.0
+        tx = max(-cap, min(cap, tx))
+        ty = max(-cap, min(cap, ty))
+        self.data.xfrc_applied[self.torso_id, 3] += tx
+        self.data.xfrc_applied[self.torso_id, 4] += ty
+
+        self._teacher_support_force = float(upward / max(1e-6, self._body_weight))
+        self._teacher_support_torque = float(math.hypot(tx, ty))
+        self._teacher_drop_m = float(max(0.0, drop))
+        self._teacher_target_drop_m = target_drop
+        self._teacher_height_error_m = float(height_error)
+        self._teacher_vertical_velocity = float(downward_v)
+        self._teacher_support_mode = mode
+
     def snapshot(self) -> BodySnapshot:
         pos = self.data.xpos[self.torso_id]
         xmat = self.data.xmat[self.torso_id].reshape(3, 3)
@@ -2093,6 +2217,14 @@ class HumanoidSim:
             foot_load_r=float(self._foot_load_r),
             hand_load_l=float(self._hand_load_l),
             hand_load_r=float(self._hand_load_r),
+            teacher_support_active=bool(self._teacher_live and self._teacher_assist > 1e-5),
+            teacher_support_force=float(self._teacher_support_force),
+            teacher_support_torque=float(self._teacher_support_torque),
+            teacher_drop_m=float(self._teacher_drop_m),
+            teacher_target_drop_m=float(self._teacher_target_drop_m),
+            teacher_height_error_m=float(self._teacher_height_error_m),
+            teacher_vertical_velocity=float(self._teacher_vertical_velocity),
+            teacher_support_mode=str(self._teacher_support_mode),
             part_loads={k: float(v) for k, v in self._part_loads.items()},
             body_parts=body_parts,
         )
@@ -2150,6 +2282,17 @@ class HumanoidSim:
         # action (reset_braces); recentering must not wipe curriculum progress.
         mujoco.mj_forward(self.model, self.data)
 
+    def perturb(self, strength: str = "small") -> None:
+        """Apply a brief lateral disturbance for Skill Dojo recovery practice."""
+        mag = 0.6 if str(strength).strip().lower() == "small" else 1.0
+        rid = self._mj.mj_name2id(self.model, self._mj.mjtObj.mjOBJ_JOINT, "root")
+        dadr = int(self.model.jnt_dofadr[rid])
+        # Root free-joint qvel layout starts with angular velocity then linear.
+        self.data.qvel[dadr + 3] += mag
+        self.data.qvel[dadr + 4] += 0.35 * mag
+        self.data.xfrc_applied[self.torso_id, 0] += 35.0 * mag
+        self.data.xfrc_applied[self.torso_id, 1] += 20.0 * mag
+
 
 # ---------------------------------------------------------------------------
 # WebSocket loops
@@ -2167,7 +2310,7 @@ async def _run(
     scene: str = "default",
     elements: "list[str] | None" = None,
     baseline: "str | None" = None,
-    braces: bool = True,
+    braces: bool = False,
 ) -> None:
     import websockets
 
@@ -2281,6 +2424,9 @@ async def _run(
                         sim.set_movement_hold(False)
                     elif cmd.startswith("set_stance:"):
                         sim.set_stance(cmd.split(":", 1)[1])
+                    elif cmd.startswith("perturb:"):
+                        sim.perturb(cmd.split(":", 1)[1])
+                        print(f"[body] perturb command applied ({cmd})", flush=True)
                     elif cmd == "pause":
                         env_paused = True
                         print("[body] environment paused (physics frozen)", flush=True)
@@ -2488,10 +2634,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--braces",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help=(
-            "Joint-brace orthosis engaged at spawn (on by default; use "
-            "--no-braces for a free body that can fall from t=0)"
+            "Manual joint-brace orthosis engaged at spawn (off by default; "
+            "use --braces to start scaffolded)"
         ),
     )
     parser.add_argument(

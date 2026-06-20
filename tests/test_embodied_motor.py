@@ -334,6 +334,192 @@ def test_adapter_applies_motor_with_no_external_wrench():
         sim.close()
 
 
+def test_dojo_teacher_spotter_uses_force_z_and_roll_pitch_torque_only():
+    import math
+    import numpy as np
+
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        nu = sim.model.nu
+        root = sim._mj.mj_name2id(sim.model, sim._mj.mjtObj.mjOBJ_JOINT, "root")
+        qadr = int(sim.model.jnt_qposadr[root])
+        angle = 0.2
+        sim.data.qpos[qadr + 3 : qadr + 7] = [
+            math.cos(angle / 2.0),
+            math.sin(angle / 2.0),
+            0.0,
+            0.0,
+        ]
+        sim._mj.mj_forward(sim.model, sim.data)
+
+        sim.apply_action(
+            {
+                "type": "motor",
+                "parameters": {
+                    "ctrl": [0.0] * nu,
+                    "teacher_assist": 1.0,
+                    "teacher_live": True,
+                },
+            }
+        )
+        sim.step(0.005)
+
+        wrench = np.array(sim.data.xfrc_applied[sim.torso_id], dtype=float)
+        assert wrench[2] > 0.0
+        assert wrench[0] == pytest.approx(0.0)
+        assert wrench[1] == pytest.approx(0.0)
+        assert abs(wrench[3]) > 0.0
+        assert wrench[4] == pytest.approx(0.0, abs=1e-8)
+        assert wrench[5] == pytest.approx(0.0)
+
+        snap = sim.snapshot()
+        assert snap.teacher_support_active is True
+        assert snap.teacher_support_force > 0.0
+        assert snap.teacher_support_torque > 0.0
+    finally:
+        sim.close()
+
+
+def test_dojo_teacher_spotter_disabled_leaves_external_wrench_zero():
+    import numpy as np
+
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        nu = sim.model.nu
+        sim.apply_action(
+            {
+                "type": "motor",
+                "parameters": {
+                    "ctrl": [0.0] * nu,
+                    "teacher_assist": 1.0,
+                    "teacher_live": False,
+                },
+            }
+        )
+        sim.step(0.005)
+        assert float(np.abs(sim.data.xfrc_applied[sim.torso_id]).sum()) == pytest.approx(0.0)
+        snap = sim.snapshot()
+        assert snap.teacher_support_active is False
+        assert snap.teacher_support_force == pytest.approx(0.0)
+        assert snap.teacher_support_torque == pytest.approx(0.0)
+    finally:
+        sim.close()
+
+
+def test_dojo_teacher_spotter_keeps_short_stand_finite_and_in_bounds():
+    import math
+    import numpy as np
+
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        nu = sim.model.nu
+        sim.apply_action(
+            {
+                "type": "motor",
+                "parameters": {
+                    "ctrl": [0.0] * nu,
+                    "teacher_assist": 1.0,
+                    "teacher_live": True,
+                },
+            }
+        )
+        for _ in range(20):
+            sim.step(0.01)
+            wrench = np.array(sim.data.xfrc_applied[sim.torso_id], dtype=float)
+            assert wrench[0] == pytest.approx(0.0)
+            assert wrench[1] == pytest.approx(0.0)
+            assert wrench[5] == pytest.approx(0.0)
+        snap = sim.snapshot()
+        assert all(math.isfinite(float(v)) for v in snap.position)
+        assert math.hypot(float(snap.position[0]), float(snap.position[1])) < mod.FENCE_RADIUS
+    finally:
+        sim.close()
+
+
+def test_dojo_teacher_spotter_support_increases_across_height_band():
+    import numpy as np
+
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        nu = sim.model.nu
+        root = sim._mj.mj_name2id(sim.model, sim._mj.mjtObj.mjOBJ_JOINT, "root")
+        qadr = int(sim.model.jnt_qposadr[root])
+
+        def support_at(drop_m: float) -> tuple[float, str]:
+            sim.recenter()
+            sim.data.qpos[qadr + 2] = sim._stance_root_z - drop_m
+            sim.data.qvel[:] = 0.0
+            sim._mj.mj_forward(sim.model, sim.data)
+            sim.apply_action(
+                {
+                    "type": "motor",
+                    "parameters": {
+                        "ctrl": [0.0] * nu,
+                        "teacher_assist": 1.0,
+                        "teacher_live": True,
+                    },
+                }
+            )
+            sim.step(0.001)
+            wrench = np.array(sim.data.xfrc_applied[sim.torso_id], dtype=float)
+            assert wrench[0] == pytest.approx(0.0)
+            assert wrench[1] == pytest.approx(0.0)
+            assert wrench[5] == pytest.approx(0.0)
+            return float(wrench[2]), sim.snapshot().teacher_support_mode
+
+        observe_force, observe_mode = support_at(0.05)
+        hold_force, hold_mode = support_at(0.25)
+        catch_force, catch_mode = support_at(0.32)
+
+        assert observe_mode == "observe"
+        assert hold_mode == "hold_band"
+        assert catch_mode == "catch"
+        assert 0.0 < observe_force < hold_force < catch_force
+    finally:
+        sim.close()
+
+
+def test_dojo_teacher_spotter_catches_downward_velocity_before_full_drop():
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        nu = sim.model.nu
+        root = sim._mj.mj_name2id(sim.model, sim._mj.mjtObj.mjOBJ_JOINT, "root")
+        qadr = int(sim.model.jnt_qposadr[root])
+        dadr = int(sim.model.jnt_dofadr[root])
+        sim.recenter()
+        sim.data.qpos[qadr + 2] = sim._stance_root_z - 0.12
+        sim.data.qvel[:] = 0.0
+        sim.data.qvel[dadr + 2] = -1.0
+        sim._mj.mj_forward(sim.model, sim.data)
+        sim.apply_action(
+            {
+                "type": "motor",
+                "parameters": {
+                    "ctrl": [0.0] * nu,
+                    "teacher_assist": 1.0,
+                    "teacher_live": True,
+                },
+            }
+        )
+        sim.step(0.001)
+        snap = sim.snapshot()
+        assert snap.teacher_support_mode == "catch"
+        assert snap.teacher_vertical_velocity > 0.8
+        assert snap.teacher_support_force > 0.0
+    finally:
+        sim.close()
+
+
 def test_adapter_pd_tracking_moves_toward_target():
     import numpy as np
 

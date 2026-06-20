@@ -95,6 +95,17 @@ def replay_batch_loss(stack: NeuralCognitiveStack, batch: list, device) -> torch
             )
             psi = stack.successor_predict(prev_state, prev_motor)
             loss = loss + C.sf_loss_weight() * F.mse_loss(psi, sf_target)
+        # Skill Dojo imitation term: train the consolidator toward a teacher
+        # motor target only when replay metadata explicitly carries one. This path
+        # never runs in live cognition and the phase-controlled weight decays to
+        # zero before autonomous evaluation.
+        if t.expert_motor is not None and float(getattr(t, "demo_weight", 0.0) or 0.0) > 0:
+            target = torch.as_tensor(t.expert_motor, device=dev, dtype=out["motor_u"].dtype).reshape(1, -1)
+            n = int(out["motor_u"].shape[-1])
+            if target.shape[-1] < n:
+                target = F.pad(target, (0, n - target.shape[-1]))
+            target = target[:, :n]
+            loss = loss + float(t.demo_weight) * F.mse_loss(out["motor_u"], target)
         losses.append(loss)
     return torch.stack(losses).mean()
 

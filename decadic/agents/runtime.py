@@ -151,6 +151,7 @@ class AgentRuntime:
         cycle_interval_s: float | None = None,
         episodic_db_path: Path | None = None,
         graph_db_path: Path | None = None,
+        preset: str | None = None,
         flags: PlasticityFlags | None = None,
         faculties: CognitionFaculties | None = None,
     ) -> None:
@@ -212,10 +213,11 @@ class AgentRuntime:
         # silently re-reading the process env.
         self.plastic_flags = flags
         self.neural: NeuralBundle | None = NeuralBundle.try_build(
-            agent_id, flags=flags, faculties=self.faculties
+            agent_id, preset=preset, flags=flags, faculties=self.faculties
         )
         self.preset: str | None = self.neural.preset if self.neural else None
         self._last_observation: dict[str, Any] | None = None
+        self._wait_for_observation_after_reset = False
         self._debug_views: dict[str, str] = {}
         self._last_cycle_trace: dict[str, Any] | None = None
         # Cognitive trace ("why" monitoring): the latest structured explanation
@@ -308,6 +310,10 @@ class AgentRuntime:
         self._landscape_probe: LossLandscapeProbe | None = None
         self._last_landscape: dict[str, Any] | None = None
         self.metrics: dict[str, Any] = self._initial_metrics()
+        # Skill Dojo metadata is written by decadic.training.supervisor and read
+        # only when packaging replay transitions. It never changes live action
+        # selection or live-cycle losses.
+        self.dojo_training: dict[str, Any] | None = None
         self.metrics["perception_mode"] = self.perception_mode
         self.metrics["discovered_perception"] = self.faculties.discovered
         self._refresh_homeostasis_metrics()
@@ -354,9 +360,9 @@ class AgentRuntime:
             # brace_engaged: mean brace tightness (1 fully welded -> 0 free).
             # joint_rom: per-hinge ROM fraction for the dashboard bars.
             "rom_mean": 0.0,
-            "brace_engaged": 1.0,
+            "brace_engaged": 0.0,
             "joint_rom": [],
-            "braces_enabled": True,
+            "braces_enabled": False,
             # Active joint-brace stance/posture and (for motion stances) its phase.
             "stance": "stand",
             "stance_phase": 0.0,
@@ -451,6 +457,20 @@ class AgentRuntime:
             "self_parts": 0,
             "agency_mean": 0.0,
             "agency_loss": 0.0,
+            # Skill Dojo telemetry (consolidation-only teacher hints).
+            "teacher_override_fraction": 0.0,
+            "teacher_live_assist": 0.0,
+            "teacher_motor_agreement": 1.0,
+            "teacher_support_active": False,
+            "teacher_support_force": 0.0,
+            "teacher_support_torque": 0.0,
+            "teacher_drop_m": 0.0,
+            "teacher_target_drop_m": 0.25,
+            "teacher_height_error_m": 0.0,
+            "teacher_vertical_velocity": 0.0,
+            "teacher_support_mode": "off",
+            "root_height": 0.0,
+            "torso_tilt": 0.0,
         }
 
     def ensure_cycle_worker(self) -> None:
@@ -705,10 +725,22 @@ class AgentRuntime:
             "foot_load_r",
             "hand_load_l",
             "hand_load_r",
+            "teacher_support_force",
+            "teacher_support_torque",
+            "teacher_drop_m",
+            "teacher_target_drop_m",
+            "teacher_height_error_m",
+            "teacher_vertical_velocity",
         ):
             value = body.get(key)
             if value is not None:
                 self.metrics[key] = float(value)
+        teacher_support_active = body.get("teacher_support_active")
+        if teacher_support_active is not None:
+            self.metrics["teacher_support_active"] = bool(teacher_support_active)
+        teacher_support_mode = body.get("teacher_support_mode")
+        if teacher_support_mode is not None:
+            self.metrics["teacher_support_mode"] = str(teacher_support_mode)
         rom_frac = body.get("rom_frac")
         if isinstance(rom_frac, list):
             self.metrics["joint_rom"] = [float(v) for v in rom_frac]
@@ -740,7 +772,7 @@ class AgentRuntime:
 
         Distance/displacement come from the proprioceptive root position;
         fall-rate from this observation's events; gait regularity from the
-        left/right foot loads. All of this is dashboard/curriculum telemetry and
+        left/right foot loads. All of this is dashboard/dojo telemetry and
         is NEVER fed back into cognition.
         """
         proprio = obs.get("proprioception")
@@ -748,6 +780,8 @@ class AgentRuntime:
         if isinstance(pos, list) and len(pos) >= 2:
             try:
                 xy = (float(pos[0]), float(pos[1]))
+                if len(pos) >= 3:
+                    self.metrics["root_height"] = round(float(pos[2]), 4)
             except (TypeError, ValueError):
                 xy = None
             if xy is not None:
@@ -799,6 +833,14 @@ class AgentRuntime:
             self.metrics["gait_regularity"] = round(
                 _gait_regularity(list(self._loco_foot_phase_buf)), 4
             )
+        orient = proprio.get("orientation") if isinstance(proprio, dict) else None
+        if isinstance(orient, list) and len(orient) >= 2:
+            try:
+                roll = float(orient[0])
+                pitch = float(orient[1])
+                self.metrics["torso_tilt"] = round(math.hypot(roll, pitch), 4)
+            except (TypeError, ValueError):
+                pass
 
     def pause(self) -> None:
         """Freeze the cognitive cycle loop (state and weights retained)."""
@@ -1224,6 +1266,7 @@ class AgentRuntime:
             )
             self.preset = self.neural.preset if self.neural else None
             self._last_observation = None
+            self._wait_for_observation_after_reset = True
             self._debug_views = {}
             self._last_cycle_trace = None
             self._last_cognitive_trace = None
@@ -1547,7 +1590,7 @@ class AgentRuntime:
         # the Brain Map re-reads the new awake-neuron ring on its next poll.
         if diagnostics.get("structural_change"):
             self._brain_topology_cache = None
-        # Reflect the current manual override (None = Auto/curriculum) every cycle.
+        # Reflect the current manual override (None = automatic schedule) every cycle.
         self.metrics["assist_override"] = self.assist_override
         self._refresh_homeostasis_metrics()
 
@@ -1659,6 +1702,13 @@ class AgentRuntime:
             async with self.lock:
                 pending = list(self._obs_buffer)
                 self._obs_buffer.clear()
+                if (
+                    self._wait_for_observation_after_reset
+                    and not pending
+                    and self._last_observation is None
+                ):
+                    continue
+                self._wait_for_observation_after_reset = False
                 ctx = CycleContext(
                     state_bus=self.state_bus,
                     perceptual=self.perceptual,
@@ -1690,6 +1740,19 @@ class AgentRuntime:
                 # replay buffer (no-op unless the feature is enabled).
                 tr = None
                 if transition is not None and self.replay_buffer is not None:
+                    dojo = self.dojo_training if isinstance(self.dojo_training, dict) else None
+                    if dojo is not None:
+                        transition = {
+                            **transition,
+                            "skill_id": str(dojo.get("skill_id", "")),
+                            "origin": str(dojo.get("origin", "self")),
+                            "expert_motor": dojo.get("expert_motor"),
+                            "demo_weight": float(dojo.get("demo_weight", 0.0) or 0.0),
+                            "success": bool(dojo.get("success", False)),
+                        }
+                        self.metrics["teacher_override_fraction"] = max(
+                            0.0, min(1.0, float(dojo.get("demo_weight", 0.0) or 0.0))
+                        )
                     tr = Transition(**transition)
                     self.replay_buffer.push(tr)
                 # Advance the explicit goal lifecycle (telemetry) and route the
@@ -1716,6 +1779,7 @@ class AgentRuntime:
                     }
                     act["parameters"] = params
                     outbound["action"] = act
+                self._apply_live_teacher(outbound)
                 trace = outbound.get("trace")
                 if isinstance(trace, list):
                     self._last_cycle_trace = {
@@ -1755,9 +1819,7 @@ class AgentRuntime:
                 wall_ms,
                 outbound.get("action", {}).get("type"),
             )
-            try:
-                self.out_queue.put_nowait(outbound)
-            except asyncio.QueueFull:
+            if not self._put_outbound(outbound, drop_oldest=False):
                 logger.warning(
                     "out_queue_full_drop agent_id=%s cycle=%s",
                     self.agent_id,
@@ -1801,6 +1863,7 @@ class AgentRuntime:
                     )
 
         async with self.lock:
+            self._wait_for_observation_after_reset = False
             self.perceptual_integrator.integrate(self.perceptual, obs)
             self.metrics["last_observation_iso"] = obs.get("timestamp")
             self._capture_locomotion_telemetry(obs)
@@ -1812,7 +1875,7 @@ class AgentRuntime:
             metabolic = self.viability_mode == "metabolic"
             if damage > 0.0:
                 # Learning grace + hard ceiling. The harness discount applies only
-                # to the curriculum's own tumbles (falls/collisions while the body
+                # to the scaffold's own tumbles (falls/collisions while the body
                 # is still being held up) so a learner that cannot yet stand is not
                 # punished to death for exploring. External threats (the "bear
                 # bite": explicit damage / combat / environmental hits) are EXEMPT -
@@ -2013,17 +2076,96 @@ class AgentRuntime:
 
     def queue_body_command(self, command: str) -> bool:
         """Push a body command (e.g. recenter) to the connected environment."""
+        msg = {
+            "type": "body_command",
+            "command": command,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        return self._put_outbound(msg, drop_oldest=True)
+
+    def _apply_live_teacher(self, outbound: dict[str, Any]) -> None:
+        """Attach Skill Dojo teacher metadata without suppressing student action.
+
+        The teacher provides live body support through the MuJoCo spotter and
+        replay/consolidation hints through ``expert_motor``. It must not replace
+        the live student motor command with a neutral teacher target, or high
+        assist freezes exploration exactly when the learner needs to practice.
+        """
+        dojo = self.dojo_training if isinstance(self.dojo_training, dict) else None
+        if dojo is None:
+            self.metrics["teacher_motor_agreement"] = 1.0
+            self.metrics["teacher_live_assist"] = 0.0
+            return
+        action = outbound.get("action")
+        if not isinstance(action, dict) or action.get("type") != "motor":
+            return
+        params = action.get("parameters")
+        if not isinstance(params, dict):
+            return
+        student = params.get("ctrl")
+        teacher = dojo.get("expert_motor")
+        if not isinstance(student, list) or not isinstance(teacher, list):
+            return
+        n = max(len(student), len(teacher), 1)
+
+        def _vec(xs: list[Any]) -> list[float]:
+            out: list[float] = []
+            for i in range(n):
+                try:
+                    v = float(xs[i]) if i < len(xs) else 0.0
+                except (TypeError, ValueError):
+                    v = 0.0
+                out.append(max(-1.0, min(1.0, v)))
+            return out
+
+        s = _vec(student)
+        t = _vec(teacher)
+        assist = max(0.0, min(1.0, float(dojo.get("demo_weight", 0.0) or 0.0)))
+        mean_abs_diff = sum(abs(sv - tv) for sv, tv in zip(s, t)) / max(1, n)
+        agreement = max(0.0, min(1.0, 1.0 - mean_abs_diff / 2.0))
+        params = dict(params)
+        params["student_ctrl"] = [round(v, 5) for v in s]
+        params["teacher_ctrl"] = [round(v, 5) for v in t]
+        params["ctrl"] = [round(v, 5) for v in s]
+        params["teacher_assist"] = round(assist, 5)
+        params["teacher_origin"] = str(dojo.get("origin", "self"))
+        params["assist_reason"] = str(dojo.get("assist_reason", ""))
+        params["objective_confidence"] = round(float(dojo.get("objective_confidence", 0.0) or 0.0), 5)
+        params["confidence_reason"] = str(dojo.get("confidence_reason", ""))
+        params["teacher_live"] = bool(dojo.get("teacher_live", False) and assist > 0.0)
+        action["parameters"] = params
+        outbound["action"] = action
+        self.metrics["teacher_motor_agreement"] = round(agreement, 5)
+        self.metrics["teacher_live_assist"] = round(assist, 5)
+
+    def _put_outbound(self, msg: dict[str, Any], *, drop_oldest: bool) -> bool:
+        """Queue an outbound websocket message.
+
+        Normal cycle outputs are high-rate and disposable if the body is slow.
+        Body commands are low-rate operator/control messages, so when requested
+        they may evict stale queued cycle outputs to make room.
+        """
         try:
-            self.out_queue.put_nowait(
-                {
-                    "type": "body_command",
-                    "command": command,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-            )
+            self.out_queue.put_nowait(msg)
             return True
         except asyncio.QueueFull:
-            return False
+            if not drop_oldest:
+                return False
+
+        # Make bounded room for control messages without blocking the API
+        # handler. Dropping old motor outputs is preferable to losing a manual
+        # recenter/viewer/stance command.
+        for _ in range(min(32, self.out_queue.maxsize or 32)):
+            try:
+                self.out_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            try:
+                self.out_queue.put_nowait(msg)
+                return True
+            except asyncio.QueueFull:
+                continue
+        return False
 
     def snapshot_state(self) -> dict[str, Any]:
         # The bounded "now" graph (working memory) plus the unbounded long-term

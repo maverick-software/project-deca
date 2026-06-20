@@ -6,7 +6,7 @@
 .DESCRIPTION
     Spawns two visible PowerShell windows you can watch and close:
       1. Server  - uvicorn on http://127.0.0.1:8765
-      2. Web UI  - Vite dev server on http://localhost:5173
+      2. Web UI  - Vite dev server on http://127.0.0.1:5173
     Each process is only started if its port is free, so re-running this (or the
     desktop shortcut) won't spawn duplicates. First run installs the dashboard's
     npm dependencies if they're missing.
@@ -93,7 +93,8 @@ Set-Location '$RepoRoot'
 `$env:DECADIC_PREDICTIVE_AFFECT = '1'     # Phase 4: predicted affect colours perception
 `$env:DECADIC_REPRESENTED_SELF = '1'      # Phase 5: self as a represented object
 `$env:DECADIC_MEMORY_EFFICIENT_TRAINING = '1'  # Phase 6: 8-bit Adam + bf16 on CUDA
-python -m uvicorn decadic.api.app:app --host 127.0.0.1 --port $ServerPort
+`$env:UV_CACHE_DIR = Join-Path '$RepoRoot' '.uv-cache'
+uv run --extra body python -m uvicorn decadic.api.app:app --host 127.0.0.1 --port $ServerPort
 Write-Host ''
 Write-Host 'Server stopped. Press any key to close this window.' -ForegroundColor Yellow
 [void][System.Console]::ReadKey(`$true)
@@ -113,14 +114,14 @@ if (Test-PortListening $UiPort) {
     Write-Host "[web] already running on port $UiPort - reusing it." -ForegroundColor Yellow
 }
 else {
-    Write-Host "[web] starting Vite dev server on http://localhost:$UiPort ..." -ForegroundColor Green
+    Write-Host "[web] starting Vite dev server on http://127.0.0.1:$UiPort ..." -ForegroundColor Green
     # Quote the '--' so PowerShell passes it through to npm literally (an
     # unquoted -- is PowerShell's end-of-parameters token and would be dropped,
     # leaving vite to ignore the port and fall back to its config default).
     $uiCmd = @"
 `$host.UI.RawUI.WindowTitle = 'Decadic Web UI (port $UiPort)'
 Set-Location '$DashboardDir'
-npm run dev '--' '--port' $UiPort '--strictPort'
+npm.cmd run dev -- --host 127.0.0.1 --port $UiPort --strictPort
 Write-Host ''
 Write-Host 'Web UI stopped. Press any key to close this window.' -ForegroundColor Yellow
 [void][System.Console]::ReadKey(`$true)
@@ -131,7 +132,7 @@ Write-Host 'Web UI stopped. Press any key to close this window.' -ForegroundColo
 
 # --- 3. Open the browser when the UI responds -----------------------------
 if (-not $NoBrowser) {
-    $uiUrl = "http://localhost:$UiPort"
+    $uiUrl = "http://127.0.0.1:$UiPort"
     Write-Host "[web] waiting for the UI to come up ..." -ForegroundColor Green
     $ready = $false
     foreach ($i in 1..60) {

@@ -7,6 +7,11 @@ import {
   type AgentPreset,
   type ScenarioDraft,
 } from "../api";
+import {
+  NEURAL_PRESET_INFO,
+  NEURAL_PRESET_LABELS,
+  heavyPresetWarning,
+} from "../neuralPresets";
 import Info from "./Info";
 
 /**
@@ -21,12 +26,23 @@ export default function AgentAdmin(props: {
   presets: AgentPreset[];
   selectedPresetId: string | null;
   draft: ScenarioDraft;
+  creationPreset: string;
   onSelectPreset: (id: string) => void;
+  onCreationPresetChange: (preset: string) => void;
   onCreated: (agentId: string) => void;
   onDeleted: () => void;
 }) {
-  const { selected, presets, selectedPresetId, draft, onSelectPreset, onCreated, onDeleted } =
-    props;
+  const {
+    selected,
+    presets,
+    selectedPresetId,
+    draft,
+    creationPreset,
+    onSelectPreset,
+    onCreationPresetChange,
+    onCreated,
+    onDeleted,
+  } = props;
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -42,6 +58,16 @@ export default function AgentAdmin(props: {
   }, [selected]);
 
   const create = async () => {
+    const heavyWarning = heavyPresetWarning(creationPreset);
+    if (
+      heavyWarning &&
+      !window.confirm(
+        `Create a fresh agent with the "${creationPreset}" architecture?` +
+          heavyWarning,
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -55,11 +81,12 @@ export default function AgentAdmin(props: {
           audio: draft.audio,
           braces: draft.braces,
           replace: true,
+          preset: creationPreset,
         });
         if (status.agent_id) onCreated(status.agent_id);
         else throw new Error("Body started but no agent id was returned.");
       } else {
-        const id = await createAgent();
+        const id = await createAgent(creationPreset);
         onCreated(id);
       }
     } catch (e) {
@@ -131,6 +158,22 @@ export default function AgentAdmin(props: {
           </option>
         ))}
       </select>
+      <span className="preset-picker create-preset-picker">
+        <select
+          value={creationPreset}
+          disabled={busy}
+          title="Neural network size for the next new agent"
+          aria-label="Neural network size for the next new agent"
+          onChange={(e) => onCreationPresetChange(e.target.value)}
+        >
+          {Object.entries(NEURAL_PRESET_LABELS).map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <Info tip={`New agent neural size. ${NEURAL_PRESET_INFO}`} />
+      </span>
       <button
         className="btn start"
         disabled={busy}

@@ -11,6 +11,7 @@ import {
   type EnvironmentStatus,
   type ScenarioDraft,
 } from "../api";
+import { heavyPresetWarning } from "../neuralPresets";
 import { usePolling } from "../usePolling";
 import Info from "./Info";
 
@@ -29,7 +30,7 @@ const ELEMENT_LABELS: Record<string, string> = {
  * Compose a scenario and start / pause / stop / delete the body+world.
  *
  * The editable config is the shared "draft" owned by App and selected from the
- * top-bar preset dropdown; this tab edits it (elements, senses, joint braces)
+ * top-bar preset dropdown; this tab edits it (elements, senses, manual braces)
  * and can either Save it as a new preset or Start it now. When a body is
  * running the same fields show the live config read-only.
  */
@@ -37,6 +38,7 @@ export default function EnvironmentPanel(props: {
   draft: ScenarioDraft;
   updateDraft: (patch: Partial<ScenarioDraft>) => void;
   selectedPreset: AgentPreset | null;
+  creationPreset: string;
   onSavePreset: (name: string) => Promise<AgentPreset>;
   onStarted?: (agentId: string) => void;
 }) {
@@ -104,19 +106,33 @@ export default function EnvironmentPanel(props: {
     }
   };
 
-  const onStart = () =>
-    run(
+  const confirmCreationPreset = () => {
+    const heavyWarning = heavyPresetWarning(props.creationPreset);
+    return (
+      !heavyWarning ||
+      window.confirm(
+        `Create a fresh agent with the "${props.creationPreset}" architecture?` +
+          heavyWarning,
+      )
+    );
+  };
+
+  const onStart = () => {
+    if (!confirmCreationPreset()) return;
+    void run(
       () =>
         startEnvironment({
           elements: draft.elements,
           vision: draft.vision,
           audio: draft.audio,
           braces: draft.braces,
+          preset: props.creationPreset,
         }),
       (s) => {
         if (s.agent_id) props.onStarted?.(s.agent_id);
       },
     );
+  };
 
   const onSave = async () => {
     const name = window.prompt("Name this preset:");
@@ -140,13 +156,13 @@ export default function EnvironmentPanel(props: {
   // Live (running) values fall back to the draft when stopped.
   const showVision = running ? !!env?.options?.vision : draft.vision;
   const showAudio = running ? !!env?.options?.audio : draft.audio;
-  const showBraces = running ? env?.options?.braces !== false : draft.braces;
+  const showBraces = running ? env?.options?.braces === true : draft.braces;
 
   return (
     <div className="panel env-panel">
       <h2>
         Environment
-        <Info tip="Compose a scenario from world elements + senses + joint braces, then either Save it as a preset (it appears in the top-bar dropdown) or Start it now. The top-bar preset dropdown loads a config in here to edit. When a body is running these fields show the live config; Pause freezes brain and world together, Delete stops the body and removes its agent." />
+        <Info tip="Compose a scenario from world elements, senses, and optional manual braces, then either Save it as a preset or Start it now. Braces default off; use them only as a manual body scaffold." />
       </h2>
 
       <div className={`env-status env-${state}`}>
@@ -217,7 +233,7 @@ export default function EnvironmentPanel(props: {
 
       <div className="env-section-label">
         Joint braces
-        <Info tip="Whether the internal joint-brace orthosis is engaged when the body spawns. On (default): every hinge starts welded toward the upright stand pose and earns range of motion as the brain learns to predict its body. Off: the body spawns free and can fall from t=0. This sets the spawn-time default; you can still toggle braces live from the Motor tab." />
+        <Info tip="Whether the manual joint-brace orthosis is engaged when the body spawns. Off is the default free body. On starts scaffolded for debugging or setup; Skill Dojo does not command braces." />
       </div>
       <div className="env-chips">
         <label className={`env-chip ${showBraces ? "on" : ""}`}>

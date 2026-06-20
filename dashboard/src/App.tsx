@@ -30,7 +30,7 @@ import LocomotionPanel from "./components/LocomotionPanel";
 import BrainMapPanel from "./components/BrainMapPanel";
 import LandscapePanel from "./components/LandscapePanel";
 import EnvironmentPanel from "./components/EnvironmentPanel";
-import CurriculumPanel from "./components/CurriculumPanel";
+import SkillDojoPanel from "./components/SkillDojoPanel";
 import DeploymentPanel from "./components/DeploymentPanel";
 import SavedAgentsPanel from "./components/SavedAgentsPanel";
 import PresetPicker from "./components/PresetPicker";
@@ -41,7 +41,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 const TABS: TabDef[] = [
   { id: "overview", label: "Overview" },
   { id: "environment", label: "Environment" },
-  { id: "training", label: "Training" },
+  { id: "dojo", label: "Skill Dojo" },
   { id: "graph", label: "Self-Indexed Graph" },
   { id: "discovery", label: "Discovery" },
   { id: "cognition", label: "Cognition / Why" },
@@ -55,13 +55,14 @@ const TABS: TabDef[] = [
 ];
 
 const TAB_STORAGE_KEY = "decadic.activeTab";
+const DEFAULT_CREATION_PRESET = "tiny";
 
 // A calm homeostasis body by default until presets load from the server.
 const DEFAULT_DRAFT: ScenarioDraft = {
   elements: ["house", "food", "water"],
   vision: true,
   audio: false,
-  braces: true,
+  braces: false,
   mindOnly: false,
 };
 
@@ -96,6 +97,7 @@ export default function App() {
   const [presets, setPresets] = useState<AgentPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ScenarioDraft>(DEFAULT_DRAFT);
+  const [creationPreset, setCreationPreset] = useState(DEFAULT_CREATION_PRESET);
 
   const refreshPresets = useCallback(async (): Promise<AgentPreset[]> => {
     const list = await listAgentPresets();
@@ -224,7 +226,9 @@ export default function App() {
           presets={presets}
           selectedPresetId={selectedPresetId}
           draft={draft}
+          creationPreset={creationPreset}
           onSelectPreset={onSelectPreset}
+          onCreationPresetChange={setCreationPreset}
           onCreated={(id) => {
             justCreated.current = { id, at: Date.now() };
             setAgentId(id);
@@ -254,6 +258,7 @@ export default function App() {
             draft={draft}
             updateDraft={updateDraft}
             selectedPreset={presets.find((p) => p.id === selectedPresetId) ?? null}
+            creationPreset={creationPreset}
             onSavePreset={savePreset}
             onStarted={(id) => {
               justCreated.current = { id, at: Date.now() };
@@ -263,11 +268,13 @@ export default function App() {
         </div>
       )}
 
-      {activeTab === "training" && (
+      {activeTab === "dojo" && (
         <div className="grid solo">
-          <ErrorBoundary label="Training" resetKey={metrics?.cycles_completed}>
-            <CurriculumPanel
+          <ErrorBoundary label="Skill Dojo" resetKey={agentId ?? "none"}>
+            <SkillDojoPanel
               agentId={agentId}
+              metrics={metrics}
+              creationPreset={creationPreset}
               onStarted={(id) => {
                 justCreated.current = { id, at: Date.now() };
                 setAgentId(id);
@@ -294,7 +301,7 @@ export default function App() {
       )}
 
       {activeTab !== "environment" &&
-        activeTab !== "training" &&
+        activeTab !== "dojo" &&
         activeTab !== "capacity" &&
         activeTab !== "deploy" &&
         activeTab !== "library" &&
@@ -318,7 +325,7 @@ export default function App() {
         </div>
       )}
 
-      {activeTab !== "environment" && agentId && state && (
+      {activeTab !== "environment" && activeTab !== "dojo" && agentId && state && (
         <>
           {activeTab === "overview" && (
             <div className="overview">
@@ -385,7 +392,7 @@ export default function App() {
               <ErrorBoundary label="Motor / Active Inference" resetKey={metrics?.cycles_completed}>
                 <MotorPanel metrics={metrics} history={history} agentId={agentId} />
               </ErrorBoundary>
-              <ErrorBoundary label="Locomotion / Curriculum" resetKey={metrics?.cycles_completed}>
+              <ErrorBoundary label="Locomotion" resetKey={metrics?.cycles_completed}>
                 <LocomotionPanel metrics={metrics} />
               </ErrorBoundary>
             </div>

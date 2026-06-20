@@ -24,7 +24,7 @@ an `ErrorBoundary`.
 ## Other panels (overview)
 
 Vitals/Homeostasis/Cycle/StateBus/Events/CycleWheel/Discovery/Eval/Cognition/
-Capacity/Motor/Locomotion/BrainMap/Environment/Curriculum/Deployment/SavedAgents
+Capacity/Motor/Locomotion/BrainMap/Environment/SkillDojo/Deployment/SavedAgents
 — see `../App.tsx` for tab wiring and which props each receives.
 
 When adding a panel: add its types to `../api.ts`, keep the file < 500 lines,

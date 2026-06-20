@@ -115,8 +115,8 @@ class CreateAgentPresetRequest(BaseModel):
     elements: list[str] = Field(default_factory=list)
     vision: bool = True
     audio: bool = False
-    # Whether the joint-brace orthosis starts engaged (off -> free body).
-    braces: bool = True
+    # Whether the manual joint-brace scaffold starts engaged.
+    braces: bool = False
     # A disembodied mind: no body/world is spawned for this preset.
     mind_only: bool = False
 
@@ -131,7 +131,7 @@ class AgentPresetRecord(BaseModel):
     elements: list[str] = Field(default_factory=list)
     vision: bool = True
     audio: bool = False
-    braces: bool = True
+    braces: bool = False
     mind_only: bool = False
     builtin: bool = False
     created_at: str | None = None
@@ -139,4 +139,3 @@ class AgentPresetRecord(BaseModel):
 
 class AgentPresetListResponse(BaseModel):
     presets: list[AgentPresetRecord] = Field(default_factory=list)
-

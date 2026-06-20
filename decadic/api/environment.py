@@ -91,8 +91,9 @@ class EnvironmentSupervisor:
         *,
         vision: bool = True,
         audio: bool = False,
-        braces: bool = True,
+        braces: bool = False,
         replace: bool = False,
+        preset: str | None = None,
     ) -> dict[str, Any]:
         """Create a fresh agent and spawn the adapter bound to it (single-slot).
 
@@ -122,7 +123,7 @@ class EnvironmentSupervisor:
                 )
 
             agent_id = str(uuid.uuid4())
-            self._registry.create_agent(agent_id)
+            self._registry.create_agent(agent_id, preset=preset)
 
             self._log_dir.mkdir(parents=True, exist_ok=True)
             log_path = self._log_dir / f"environment_{agent_id}.log"
@@ -146,10 +147,10 @@ class EnvironmentSupervisor:
                 argv.append("--vision")
             if audio:
                 argv.append("--audio")
-            # Default braces ON is the adapter's own default; only the off case
-            # needs an explicit flag (free body that can fall from t=0).
-            if not braces:
-                argv.append("--no-braces")
+            # Braces are a manual scaffold. Bodies start free by default; only
+            # the explicit on case needs a flag.
+            if braces:
+                argv.append("--braces")
 
             try:
                 proc = await asyncio.create_subprocess_exec(

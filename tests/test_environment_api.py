@@ -31,6 +31,12 @@ def test_start_with_empty_elements_is_conflict(api_app):
         assert r2.status_code == 409
 
 
+def test_start_rejects_unknown_neural_preset(api_app):
+    with TestClient(api_app) as client:
+        r = client.post("/environment", json={"elements": ["house"], "preset": "not-real"})
+        assert r.status_code == 422
+
+
 def test_stop_when_idle_is_ok(api_app):
     with TestClient(api_app) as client:
         r = client.post("/environment/stop")

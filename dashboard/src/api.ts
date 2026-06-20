@@ -417,6 +417,14 @@ export type Metrics = {
   foot_load_r?: number;
   hand_load_l?: number;
   hand_load_r?: number;
+  teacher_support_active?: boolean;
+  teacher_support_force?: number;
+  teacher_support_torque?: number;
+  teacher_drop_m?: number;
+  teacher_target_drop_m?: number;
+  teacher_height_error_m?: number;
+  teacher_vertical_velocity?: number;
+  teacher_support_mode?: string;
   // Full-body touch: per-part contact loads (short name -> force/body weight).
   part_loads?: Record<string, number>;
   // Locomotion / gait telemetry (eval-only; never read by cognition). Drives the
@@ -686,7 +694,7 @@ export interface StanceInfo {
   motion: boolean;
 }
 
-// Selectable joint-brace stances. Mirrors the backend stance library
+// Selectable body stances. Mirrors the backend stance library
 // (decadic/embodiment/stances.py, also served at GET /body/stances); kept here so
 // the selector renders without an extra round-trip.
 export const STANCES: StanceInfo[] = [
@@ -694,12 +702,13 @@ export const STANCES: StanceInfo[] = [
   { name: "all_fours", label: "Kneel on all fours", motion: false },
   { name: "kneel_left", label: "Kneel (twist left)", motion: false },
   { name: "kneel_right", label: "Kneel (twist right)", motion: false },
+  { name: "kneel_upright", label: "Sit upright on knees", motion: false },
   { name: "crawl", label: "Crawl (motion)", motion: true },
   { name: "sit_to_stand", label: "Rise up (motion)", motion: true },
+  { name: "kneel_to_stand", label: "Kneel to stand (motion)", motion: true },
 ];
 
-// Re-pose the body into a stance and restart that stance's ROM curriculum (the
-// body re-poses into the start pose and re-welds every joint brace).
+// Re-pose the body into a stance without changing manual brace state.
 export function setStance(agentId: string, name: string): Promise<void> {
   return postJson(`/agent/${agentId}/body/stance?name=${encodeURIComponent(name)}`);
 }
@@ -717,8 +726,9 @@ export function setParentPaused(agentId: string, paused: boolean): Promise<void>
   return postJson(`/agent/${agentId}/body/npc?paused=${paused}`);
 }
 
-export async function createAgent(): Promise<string> {
-  const r = await fetch(`${httpBase()}/agent`, { method: "POST" });
+export async function createAgent(preset?: string): Promise<string> {
+  const q = preset ? `?preset=${encodeURIComponent(preset)}` : "";
+  const r = await fetch(`${httpBase()}/agent${q}`, { method: "POST" });
   if (!r.ok) throw new Error(`create: HTTP ${r.status}`);
   const body = (await r.json()) as { agent_id: string };
   return body.agent_id;
@@ -912,10 +922,12 @@ export type EnvironmentStartRequest = {
   elements: string[];
   vision?: boolean;
   audio?: boolean;
-  // Whether the joint-brace orthosis starts engaged (off -> free body).
+  // Whether the manual joint-brace scaffold starts engaged.
   braces?: boolean;
   // Supersede a running body instead of erroring (used by "+ New agent").
   replace?: boolean;
+  // Neural architecture preset for the fresh mind created with this body.
+  preset?: string;
 };
 
 export function fetchEnvironment(): Promise<EnvironmentStatus> {
@@ -969,8 +981,8 @@ export async function deleteEnvironment(): Promise<EnvironmentStatus> {
 
 // --- Agent presets ---------------------------------------------------------
 // A named scenario/body config the top-bar dropdown offers next to "+ New
-// agent": which elements to spawn, which senses are on, whether the joint
-// braces start engaged, and whether it is a disembodied mind. Server-defined
+// agent": which elements to spawn, which senses are on, whether the manual
+// joint-brace scaffold starts engaged, and whether it is a disembodied mind. Server-defined
 // (built-ins) plus user-saved.
 
 export type AgentPreset = {
@@ -1038,11 +1050,9 @@ export async function deleteAgentPreset(presetId: string): Promise<void> {
   if (!r.ok) throw new Error(`delete preset: HTTP ${r.status}`);
 }
 
-// --- Walking curriculum ----------------------------------------------------
+// --- Skill gates -----------------------------------------------------------
 
-export type CurriculumState = "stopped" | "running" | "paused" | "error";
-
-// One promotion condition's live readout (mirrors gates.CriterionResult).
+// One promotion condition's live readout (mirrors training.gates.CriterionResult).
 export type CriterionStatus = {
   label: string;
   key: string;
@@ -1063,52 +1073,135 @@ export type GateStatus = {
   criteria: CriterionStatus[];
 };
 
-export type CurriculumHistoryRec = {
-  phase: number;
-  name: string;
-  // "promoted" | "demoted" | "graduated"
-  event: string;
-  at: string;
-  cycles: number | null;
+// --- Skill Dojo -------------------------------------------------------------
+
+export type SkillSource = "builtin" | "uploaded";
+
+export type SkillCriterion = {
+  key: string;
+  comparator: "<=" | ">=" | "trend>=";
+  threshold: number;
+  label: string;
+  unit?: string;
 };
 
-export type CurriculumStatus = {
-  state: CurriculumState;
+export type DojoSkillPhase = {
+  index: number;
+  name: string;
+  description: string;
+  teacher_weight: number;
+  teacher_adaptation?: {
+    enabled: boolean;
+    min_weight: number;
+    max_weight: number;
+    rise_rate: number;
+    fade_rate: number;
+    danger_thresholds: Record<string, number>;
+    stability_thresholds: Record<string, number>;
+    stable_dwell_s: number;
+    unstable_dwell_s: number;
+    zero_required_for_graduation: boolean;
+  } | null;
+  config: Record<string, unknown>;
+  body_commands: string[];
+  periodic_body_commands: Array<{ command: string; period_s: number }>;
+  min_dwell_s: number;
+  timeout_s: number;
+  max_attempts: number;
+  auto_retry: boolean;
+  reset_commands: string[];
+  min_samples: number;
+  demote_on_death: boolean;
+  is_terminal: boolean;
+  criteria: SkillCriterion[];
+  failure_criteria: SkillCriterion[];
+  failure_min_samples: number;
+};
+
+export type DojoSkill = {
+  skill_id: string;
+  version: string;
+  name: string;
+  description: string;
+  target_behavior: string;
+  teacher: string;
+  source: SkillSource;
+  builtin: boolean;
+  required_sensors: string[];
+  checkpoint_on_graduate: boolean;
+  warnings?: string[];
+  phases: DojoSkillPhase[];
+};
+
+export type DojoHistoryRec = {
+  phase: number;
+  name: string;
+  event: string;
+  at: string;
+};
+
+export type DojoStatus = {
+  state: "stopped" | "running" | "paused" | "graduated" | "failed" | "error";
   running: boolean;
   paused: boolean;
-  graduated: boolean;
   agent_id: string | null;
+  skill_id: string | null;
+  skill_name: string | null;
   phase_index: number | null;
   phase_name: string | null;
   phase_description: string | null;
   phase_count: number;
-  is_terminal: boolean;
-  min_dwell_s: number | null;
-  dwell_s: number;
-  window_size: number;
-  satisfier: { enabled: boolean; resources: string[]; period_s: number | null };
+  teacher_weight: number;
+  teacher_assist: number;
+  teacher_min: number;
+  teacher_max: number;
+  teacher_rise_rate: number;
+  teacher_fade_rate: number;
+  stable_dwell_s: number;
+  unstable_dwell_s: number;
+  assist_reason: string;
+  teacher_origin: "self" | "dagger" | "demo";
+  objective_confidence: number;
+  confidence_reason: string;
+  confidence_dwell_s: number;
+  teacher_live: boolean;
+  teacher_support_active: boolean;
+  teacher_support_force: number;
+  teacher_support_torque: number;
+  teacher_drop_m: number;
+  teacher_target_drop_m: number;
+  teacher_height_error_m: number;
+  teacher_vertical_velocity: number;
+  teacher_support_mode: string;
+  samples: number;
   gate: GateStatus | null;
-  history: CurriculumHistoryRec[];
+  failure: CriterionStatus | null;
+  attempt_index: number;
+  attempt_failures: number;
+  attempt_elapsed_s: number;
+  attempt_timeout_s: number;
+  max_attempts: number;
+  auto_retry: boolean;
+  last_attempt_outcome: string | null;
+  failure_reason: string | null;
+  manual_scaffold_active: boolean;
+  history: DojoHistoryRec[];
+  report_path: string | null;
   started_at: number | null;
   poll_interval_s: number;
   error: string | null;
-  log_path: string | null;
 };
 
-export type CurriculumStartRequest = {
-  agent_id: string;
-  include_affective?: boolean;
-  overrides?: Record<string, unknown> | null;
-};
-
-export function fetchCurriculum(): Promise<CurriculumStatus> {
-  return getJson<CurriculumStatus>("/curriculum");
+export async function fetchDojoSkills(): Promise<DojoSkill[]> {
+  const r = await getJson<{ skills: DojoSkill[] }>("/dojo/skills");
+  return r.skills;
 }
 
-async function postCurriculum(
-  path: string,
-  body?: unknown,
-): Promise<CurriculumStatus> {
+export function fetchDojoStatus(): Promise<DojoStatus> {
+  return getJson<DojoStatus>("/dojo/status");
+}
+
+async function postDojo(path: string, body?: unknown): Promise<DojoStatus> {
   const init: RequestInit = { method: "POST" };
   if (body !== undefined) {
     init.headers = { "Content-Type": "application/json" };
@@ -1125,27 +1218,66 @@ async function postCurriculum(
     }
     throw new Error(detail);
   }
-  return (await r.json()) as CurriculumStatus;
+  return (await r.json()) as DojoStatus;
 }
 
-export function startCurriculum(
-  req: CurriculumStartRequest,
-): Promise<CurriculumStatus> {
-  return postCurriculum("/curriculum/start", req);
+export function startDojo(req: {
+  agent_id: string;
+  skill_id: string;
+  auto_retry?: boolean;
+  max_attempts?: number;
+  timeout_multiplier?: number;
+}): Promise<DojoStatus> {
+  return postDojo("/dojo/start", req);
 }
 
-export function pauseCurriculum(): Promise<CurriculumStatus> {
-  return postCurriculum("/curriculum/pause");
+export function pauseDojo(): Promise<DojoStatus> {
+  return postDojo("/dojo/pause");
 }
 
-export function resumeCurriculum(): Promise<CurriculumStatus> {
-  return postCurriculum("/curriculum/resume");
+export function resumeDojo(): Promise<DojoStatus> {
+  return postDojo("/dojo/resume");
 }
 
-export function stopCurriculum(): Promise<CurriculumStatus> {
-  return postCurriculum("/curriculum/stop");
+export function stopDojo(): Promise<DojoStatus> {
+  return postDojo("/dojo/stop");
 }
 
-export function setCurriculumPhase(index: number): Promise<CurriculumStatus> {
-  return postCurriculum("/curriculum/phase", { index });
+export function setDojoPhase(index: number): Promise<DojoStatus> {
+  return postDojo("/dojo/phase", { index });
+}
+
+export async function uploadDojoSkill(skill: unknown): Promise<DojoSkill> {
+  const r = await fetch(`${httpBase()}/dojo/skills/upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(skill),
+  });
+  if (!r.ok) {
+    let detail = `HTTP ${r.status}`;
+    try {
+      const j = (await r.json()) as { detail?: string };
+      if (j.detail) detail = j.detail;
+    } catch {
+      // non-JSON error body; keep the status code message
+    }
+    throw new Error(detail);
+  }
+  return (await r.json()) as DojoSkill;
+}
+
+export async function deleteDojoSkill(skillId: string): Promise<void> {
+  const r = await fetch(`${httpBase()}/dojo/skills/${encodeURIComponent(skillId)}`, {
+    method: "DELETE",
+  });
+  if (!r.ok) {
+    let detail = `HTTP ${r.status}`;
+    try {
+      const j = (await r.json()) as { detail?: string };
+      if (j.detail) detail = j.detail;
+    } catch {
+      // non-JSON error body; keep the status code message
+    }
+    throw new Error(detail);
+  }
 }

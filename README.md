@@ -42,7 +42,7 @@ fast numpy stub pipeline (`decadic/cycle/pipeline.py`) used by the test suite.
 
 ## Setup
 
-```bash
+```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -53,7 +53,7 @@ PyTorch is a core dependency (CPU wheel by default; GPU if your platform provide
 
 ## Run
 
-```bash
+```powershell
 python -m uvicorn decadic.api.app:app --host 0.0.0.0 --port 8765
 ```
 
@@ -109,7 +109,7 @@ tensors and only proprioception reaches the network — set the cheap fallback:
 
 ```bash
 $env:DECADIC_ENCODER_MODE="zeros"   # PowerShell; no download, faster cycles, brain is blind/deaf
-python -m uvicorn decadic.api.app:app --host 127.0.0.1 --port 8765
+.\.venv\Scripts\python.exe -m uvicorn decadic.api.app:app --host 127.0.0.1 --port 8765
 ```
 
 Expect the PC loss to spike and re-converge when flipping modes (input statistics
@@ -143,17 +143,75 @@ powershell -ExecutionPolicy Bypass -File "scripts\install_desktop_shortcut.ps1"
 duplicates, and installs the dashboard's npm deps on first run. The body viewer is a
 separate, optional process — start it with the command below when you want a body.)
 
+### Starting, stopping, and restarting the local processes
+
+Preferred start path:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "scripts\launch_decadic.ps1"
+```
+
+That starts the backend on `127.0.0.1:8765` and the web UI on
+`127.0.0.1:5173`. If the ports are already occupied, the launcher reuses those
+processes.
+
+To stop only the Decadic backend and web UI, kill the processes listening on
+those two ports:
+
+```powershell
+$listeners = netstat -ano |
+  Select-String -Pattern 'LISTENING' |
+  Select-String -Pattern ':8765|:5173'
+
+$pids = foreach ($line in $listeners) {
+  $parts = ($line.ToString() -split '\s+') | Where-Object { $_ }
+  if ($parts.Length -ge 5) { [int]$parts[-1] }
+}
+
+$pids | Select-Object -Unique | ForEach-Object {
+  Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
+}
+```
+
+Clean restart sequence: stop listeners on `8765` and `5173`, wait a second or
+two, then run `scripts\launch_decadic.ps1` again.
+
+If the launcher cannot find `uvicorn`, create/update the local environment once:
+
+```powershell
+$env:UV_CACHE_DIR = "$PWD\.uv-cache"
+uv run --extra body python -m uvicorn --version
+```
+
+After that, manual backend starts can use the project virtual environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn decadic.api.app:app --host 127.0.0.1 --port 8765
+```
+
+Manual web UI starts:
+
+```powershell
+cd dashboard
+npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+If a background start is needed, send output to the repo logs:
+`logs\decadic_server_stderr.log`, `logs\decadic_server_stdout.log`,
+`logs\decadic_ui_stdout.log`, and `logs\decadic_ui_stderr.log`.
+
 Or start the three processes by hand:
 
-```bash
+```powershell
 # 1. Server
-python -m uvicorn decadic.api.app:app --host 127.0.0.1 --port 8765
+.\.venv\Scripts\python.exe -m uvicorn decadic.api.app:app --host 127.0.0.1 --port 8765
 
 # 2. Body — native 3D viewer window + egocentric vision + soundscape
-python scripts/mujoco_decadic_adapter.py --steps 0 --vision --audio --view --port 8765
+.\.venv\Scripts\python.exe scripts\mujoco_decadic_adapter.py --steps 0 --vision --audio --view --port 8765
 
 # 3. Mind — React dashboard (first run: npm install)
-cd dashboard && npm run dev    # → http://localhost:5173
+cd dashboard
+npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
 The **viewer window** shows the humanoid being driven by the brain's `move` actions.
@@ -286,41 +344,73 @@ steps / loss); curiosity emits edge-triggered `curiosity_investigate_enter` /
 (never per cycle). Every log line now carries an ISO-8601 UTC `time` field, so the log
 answers both *what* happened and *when*.
 
-## Embodiment: stances, joint braces & the walking curriculum
+## Embodiment: stances, manual joint braces & Skill Dojo
 
-The humanoid is not held up by an invisible hand. Instead of an external support wrench
-(which unloaded the feet and let the body skate), every hinge is a **joint-brace orthosis** —
-a stiff MuJoCo-native joint spring toward a posture reference. Each joint starts **welded**
-(a statue that cannot fall or drift) and its range of motion **ratchets open** only as the
-brain's proprioceptive forward-model error for *that* joint falls, so travel always comes from
-real foot push-off, never a glide (the torso external wrench is forced to zero every substep).
-The feet keep 100% of the body weight by construction.
+New embodied agents now spawn as free bodies by default. The joint-brace orthosis remains
+available as a **manual scaffold** for debugging and body setup, but it is no longer part of
+Skill Dojo training. Teacher targets are the dojo scaffold; braces are operator controlled.
+When enabled manually, every hinge uses a stiff MuJoCo-native spring toward the active stance
+reference and can ratchet ROM open as prediction error falls. The torso external wrench remains
+zero, so movement has to come from real body contacts rather than an invisible support force.
 
-- **Master toggle** — `POST /agent/{id}/body/braces?enabled=bool` runs the body free
-  (brain alone holds it up, so it can fall) or re-engages the braces without losing earned ROM.
-- **Reset ROM** — `POST /agent/{id}/body/reset_braces` re-welds every joint to start over.
-- **Stances** — `GET /body/stances` lists the posture library and
-  `POST /agent/{id}/body/stance?name=…` re-poses + re-welds toward it: `stand`, `all_fours`,
-  `kneel_left`, `kneel_right` (static) and `crawl`, `sit_to_stand` (timed motions the braces
-  track). Single source of truth: `decadic/embodiment/stances.py`.
-- **Hold movement** — `POST /agent/{id}/body/movement_hold?enabled=bool` pins the braces fully
-  welded and loops the active motion stance indefinitely (ROM curriculum suspended), so a
-  movement can be driven precisely on repeat; releasing resumes the ratchet.
+- **Master toggle** - `POST /agent/{id}/body/braces?enabled=bool` runs the body free
+  or re-engages the braces without losing earned ROM.
+- **Reset ROM** - `POST /agent/{id}/body/reset_braces` re-welds every joint to start over.
+- **Stances** - `GET /body/stances` lists the posture library and
+  `POST /agent/{id}/body/stance?name=...` re-poses without changing brace state: `stand`,
+  `all_fours`, `kneel_left`, `kneel_right`, `kneel_upright` (static) and `crawl`,
+  `sit_to_stand`, `kneel_to_stand` (timed motions). Single source of truth:
+  `decadic/embodiment/stances.py`.
+- **Hold movement** - `POST /agent/{id}/body/movement_hold?enabled=bool` pins braces fully
+  welded and loops the active motion stance indefinitely. It is a manual scaffold control,
+  not a Skill Dojo command.
 
-The **Motor / Active Inference** tab drives all of the above; the **Locomotion** panel shows
-per-joint ROM%, the 16-channel full-body touch map, and forward-model error.
+The **Skill Dojo** tab exposes the manual Body Scaffold controls; the **Motor / Active
+Inference** and **Locomotion** panels show read-only brace, touch, gait, and forward-model
+telemetry.
 
-### Walking curriculum (faithful, observation-only)
+### Skill Dojo (episode-based skill practice)
 
-The **Training** tab runs a server-side `CurriculumSupervisor` (`decadic/curriculum/`,
-`POST /curriculum/{start,pause,resume,stop,phase}`) that makes walking **emerge** from the
-existing predictive-coding + homeostatic machinery — it never adds a gait reward to the loss.
-The supervisor is a "parent that shapes the world and reads gates": it only (a) retunes live
-config knobs that reweight the *existing* self-supervised objective, (b) places satisfiers a
-step ahead, and (c) reads observational gates to promote through phases (self-model → postural
-→ locomotion onset → sustained forage, plus an optional affective-gait stretch phase). For an
-apples-to-apples distinctness baseline, `scripts/mujoco_decadic_adapter.py --baseline {random,cpg}`
-drives the body with a non-learning controller emitting identical telemetry.
+The **Skill Dojo** tab runs named, reusable skill curricula around the live Decadic loop
+(`decadic/training/`, `POST /dojo/{start,pause,resume,stop,phase}`). It is a supervisor,
+not a replacement policy: it reads eval-only metrics, configures training knobs, queues
+safe stance/world commands, records demo metadata, and gates phase promotion. The live cognitive
+cycle remains self-supervised; teacher targets enter replay/consolidation metadata only,
+and final evaluation phases run with autonomous teacher assist at `0`.
+
+Teacher assistance is adaptive. A phase's `teacher_weight` is only the initial/default
+compatibility value; during a run the supervisor computes live `teacher_assist` from posture,
+fall, stall, and prediction-error metrics. Assist rises when the student is losing control,
+fades after stable dwell, and is recorded into replay as the current `demo_weight`.
+
+Each skill is a sequence of phases. Each phase now contains explicit **attempts**:
+
+- A success gate uses all criteria with AND semantics plus `min_samples` and `min_dwell_s`.
+- `failure_criteria` use OR semantics as fail-fast conditions, for example root height too
+  low, torso tilt too high, or fall rate too high.
+- `timeout_s` closes an attempt that is not making progress.
+- `reset_commands` restore only the phase start state (`set_stance:*`, `recenter`, and safe
+  world commands); they do not wipe the agent's weights, memory, or replay buffer.
+- `auto_retry` and `max_attempts` control whether the phase restarts after a failed or
+  timed-out attempt. Exhausted retries end the dojo run as `failed`.
+- Manual braces or movement hold block phase graduation and are reported as
+  `manual_scaffold_active`; they do not trigger retries by themselves.
+- The dashboard shows the live teacher-assist meter, assist reason, and whether current
+  samples are `self`, `dagger`, or `demo`.
+
+Built-in skills include:
+
+- `stand_and_recover` - adaptive teacher-guided standing, small perturbation recovery,
+  reduced assistance, and autonomous balance evaluation.
+- `developmental_locomotion` and `affective_locomotion` - the legacy walking curriculum
+  migrated into Skill Dojo phases.
+
+Uploadable skills live as JSON files and can be added from the Skill Dojo tab or
+`POST /dojo/skills/upload`; uploaded specs are listed with built-ins and can be deleted
+without touching built-in skills. The packaged example
+`docs/dojo_skills/stand_up_from_floor_balance.json` trains from upright kneeling through
+`kneel_to_stand`, then requires autonomous standing balance. See
+`docs/skill_dojo_methodology.md` for the full SOP, JSON schema, and WBS.
 
 ## Motivation & long-horizon learning
 

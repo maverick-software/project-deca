@@ -245,7 +245,7 @@ The subsystem is **on by default** in production (`DECADIC_CONSOLIDATION_ENABLED
 - Humanoid body (`assets/humanoid_body.xml`) connected to the agent server
 - Observation extraction from MuJoCo (proprioception, interoception, tactile/contact, body state, events)
 - Action application from server commands to the MuJoCo humanoid's joint actuators
-- Live testing of the cognitive system in the physics simulation (standing/locomotion curriculum, foraging scenarios)
+- Live testing of the cognitive system in the physics simulation (Skill Dojo standing/locomotion practice, foraging scenarios)
 
 **Deliverable:** Decadic agent operating in the MuJoCo world. Behavioral observation possible. Initial research observations can begin.
 

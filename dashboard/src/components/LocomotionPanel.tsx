@@ -78,7 +78,7 @@ function Meter(props: {
 export default function LocomotionPanel(props: { metrics: Metrics | null }) {
   const m = props.metrics;
   const romMean = m?.rom_mean ?? 0;
-  const braceEngaged = m?.brace_engaged ?? 1;
+  const braceEngaged = m?.brace_engaged ?? 0;
   const jointRom = m?.joint_rom ?? [];
   const loadL = m?.foot_load_l ?? 0;
   const loadR = m?.foot_load_r ?? 0;

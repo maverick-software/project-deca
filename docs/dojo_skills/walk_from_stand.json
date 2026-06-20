@@ -1,0 +1,628 @@
+{
+  "skill_id": "walk_from_stand",
+  "version": "1.0",
+  "name": "Walk From Stand",
+  "description": "Teach an agent to progress from stable standing into assisted stepping, directed walking, sustained gait, and autonomous walking.",
+  "target_behavior": "Stand without manual braces, load the feet, produce forward steps, walk toward nearby resources, and graduate only after autonomous walking with teacher support disabled.",
+  "teacher": "stand_teacher",
+  "required_sensors": ["proprioception", "contacts"],
+  "checkpoint_on_graduate": true,
+  "phases": [
+    {
+      "index": 0,
+      "name": "Supported Standing Foot Load",
+      "description": "Start from stand, use adaptive parent-hold teacher support, and require upright posture with feet carrying load.",
+      "teacher_weight": 1.0,
+      "teacher_adaptation": {
+        "enabled": true,
+        "min_weight": 0.0,
+        "max_weight": 1.0,
+        "rise_rate": 0.8,
+        "fade_rate": 0.08,
+        "stable_dwell_s": 3.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {
+          "root_height_min": 0.95,
+          "torso_tilt_max": 0.65,
+          "fall_rate_max": 0.2,
+          "total_foot_load_min": 0.04,
+          "forward_model_error_max": 5.0,
+          "tactile_pred_error_max": 5.0
+        },
+        "stability_thresholds": {
+          "root_height_min": 1.05,
+          "torso_tilt_max": 0.4,
+          "fall_rate_max": 0.08,
+          "total_foot_load_min": 0.08,
+          "forward_model_error_max": 2.0,
+          "tactile_pred_error_max": 2.0
+        }
+      },
+      "config": {
+        "viability_mode": "immortal",
+        "motor_babble_sigma": 0.1
+      },
+      "body_commands": ["set_stance:stand", "recenter"],
+      "reset_commands": ["set_stance:stand", "recenter"],
+      "timeout_s": 120,
+      "max_attempts": 6,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.6,
+          "label": "collapsed below standing floor",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.25,
+          "label": "torso tipped over",
+          "unit": "rad"
+        },
+        {
+          "key": "fall_rate",
+          "comparator": ">=",
+          "threshold": 0.5,
+          "label": "too many falls",
+          "unit": ""
+        }
+      ],
+      "min_dwell_s": 25,
+      "gate": {
+        "min_samples": 10,
+        "criteria": [
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.08,
+            "label": "rare falls while standing",
+            "unit": ""
+          },
+          {
+            "key": "root_height",
+            "comparator": ">=",
+            "threshold": 1.05,
+            "label": "standing root height",
+            "unit": "m"
+          },
+          {
+            "key": "torso_tilt",
+            "comparator": "<=",
+            "threshold": 0.45,
+            "label": "upright torso",
+            "unit": "rad"
+          },
+          {
+            "key": "foot_load_l",
+            "comparator": ">=",
+            "threshold": 0.02,
+            "label": "left foot loaded",
+            "unit": ""
+          },
+          {
+            "key": "foot_load_r",
+            "comparator": ">=",
+            "threshold": 0.02,
+            "label": "right foot loaded",
+            "unit": ""
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    },
+    {
+      "index": 1,
+      "name": "Assisted Step Exploration",
+      "description": "Keep the stand posture active, increase motor exploration, and require first measurable travel while the teacher catches drops early.",
+      "teacher_weight": 0.75,
+      "teacher_adaptation": {
+        "enabled": true,
+        "min_weight": 0.0,
+        "max_weight": 0.85,
+        "rise_rate": 0.9,
+        "fade_rate": 0.08,
+        "stable_dwell_s": 3.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {
+          "root_height_min": 0.9,
+          "torso_tilt_max": 0.75,
+          "fall_rate_max": 0.25,
+          "total_foot_load_min": 0.03,
+          "forward_model_error_max": 5.0,
+          "tactile_pred_error_max": 5.0
+        },
+        "stability_thresholds": {
+          "root_height_min": 1.0,
+          "torso_tilt_max": 0.5,
+          "fall_rate_max": 0.12,
+          "total_foot_load_min": 0.06,
+          "forward_model_error_max": 2.5,
+          "tactile_pred_error_max": 2.5
+        }
+      },
+      "config": {
+        "viability_mode": "immortal",
+        "motor_babble_sigma": 0.22,
+        "drive_priority_gain": 2.0
+      },
+      "body_commands": ["set_stance:stand", "recenter"],
+      "reset_commands": ["set_stance:stand", "recenter"],
+      "periodic_body_commands": [
+        {
+          "command": "perturb:small",
+          "period_s": 8
+        }
+      ],
+      "timeout_s": 150,
+      "max_attempts": 6,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.6,
+          "label": "collapsed during step practice",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.25,
+          "label": "torso tipped over",
+          "unit": "rad"
+        },
+        {
+          "key": "fall_rate",
+          "comparator": ">=",
+          "threshold": 0.5,
+          "label": "too many falls during step practice",
+          "unit": ""
+        }
+      ],
+      "min_dwell_s": 35,
+      "gate": {
+        "min_samples": 12,
+        "criteria": [
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.15,
+            "label": "steps without repeated falls",
+            "unit": ""
+          },
+          {
+            "key": "root_height",
+            "comparator": ">=",
+            "threshold": 0.95,
+            "label": "keeps standing height while stepping",
+            "unit": "m"
+          },
+          {
+            "key": "distance_traveled",
+            "comparator": "trend>=",
+            "threshold": 0.25,
+            "label": "first measurable travel",
+            "unit": "m"
+          },
+          {
+            "key": "gait_regularity",
+            "comparator": ">=",
+            "threshold": 0.05,
+            "label": "early alternating foot rhythm",
+            "unit": ""
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "name": "Directed Walking to Nearby Resources",
+      "description": "Place food and water near the body so walking has a purpose; require travel and at least one successful consume event.",
+      "teacher_weight": 0.55,
+      "teacher_adaptation": {
+        "enabled": true,
+        "min_weight": 0.0,
+        "max_weight": 0.65,
+        "rise_rate": 0.85,
+        "fade_rate": 0.1,
+        "stable_dwell_s": 3.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {
+          "root_height_min": 0.9,
+          "torso_tilt_max": 0.75,
+          "fall_rate_max": 0.25,
+          "forward_model_error_max": 5.0,
+          "tactile_pred_error_max": 5.0
+        },
+        "stability_thresholds": {
+          "root_height_min": 0.98,
+          "torso_tilt_max": 0.55,
+          "fall_rate_max": 0.15,
+          "forward_model_error_max": 3.0,
+          "tactile_pred_error_max": 3.0
+        }
+      },
+      "config": {
+        "viability_mode": "metabolic",
+        "metabolic_compression": 1.5,
+        "drive_priority_gain": 3.0,
+        "motor_babble_sigma": 0.2
+      },
+      "body_commands": ["set_stance:stand", "recenter"],
+      "reset_commands": ["set_stance:stand", "recenter"],
+      "periodic_body_commands": [
+        {
+          "command": "give_food_near",
+          "period_s": 18
+        },
+        {
+          "command": "give_water_near",
+          "period_s": 18
+        }
+      ],
+      "timeout_s": 180,
+      "max_attempts": 6,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.55,
+          "label": "collapsed during directed walking",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.3,
+          "label": "torso tipped over",
+          "unit": "rad"
+        },
+        {
+          "key": "fall_rate",
+          "comparator": ">=",
+          "threshold": 0.6,
+          "label": "too many falls during directed walking",
+          "unit": ""
+        }
+      ],
+      "min_dwell_s": 50,
+      "gate": {
+        "min_samples": 15,
+        "criteria": [
+          {
+            "key": "consume_events",
+            "comparator": "trend>=",
+            "threshold": 1.0,
+            "label": "reaches and consumes",
+            "unit": ""
+          },
+          {
+            "key": "distance_traveled",
+            "comparator": "trend>=",
+            "threshold": 0.75,
+            "label": "walks toward nearby target",
+            "unit": "m"
+          },
+          {
+            "key": "net_displacement",
+            "comparator": "trend>=",
+            "threshold": 0.2,
+            "label": "changes position instead of only rocking",
+            "unit": "m"
+          },
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.2,
+            "label": "directed walking fall rate bounded",
+            "unit": ""
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "name": "Reduced Assist Sustained Gait",
+      "description": "Lower teacher support and require longer travel, more regular gait, and stable survival while resources arrive less often.",
+      "teacher_weight": 0.25,
+      "teacher_adaptation": {
+        "enabled": true,
+        "min_weight": 0.0,
+        "max_weight": 0.35,
+        "rise_rate": 0.75,
+        "fade_rate": 0.14,
+        "stable_dwell_s": 3.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {
+          "root_height_min": 0.88,
+          "torso_tilt_max": 0.7,
+          "fall_rate_max": 0.22,
+          "forward_model_error_max": 5.0,
+          "tactile_pred_error_max": 5.0
+        },
+        "stability_thresholds": {
+          "root_height_min": 0.98,
+          "torso_tilt_max": 0.5,
+          "fall_rate_max": 0.12,
+          "forward_model_error_max": 3.0,
+          "tactile_pred_error_max": 3.0
+        }
+      },
+      "config": {
+        "viability_mode": "metabolic",
+        "metabolic_compression": 2.0,
+        "drive_priority_gain": 3.2,
+        "motor_babble_sigma": 0.16
+      },
+      "body_commands": ["set_stance:stand", "recenter"],
+      "reset_commands": ["set_stance:stand", "recenter"],
+      "periodic_body_commands": [
+        {
+          "command": "give_food_near",
+          "period_s": 35
+        },
+        {
+          "command": "give_water_near",
+          "period_s": 35
+        }
+      ],
+      "timeout_s": 240,
+      "max_attempts": 6,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.55,
+          "label": "collapsed during reduced-assist gait",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.3,
+          "label": "torso tipped over",
+          "unit": "rad"
+        },
+        {
+          "key": "fall_rate",
+          "comparator": ">=",
+          "threshold": 0.55,
+          "label": "too many falls during reduced assist",
+          "unit": ""
+        }
+      ],
+      "min_dwell_s": 70,
+      "gate": {
+        "min_samples": 18,
+        "criteria": [
+          {
+            "key": "distance_traveled",
+            "comparator": "trend>=",
+            "threshold": 1.5,
+            "label": "sustained travel",
+            "unit": "m"
+          },
+          {
+            "key": "gait_regularity",
+            "comparator": ">=",
+            "threshold": 0.18,
+            "label": "emerging regular gait",
+            "unit": ""
+          },
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.15,
+            "label": "low fall rate during gait",
+            "unit": ""
+          },
+          {
+            "key": "viability",
+            "comparator": ">=",
+            "threshold": 45.0,
+            "label": "survives walking practice",
+            "unit": ""
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "name": "Autonomous Walking Evaluation",
+      "description": "Teacher disabled. The agent must walk, forage, and keep a bounded fall rate without live support or manual scaffold.",
+      "teacher_weight": 0.0,
+      "teacher_adaptation": {
+        "enabled": false,
+        "min_weight": 0.0,
+        "max_weight": 0.0,
+        "rise_rate": 0.0,
+        "fade_rate": 0.0,
+        "stable_dwell_s": 0.0,
+        "unstable_dwell_s": 0.0,
+        "zero_required_for_graduation": true,
+        "danger_thresholds": {},
+        "stability_thresholds": {}
+      },
+      "config": {
+        "viability_mode": "metabolic",
+        "metabolic_compression": 2.0,
+        "drive_priority_gain": 3.0,
+        "motor_babble_sigma": 0.08
+      },
+      "body_commands": ["set_stance:stand", "recenter"],
+      "reset_commands": ["set_stance:stand", "recenter"],
+      "periodic_body_commands": [
+        {
+          "command": "give_food_near",
+          "period_s": 45
+        },
+        {
+          "command": "give_water_near",
+          "period_s": 45
+        },
+        {
+          "command": "perturb:small",
+          "period_s": 12
+        }
+      ],
+      "timeout_s": 300,
+      "max_attempts": 6,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {
+          "key": "root_height",
+          "comparator": "<=",
+          "threshold": 0.55,
+          "label": "collapsed during autonomous walk",
+          "unit": "m"
+        },
+        {
+          "key": "torso_tilt",
+          "comparator": ">=",
+          "threshold": 1.35,
+          "label": "torso tipped over",
+          "unit": "rad"
+        },
+        {
+          "key": "fall_rate",
+          "comparator": ">=",
+          "threshold": 0.45,
+          "label": "too many autonomous falls",
+          "unit": ""
+        }
+      ],
+      "min_dwell_s": 100,
+      "is_terminal": true,
+      "gate": {
+        "min_samples": 22,
+        "criteria": [
+          {
+            "key": "distance_traveled",
+            "comparator": "trend>=",
+            "threshold": 2.5,
+            "label": "autonomous walking distance",
+            "unit": "m"
+          },
+          {
+            "key": "net_displacement",
+            "comparator": "trend>=",
+            "threshold": 0.6,
+            "label": "autonomous displacement",
+            "unit": "m"
+          },
+          {
+            "key": "gait_regularity",
+            "comparator": ">=",
+            "threshold": 0.25,
+            "label": "regular autonomous gait",
+            "unit": ""
+          },
+          {
+            "key": "fall_rate",
+            "comparator": "<=",
+            "threshold": 0.12,
+            "label": "autonomous fall rate bounded",
+            "unit": ""
+          },
+          {
+            "key": "root_height",
+            "comparator": ">=",
+            "threshold": 0.9,
+            "label": "root stays walkable",
+            "unit": "m"
+          },
+          {
+            "key": "teacher_override_fraction",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "teacher disabled",
+            "unit": ""
+          },
+          {
+            "key": "braces_enabled",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual braces off",
+            "unit": ""
+          },
+          {
+            "key": "movement_hold",
+            "comparator": "<=",
+            "threshold": 0.0,
+            "label": "manual movement hold off",
+            "unit": ""
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,9 +1,9 @@
-"""Pure, side-effect-free gate logic for the walking curriculum.
+"""Pure, side-effect-free gate logic for Skill Dojo phases.
 
 A gate is a list of :class:`Criterion`, each comparing a rolling-window summary
 of an eval-only metric against a threshold. Nothing here reads or writes agent
-state, the network, or the loss - it only interprets samples the supervisor has
-already collected, so it is trivially unit-testable and provably observation-only.
+state, the network, or the loss; it only interprets samples the supervisor has
+already collected.
 """
 
 from __future__ import annotations
@@ -18,15 +18,7 @@ _EPS = 1e-9
 
 @dataclass(frozen=True)
 class Criterion:
-    """One promotion condition over a rolling window of metric samples.
-
-    - ``<=``: the window mean of ``key`` must be at most ``threshold`` (lower is
-      better, e.g. prediction error or fall-rate).
-    - ``>=``: the window mean of ``key`` must be at least ``threshold`` (higher is
-      better, e.g. ROM earned or gait regularity).
-    - ``trend>=``: the change across the window (last - first) of ``key`` must be
-      at least ``threshold`` (e.g. distance travelled or consume-count rising).
-    """
+    """One promotion condition over a rolling window of metric samples."""
 
     key: str
     comparator: Comparator
@@ -82,7 +74,6 @@ def _clamp01(x: float) -> float:
 
 
 def mean_metric(window: list[dict], key: str) -> float:
-    """Mean of ``key`` over the window, ignoring missing/non-numeric samples."""
     vals = [
         float(s[key])
         for s in window
@@ -94,7 +85,6 @@ def mean_metric(window: list[dict], key: str) -> float:
 
 
 def delta_metric(window: list[dict], key: str) -> float:
-    """Change in ``key`` across the window (last numeric - first numeric)."""
     vals = [
         float(s[key])
         for s in window
@@ -106,12 +96,10 @@ def delta_metric(window: list[dict], key: str) -> float:
 
 
 def evaluate_criterion(criterion: Criterion, window: list[dict]) -> CriterionResult:
-    """Score one criterion against the window; progress is a UI hint in [0, 1]."""
     c = criterion
     if c.comparator == "<=":
         value = mean_metric(window, c.key)
         satisfied = value <= c.threshold
-        # Lower is better: full bar once at/under threshold, fades as value grows.
         progress = _clamp01(c.threshold / max(value, _EPS)) if c.threshold > 0 else (
             1.0 if satisfied else 0.0
         )
@@ -121,13 +109,12 @@ def evaluate_criterion(criterion: Criterion, window: list[dict]) -> CriterionRes
         progress = _clamp01(value / c.threshold) if c.threshold > 0 else (
             1.0 if satisfied else 0.0
         )
-    else:  # trend>=
+    else:
         value = delta_metric(window, c.key)
         satisfied = value >= c.threshold
-        if c.threshold > 0:
-            progress = _clamp01(value / c.threshold)
-        else:
-            progress = 1.0 if satisfied else 0.0
+        progress = _clamp01(value / c.threshold) if c.threshold > 0 else (
+            1.0 if satisfied else 0.0
+        )
     return CriterionResult(
         label=c.label,
         key=c.key,
@@ -143,7 +130,6 @@ def evaluate_criterion(criterion: Criterion, window: list[dict]) -> CriterionRes
 def evaluate_gate(
     criteria: list[Criterion], window: list[dict], *, min_samples: int
 ) -> GateResult:
-    """Evaluate every criterion; the gate opens only with enough samples and all met."""
     results = [evaluate_criterion(c, window) for c in criteria]
     enough = len(window) >= max(1, min_samples)
     all_met = all(r.satisfied for r in results) if results else True

@@ -68,7 +68,8 @@ the crowd logic is unit-testable without the body process.
 - `scripts/mujoco_decadic_adapter.py`: `HumanoidSim` captures `hinge_names` +
   `_hinge_ranges`, holds the active stance (`_stance_name/_stance_phase/
   _stance_root_z/_stance_root_quat/_stance_fall_z`), resolves `_q_ref` from it, and
-  `set_stance()` re-poses (stance-aware `recenter()`) + `reset_braces()`. `step()`
+  `set_stance()` re-poses with stance-aware `recenter()` without changing brace
+  state; `reset_braces()` is a separate manual command. `step()`
   calls `_advance_motion()` (retargets `_q_ref`+`qpos_spring` from the motion phase)
   before the brace tick. `xfrc_applied[torso]` stays zero in every stance.
   "Hold movement" (`_movement_hold` / `set_movement_hold()` / WS `hold_on`/`hold_off`):
@@ -81,7 +82,8 @@ the crowd logic is unit-testable without the body process.
   `POST /agent/{id}/body/movement_hold?enabled=`.
 - `decadic/agents/runtime.py`: `stance`/`stance_phase`/`movement_hold` metrics
   (telemetry only).
-- `dashboard/src/{api.ts,components/MotorPanel.tsx}`: `STANCES` + selector buttons.
+- `dashboard/src/{api.ts,components/MotorPanel.tsx,components/SkillDojoPanel.tsx}`:
+  `STANCES` + selector buttons.
 - Dev tools: `scripts/_gen_stand_pose.py::settle_stance` (settle-check stability),
   `scripts/_probe_pose.py` (per-geom world-z + COM at spawn, for pose authoring).
 - Stance stability obeys COM-over-support for a free root held only by position

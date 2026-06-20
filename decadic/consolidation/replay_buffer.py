@@ -54,6 +54,10 @@ class Transition:
       feature target (vector), filled when the owning episode closes. ``ret`` is
       ``None`` until then, which the consolidator's SF loss uses as a "trainable"
       gate -- only return-annotated transitions feed it.
+
+    Skill Dojo fields are optional and inert unless a dojo run is active. They let
+    consolidation replay demonstrations/DAgger hints without touching the live
+    cognitive loss.
     """
 
     z0: Any
@@ -74,6 +78,12 @@ class Transition:
     goal_id: str = ""
     ret: float | None = None
     sf_target: Any | None = None
+    # --- Skill Dojo metadata (consolidation-only imitation hints) -----------
+    skill_id: str = ""
+    origin: str = "self"  # self | demo | dagger
+    expert_motor: Any | None = None
+    demo_weight: float = 0.0
+    success: bool = False
 
 
 class ReplayBuffer:
