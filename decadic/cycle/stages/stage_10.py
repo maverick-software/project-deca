@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from decadic.config import gwt_salience_boost, ltm_consolidate_min_seen
+from decadic.config import entity_promotion_precision, gwt_salience_boost, ltm_consolidate_min_seen
 from decadic.cycle.stages._helpers import trace
 from decadic.cycle.types import CycleContext, StageTrace
 from decadic.memory.embeddings import episode_embedding_from_cycle
@@ -83,26 +83,43 @@ def run(ctx: CycleContext) -> StageTrace:
                 reason = "skipped_prediction_unstable"
             status = "accepted"
             relationship_update = reason != "skipped_perception_collapsed"
-            property_update = reason not in (
-                "skipped_no_objects",
-                "skipped_low_confidence",
-                "skipped_prediction_unstable",
-            )
-            if reason in ("skipped_no_objects", "skipped_low_confidence", "skipped_prediction_unstable"):
-                status = reason
-                ids = []
+            property_update = reason not in ("skipped_prediction_unstable",)
+            all_slots = list(wm.active_slots())
+            ids: list[str] = []
+            slots: list[object] = []
+            if not all_slots:
+                status = "skipped_no_percepts"
+            elif reason == "skipped_prediction_unstable":
+                status = "skipped_unhealthy_perception"
             else:
                 slots = [
                     s
-                    for s in wm.active_slots()
-                    if str(getattr(s, "kind_hint", "object")) != "stuff"
-                    and getattr(s, "appearance", None)
-                    and float(getattr(s, "confidence", 1.0) or 0.0) >= 0.2
+                    for s in all_slots
+                    if getattr(s, "appearance", None)
                     and int(getattr(s, "seen_count", 0)) >= ltm_consolidate_min_seen()
+                    and float(getattr(s, "precision", getattr(s, "confidence", 0.0)) or 0.0)
+                    >= entity_promotion_precision()
                 ]
-                if not slots:
-                    status = "skipped_no_objects"
-                    ids = []
+                status = "recorded_provisional_evidence"
+            recent_events = list(getattr(ctx.perceptual, "recent_events", []) or [])[-12:]
+            scene_relationships = scene_ws.relation_dicts() if scene_ws is not None else []
+            semantic_update = {}
+            if all_slots and status != "skipped_unhealthy_perception":
+                enqueue = getattr(ctx.ltm_graph, "enqueue_consolidation_job", None)
+                if callable(enqueue):
+                    report = enqueue(
+                        slots,
+                        all_slots=all_slots,
+                        events=recent_events,
+                        scene_relationships=scene_relationships,
+                        cycle=int(ctx.state_bus.cycle_index),
+                        min_seen=ltm_consolidate_min_seen(),
+                        property_update=property_update,
+                        relationship_update=relationship_update,
+                    )
+                    status = str(report.get("status", "queued_consolidation"))
+                    ids = list(report.get("accepted_ids", []) or [])
+                    semantic_update = dict(report.get("semantic_update", {}) or {})
                 else:
                     ids = ctx.ltm_graph.consolidate(
                         slots,
@@ -117,7 +134,7 @@ def run(ctx: CycleContext) -> StageTrace:
                             sid = getattr(slot, "scene_entity_id", None)
                             if sid:
                                 scene_to_ltm[str(sid)] = str(node_id)
-                        for rel in scene_ws.relation_dicts():
+                        for rel in scene_relationships:
                             src = scene_to_ltm.get(str(rel.get("src")))
                             dst = scene_to_ltm.get(str(rel.get("dst")))
                             kind = str(rel.get("kind", "scene_relation"))
@@ -129,18 +146,38 @@ def run(ctx: CycleContext) -> StageTrace:
                                     weight=float(rel.get("confidence", 1.0) or 1.0),
                                     cycle=int(ctx.state_bus.cycle_index),
                                 )
-                    if not relationship_update:
-                        status = "accepted_properties"
+                    semantic_update = ctx.ltm_graph.record_semantic_evidence(
+                        all_slots,
+                        events=recent_events,
+                        scene_relationships=scene_relationships,
+                        cycle=int(ctx.state_bus.cycle_index),
+                        promoted_ids=list(ids),
+                    )
+                    status = "promoted_entity" if ids else "recorded_provisional_evidence"
+                    report = {
+                        "status": status,
+                        "accepted_ids": list(ids),
+                        "identity_refresh": status == "promoted_entity",
+                        "property_update": bool(property_update and ids),
+                        "relationship_update": bool(relationship_update and ids),
+                        "relationship_updates_skipped": 0 if relationship_update else 1,
+                        "semantic_update": semantic_update,
+                    }
+            else:
+                report = {
+                    "status": status,
+                    "accepted_ids": list(ids),
+                    "identity_refresh": False,
+                    "property_update": False,
+                    "relationship_update": False,
+                    "relationship_updates_skipped": 0 if relationship_update else 1,
+                    "semantic_update": semantic_update,
+                }
             report = {
-                "status": status,
-                "reason": reason if status == "accepted" else status,
-                "accepted_ids": list(ids),
-                "identity_refresh": status in ("accepted", "accepted_properties"),
-                "property_update": bool(property_update and ids),
-                "relationship_update": bool(relationship_update and status == "accepted"),
-                "relationship_updates_skipped": 0 if relationship_update else 1,
+                "reason": reason if status in ("accepted", "promoted_entity", "queued_consolidation") else status,
+                **report,
             }
-            stats = getattr(ctx.ltm_graph, "belief_stats", lambda: {})()
+            stats = getattr(ctx.ltm_graph, "cached_belief_stats", lambda: {})()
             if isinstance(stats, dict):
                 report.update(stats)
             if hasattr(ctx.perceptual, "ltm_consolidation"):

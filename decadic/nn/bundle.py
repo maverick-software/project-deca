@@ -125,8 +125,20 @@ class NeuralBundle:
 
     @staticmethod
     def resolve_device() -> torch.device:
+        from decadic.config import require_cuda
+
         pref = os.environ.get("DECADIC_DEVICE", "").strip().lower()
+        if require_cuda() and not torch.cuda.is_available():
+            raise RuntimeError(
+                "DECADIC_REQUIRE_CUDA=1 but PyTorch CUDA is unavailable. "
+                "Install a CUDA-enabled torch build or set DECADIC_REQUIRE_CUDA=0 for CPU runs."
+            )
         if pref == "cpu":
+            if require_cuda():
+                raise RuntimeError(
+                    "DECADIC_REQUIRE_CUDA=1 but DECADIC_DEVICE=cpu was requested. "
+                    "Use DECADIC_DEVICE=cuda or set DECADIC_REQUIRE_CUDA=0."
+                )
             return torch.device("cpu")
         if pref == "cuda" and torch.cuda.is_available():
             return torch.device("cuda")

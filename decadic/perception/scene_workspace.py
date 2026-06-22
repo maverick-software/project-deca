@@ -20,6 +20,7 @@ FORBIDDEN_SCENE_TOKENS = (
     "kind_name",
     "food",
     "water",
+    "floor",
     "hand",
     "wall",
     "building",
@@ -89,6 +90,20 @@ def _clean_property_evidence(raw: Any) -> dict[str, Any]:
     return out
 
 
+def _entity_role(kind_hint: str, spread: Any = None) -> str:
+    if kind_hint == "body_part_candidate":
+        return "body_coupled_entity"
+    if kind_hint == "stuff":
+        return "extended_entity"
+    try:
+        sp = float(spread)
+    except (TypeError, ValueError):
+        sp = 0.0
+    if sp >= 0.34:
+        return "extended_entity"
+    return "compact_entity"
+
+
 def _blend(old: list[float] | None, new: list[float] | None, alpha: float) -> list[float] | None:
     if new is None:
         return old
@@ -147,6 +162,8 @@ class SceneEntity:
     seen_count: int = 0
     uv_history: list[list[float]] = field(default_factory=list)
     relative_history: list[list[float]] = field(default_factory=list)
+    entity_role: str = "compact_entity"
+    provisional: bool = True
 
     def predicted_uv(self) -> list[float] | None:
         if self.predicted_centroid_uv is not None:
@@ -198,6 +215,8 @@ class SceneEntity:
             "first_cycle": self.first_cycle,
             "last_seen_cycle": self.last_seen_cycle,
             "seen_count": self.seen_count,
+            "entity_role": self.entity_role,
+            "provisional": bool(self.provisional),
         }
 
 
@@ -380,6 +399,8 @@ class SceneWorkspace:
             depth = math.sqrt(sum(x * x for x in rel[:3]))
         ent.object_id = str(raw.get("object_id")) if raw.get("object_id") else ent.object_id
         ent.kind_hint = kind_hint
+        ent.entity_role = str(raw.get("entity_role") or _entity_role(kind_hint, raw.get("spread")))
+        ent.provisional = confidence < 0.2
         ent.visible = True
         ent.occluded = False
         ent.occlusion_age = 0
@@ -439,7 +460,7 @@ class SceneWorkspace:
         if not self.relation_enabled:
             self.relations.clear()
             return
-        visible = [e for e in self.entities.values() if e.visible and e.kind_hint != "stuff"]
+        visible = [e for e in self.entities.values() if e.visible]
         new_rel: dict[tuple[str, str, str], SceneRelation] = {}
         for i, a in enumerate(visible):
             for b in visible[i + 1 :]:
@@ -467,9 +488,7 @@ class SceneWorkspace:
         return out
 
     def select_focus(self, capacity: int) -> list[str]:
-        candidates = [
-            e for e in self.entities.values() if e.kind_hint != "stuff" and e.salience > 0.0
-        ]
+        candidates = [e for e in self.entities.values() if e.salience > 0.0]
         candidates.sort(key=lambda e: (e.salience, e.confidence, e.seen_count), reverse=True)
         return [e.entity_id for e in candidates[: max(1, int(capacity))]]
 
@@ -492,6 +511,8 @@ class SceneWorkspace:
                     "persistence": float(ent.persistence),
                     "agency": float(ent.agency),
                     "kind_hint": ent.kind_hint,
+                    "entity_role": ent.entity_role,
+                    "provisional": bool(ent.provisional),
                     "flow": list(ent.motion) if ent.motion else None,
                     "local_motion": float(ent.local_motion),
                     "retina_contrast": float(ent.retina_contrast),

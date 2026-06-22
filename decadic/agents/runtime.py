@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import random
+import sys
 import time
 from collections import deque
 from datetime import UTC, datetime
@@ -21,6 +22,10 @@ from decadic.config import (
     DEFAULT_REVIVE_VIABILITY,
     FAST_PATH_COLLISION_THRESHOLD,
     MAX_PARALLEL_SESSIONS,
+    PROCESSING_BATCHING,
+    PROCESSING_PERSISTENT_PERCEPTION,
+    PROCESSING_SERIAL_PREFETCH,
+    PROCESSING_STAGE_PIPELINE,
     PERCEPTUAL_PROCESSING_BATCHING,
     PERCEPTUAL_PROCESSING_MODES,
     PERCEPTUAL_PROCESSING_PERSISTENT,
@@ -55,11 +60,14 @@ from decadic.config import (
     landscape_seed,
     landscape_span,
     ltm_async_enabled,
+    ltm_consolidation_async_enabled,
+    ltm_consolidation_queue_max,
     ltm_graph_enabled,
     ltm_match_threshold,
     ltm_snapshot_limit,
     max_integrity_damage_per_obs,
     metabolic_compression,
+    processing_mode,
     perceptual_processing_mode,
     metabolic_tick_s,
     plasticity_log_every,
@@ -87,6 +95,7 @@ from decadic.consolidation.replay_buffer import ReplayBuffer, Transition
 from decadic.consolidation.stub_loop import consolidation_stub_loop
 from decadic.cycle.neural_pipeline import run_neural_cycle
 from decadic.cycle.pipeline import run_cycle as run_stub_cycle
+from decadic.cycle.stage_pipeline import DecadicSession, SerialPrefetchSupervisor
 from decadic.cycle.types import CycleContext
 from decadic.io import get_jsonl_writer
 from decadic.memory.episodic_store import EpisodicStore
@@ -207,7 +216,8 @@ class AgentRuntime:
             WriteBehindLongTermGraph(
                 graph_db_path,
                 match_threshold=ltm_match_threshold(),
-                enabled=ltm_async_enabled(),
+                max_queue=ltm_consolidation_queue_max(),
+                enabled=ltm_async_enabled() and ltm_consolidation_async_enabled(),
             )
             if ltm_graph_enabled()
             else None
@@ -231,6 +241,12 @@ class AgentRuntime:
             agent_id, preset=preset, flags=flags, faculties=self.faculties
         )
         self.preset: str | None = self.neural.preset if self.neural else None
+        self._memory_context_vector: list[float] | None = None
+        self._memory_context_query: list[float] | None = None
+        self._memory_context_refresh_cycle = 0
+        self._memory_context_worker_ms = 0.0
+        self._memory_context_task: asyncio.Task[None] | None = None
+        self._cycle_deadline_s = time.perf_counter()
         self._last_observation: dict[str, Any] | None = None
         self._wait_for_observation_after_reset = False
         self._debug_views: dict[str, str] = {}
@@ -245,6 +261,7 @@ class AgentRuntime:
         # the enter/leave transitions (never per-cycle). False when curiosity is off.
         self._curiosity_investigating = False
         self.out_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=256)
+        self.control_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=64)
         self.running = True
         self.paused = False
         # Mortality lifecycle: "alive" -> "dead" (viability<=0) -> "alive" (revive/reset).
@@ -252,7 +269,8 @@ class AgentRuntime:
         self.died_at_cycle: int | None = None
         k = int(os.environ.get("DECADIC_PARALLEL_SESSIONS", str(DEFAULT_PARALLEL_SESSIONS)))
         self.parallel_sessions = max(1, min(MAX_PARALLEL_SESSIONS, k))
-        self.perceptual_processing_mode = perceptual_processing_mode()
+        self.processing_mode = processing_mode()
+        self.perceptual_processing_mode = self.processing_mode
         # Manual assist-harness override: None -> follow the fading curriculum;
         # a float (0/1/2/3) -> hold that level regardless of training progress.
         # Default 0 -> no training-wheel assist unless the operator opts in.
@@ -283,11 +301,18 @@ class AgentRuntime:
         # Legacy batching buffer. Persistent Parallel Perceptual Processing uses
         # the queue below; batching mode drains this buffer once per cycle.
         self._obs_buffer: deque[dict[str, Any]] = deque(maxlen=self.parallel_sessions)
-        self._perception_queue: asyncio.Queue[tuple[int, dict[str, Any], float]] = asyncio.Queue(
-            maxsize=MAX_PARALLEL_SESSIONS * 2
-        )
+        self.prefetch_queue_max = C.prefetch_queue_max_frames(self.parallel_sessions)
+        self.prefetch_overload_policy = C.prefetch_overload_policy()
+        self.ready_coalesce_policy = C.ready_coalesce_policy()
+        self.prefetch_backpressure_warn_ms = C.prefetch_backpressure_warn_ms()
+        self.prefetch_oldest_unfolded_warn_ms = C.prefetch_oldest_unfolded_warn_ms()
+        self._perception_queue: asyncio.Queue[
+            tuple[int, dict[str, Any], float, dict[str, Any] | None]
+        ] = asyncio.Queue(maxsize=self.prefetch_queue_max)
         self._perception_workers: list[asyncio.Task[None]] = []
-        self._perception_ready: dict[int, tuple[dict[str, Any] | None, float, float]] = {}
+        self._perception_ready: dict[
+            int, tuple[dict[str, Any] | None, float, float, dict[str, Any] | None]
+        ] = {}
         self._perception_commit_lock = asyncio.Lock()
         self._perception_seq = 0
         self._perception_next_commit = 1
@@ -298,6 +323,15 @@ class AgentRuntime:
         self._perception_started_at = time.perf_counter()
         self._perception_last_commit_s: float | None = None
         self._runtime_perception_organ = PerceptionOrgan()
+        self.stage_pipeline = SerialPrefetchSupervisor(
+            capacity=self.parallel_sessions,
+            coalesce_policy=self.ready_coalesce_policy,
+        )
+        self._state_bus_version = 0
+        self._scene_version = 0
+        self._workspace_version = 0
+        self._weight_version = 0
+        self._commit_index = 0
         # Read-only locomotion / gait telemetry (curriculum evaluation only; NEVER
         # read by cognition). Tracks how far the body has travelled, its net
         # displacement from the run origin, a rolling fall-rate, and a gait
@@ -348,6 +382,7 @@ class AgentRuntime:
         self.dojo_training: dict[str, Any] | None = None
         self.metrics["perception_mode"] = self.perception_mode
         self.metrics["discovered_perception"] = self.faculties.discovered
+        self._refresh_hardware_metrics()
         self._refresh_perception_pipeline_metrics()
         self._refresh_homeostasis_metrics()
         self._refresh_plasticity_metrics()
@@ -380,9 +415,67 @@ class AgentRuntime:
             "neural_pc_loss_last": 0.0,
             "learning_rate": 0.0,
             "gpu_memory_max_allocated": 0,
+            "hardware_cuda_available": False,
+            "hardware_cuda_device": "",
+            "hardware_torch_version": "",
+            "hardware_python_executable": "",
+            "neural_device": "none",
+            "cuda_required": C.require_cuda(),
+            "cuda_warning": "",
             "parallel_sessions": 0,
-            "perceptual_processing_mode": PERCEPTUAL_PROCESSING_PERSISTENT,
+            "processing_mode": PROCESSING_SERIAL_PREFETCH,
+            "stage_pipeline_enabled": True,
+            "perceptual_processing_mode": PROCESSING_SERIAL_PREFETCH,
             "pipeline_sessions": 0,
+            "stage_pipeline_active_sessions": 0,
+            "stage_pipeline_ready_sessions": 0,
+            "stage_pipeline_committed_sessions": 0,
+            "stage_pipeline_committed_per_s": 0.0,
+            "stage_pipeline_dropped_sessions": 0,
+            "stage_pipeline_stale_sessions": 0,
+            "stage_pipeline_failed_sessions": 0,
+            "stage_pipeline_queue_depths": {},
+            "stage_pipeline_inflight": {},
+            "stage_pipeline_latency_ms": {},
+            "stage_pipeline_recent_sessions": [],
+            "stage_pipeline_selected_session": None,
+            "stage_pipeline_arbitration_reason": "",
+            "frames_received": 0,
+            "frames_prefetched": 0,
+            "frames_folded": 0,
+            "frames_deep_processed": 0,
+            "coalesced_sessions": 0,
+            "information_loss": 0,
+            "producer_overlap_ratio": 0.0,
+            "decode_on_consume_ms": 0.0,
+            "consume_wait_ms": 0.0,
+            "ready_queue_depth": 0,
+            "ready_coalesce_policy": "freshest",
+            "fold_lag_ms": 0.0,
+            "memory_recall_ms": 0.0,
+            "memory_recall_worker_ms": 0.0,
+            "memory_recall_cache_size": 0,
+            "memory_recall_cache_hits": 0,
+            "memory_recall_cache_misses": 0,
+            "memory_recall_refresh_cycle": 0,
+            "memory_recall_staleness_cycles": 0,
+            "memory_recall_on_critical_path": False,
+            "api_snapshot_cache_enabled": C.api_snapshot_cache_enabled(),
+            "metrics_payload_lightweight": C.metrics_lightweight_enabled(),
+            "metrics_snapshot_age_ms": 0.0,
+            "cycle_scheduler_mode": C.cycle_scheduler_mode(),
+            "cycle_interval_ms": 0.0,
+            "cycle_idle_ms": 0.0,
+            "cycle_overrun_ms": 0.0,
+            "cycle_compute_ratio": 0.0,
+            "prefetch_queue_depth": 0,
+            "prefetch_queue_max": 0,
+            "prefetch_overload_policy": "block",
+            "prefetch_backpressure_events": 0,
+            "prefetch_backpressure_ms": 0.0,
+            "oldest_unfolded_age_ms": 0.0,
+            "prefetch_backpressure_warning": False,
+            "oldest_unfolded_warning": False,
             "perception_queue_depth": 0,
             "perception_inflight": 0,
             "perception_ingest_hz": 0.0,
@@ -436,6 +529,29 @@ class AgentRuntime:
             "resource_relief_events": 0,
             "ltm_property_beliefs": 0,
             "ltm_avg_property_confidence": 0.0,
+            "ltm_consolidation_queue_depth": 0,
+            "ltm_consolidation_worker_ms": 0.0,
+            "ltm_consolidation_jobs_enqueued": 0,
+            "ltm_consolidation_jobs_completed": 0,
+            "ltm_consolidation_sync_fallbacks": 0,
+            "ltm_match_ms": 0.0,
+            "ltm_match_cache_size": 0,
+            "ltm_match_cache_hits": 0,
+            "ltm_match_cache_misses": 0,
+            "ltm_semantic_jobs_skipped_by_interval": 0,
+            "sqlite_commit_count": 0,
+            "sqlite_batch_commit_count": 0,
+            "sqlite_last_commit_ms": 0.0,
+            "sqlite_wal_checkpoint_count": 0,
+            "episodic_write_batch_size_last": 0,
+            "episodic_db_rows": 0,
+            "episodic_db_pruned_rows": 0,
+            "ltm_write_batch_size_last": 0,
+            "ltm_pruned_nodes": 0,
+            "ltm_pruned_edges": 0,
+            "ltm_pruned_semantic_records": 0,
+            "memory_db_bytes": 0,
+            "memory_wal_bytes": 0,
             "motor_babble_sigma": 0.0,
             "motor_activity_rms": 0.0,
             "motor_command": [],
@@ -540,6 +656,8 @@ class AgentRuntime:
             self._cycle_task = asyncio.create_task(
                 self._cycle_loop(), name=f"decadic-cycle-{self.agent_id}"
             )
+        if self._stage_pipeline_enabled():
+            self.stage_pipeline.start()
         self._ensure_perception_workers()
         interval = float(os.environ.get("DECADIC_CONSOLIDATION_STUB_INTERVAL_S", "10"))
         # The real dual-network consolidator starts whenever the feature is on
@@ -573,11 +691,34 @@ class AgentRuntime:
                 name=f"decadic-landscape-{self.agent_id}",
             )
 
+    async def suspend_cycle_worker(self) -> bool:
+        """Temporarily stop the cycle task for reset/restore barriers."""
+        restart_cycle = self._cycle_task is not None
+        current = asyncio.current_task()
+        if self._cycle_task is not None and self._cycle_task is not current:
+            self._cycle_task.cancel()
+            try:
+                await self._cycle_task
+            except asyncio.CancelledError:
+                pass
+            self._cycle_task = None
+        return restart_cycle
+
+    def resume_cycle_worker(self, restart_cycle: bool) -> None:
+        if restart_cycle and self.running:
+            self.ensure_cycle_worker()
+
     def _perception_pipeline_enabled(self) -> bool:
-        return self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_PERSISTENT
+        return self.processing_mode == PROCESSING_PERSISTENT_PERCEPTION
+
+    def _stage_pipeline_enabled(self) -> bool:
+        return self.processing_mode in (PROCESSING_SERIAL_PREFETCH, PROCESSING_STAGE_PIPELINE)
+
+    def _serial_prefetch_enabled(self) -> bool:
+        return self.processing_mode in (PROCESSING_SERIAL_PREFETCH, PROCESSING_STAGE_PIPELINE)
 
     def _ensure_perception_workers(self) -> None:
-        if not self._perception_pipeline_enabled():
+        if not (self._perception_pipeline_enabled() or self._serial_prefetch_enabled()):
             return
         try:
             asyncio.get_running_loop()
@@ -607,8 +748,25 @@ class AgentRuntime:
         self._perception_inflight = 0
         self._perception_last_commit_s = None
 
+    def _refresh_prefetch_config(self) -> None:
+        self.prefetch_queue_max = C.prefetch_queue_max_frames(self.parallel_sessions)
+        self.prefetch_overload_policy = C.prefetch_overload_policy()
+        self.ready_coalesce_policy = C.ready_coalesce_policy()
+        self.prefetch_backpressure_warn_ms = C.prefetch_backpressure_warn_ms()
+        self.prefetch_oldest_unfolded_warn_ms = C.prefetch_oldest_unfolded_warn_ms()
+        self.stage_pipeline.set_coalesce_policy(self.ready_coalesce_policy)
+
+    def _rebuild_perception_queue_if_needed(self) -> None:
+        self._refresh_prefetch_config()
+        if self._perception_queue.maxsize == self.prefetch_queue_max:
+            return
+        # Keep the queue object stable: perception workers may be awaiting
+        # ``get()`` on it. Resizing the bounded queue in place avoids stranding
+        # those tasks on an abandoned queue instance.
+        self._perception_queue._maxsize = self.prefetch_queue_max
+
     async def _resize_perception_workers(self) -> None:
-        if not self._perception_pipeline_enabled():
+        if not (self._perception_pipeline_enabled() or self._serial_prefetch_enabled()):
             for task in self._perception_workers:
                 task.cancel()
             if self._perception_workers:
@@ -626,33 +784,140 @@ class AgentRuntime:
         self._ensure_perception_workers()
 
     async def _enqueue_perception_observation(self, obs: dict[str, Any]) -> None:
-        if not self._perception_pipeline_enabled():
+        if not (self._perception_pipeline_enabled() or self._serial_prefetch_enabled()):
             return
         self._ensure_perception_workers()
-        self._perception_seq += 1
-        seq = self._perception_seq
-        try:
-            self._perception_queue.put_nowait((seq, dict(obs), time.perf_counter()))
+        if self._serial_prefetch_enabled():
+            async with self.lock:
+                snapshots = self._session_snapshots_locked()
+            sess = await self.stage_pipeline.enqueue_observation(obs, snapshots=snapshots)
+            item = (sess.frame_seq, dict(obs), time.perf_counter(), None)
+            if self.prefetch_overload_policy == "drop_oldest" and self._perception_queue.full():
+                try:
+                    dropped_seq, _dropped_obs, _dropped_s, _dropped_prepared = self._perception_queue.get_nowait()
+                    self._perception_queue.task_done()
+                    self._perception_dropped += 1
+                    await self.stage_pipeline.mark_failed(
+                        dropped_seq,
+                        "prefetch_queue_drop_oldest",
+                    )
+                except asyncio.QueueEmpty:
+                    pass
+            put_started = time.perf_counter()
+            await self._perception_queue.put(item)
+            waited_s = time.perf_counter() - put_started
+            if waited_s * 1000.0 >= self.prefetch_backpressure_warn_ms:
+                await self.stage_pipeline.record_prefetch_backpressure(elapsed_s=waited_s)
             self._perception_ingested += 1
-        except asyncio.QueueFull:
-            self._perception_dropped += 1
-            now = time.perf_counter()
-            self._perception_ready[seq] = (None, now, now)
-            await self._drain_ready_perception()
+        else:
+            self._perception_seq += 1
+            seq = self._perception_seq
+            try:
+                self._perception_queue.put_nowait((seq, dict(obs), time.perf_counter(), None))
+                self._perception_ingested += 1
+            except asyncio.QueueFull:
+                self._perception_dropped += 1
+                now = time.perf_counter()
+                self._perception_ready[seq] = (None, now, now, None)
+                await self._drain_ready_perception()
         self._refresh_perception_pipeline_metrics()
+
+    def _prepare_perception_slot_evidence(self, obs: dict[str, Any]) -> dict[str, Any]:
+        """Compute read-only slot proposals outside the cognition lock."""
+        prepared: dict[str, Any] = {"slot_proposals": [], "slot_error": None}
+        if self.perception_mode != "discovered":
+            return prepared
+        bundle = self.neural
+        if bundle is None or not getattr(bundle.stack, "has_slots", False):
+            return prepared
+        proposals: list[dict[str, Any]] = []
+        try:
+            import torch
+
+            from decadic.cycle.discovery import extract_proposals
+            from decadic.cycle.neural_pipeline import _slot_mask_entropies
+
+            with torch.no_grad():
+                patch_tokens = bundle.encoders.vision_patch_tokens(obs)
+                if patch_tokens is not None:
+                    patch_tokens = patch_tokens.to(device=bundle.device)
+                    slot_out = bundle.stack.slot_encode(patch_tokens)
+                    centroids = bundle.stack.slots_module.centroids(slot_out["attn"])
+                    slots_np = slot_out["slots"][0].detach().float().cpu().numpy()
+                    presence_np = slot_out["presence"][0].detach().float().cpu().numpy()
+                    centroids_np = centroids[0].detach().float().cpu().numpy()
+                    mask_entropies = _slot_mask_entropies(slot_out["attn"])
+                    proposals = extract_proposals(
+                        slots_np,
+                        presence_np,
+                        centroids_np,
+                        threshold=C.slot_presence_threshold(),
+                    )
+                    for p in proposals:
+                        idx = int(p.get("idx", -1))
+                        if 0 <= idx < len(mask_entropies):
+                            p["mask_entropy"] = mask_entropies[idx]
+        except Exception as exc:
+            prepared["slot_error"] = type(exc).__name__
+            logger.debug(
+                "perception_slot_prepare_failed agent_id=%s",
+                self.agent_id,
+                exc_info=True,
+            )
+        prepared["slot_proposals"] = proposals
+        return prepared
+
+    def _prepare_perception_fold(
+        self,
+        obs: dict[str, Any],
+        prepared: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Prepare anonymous object-file evidence outside the cognition lock.
+
+        This runs in ordered fold position because the perception organ carries
+        frame-difference state. It does not mutate StateBus, action, optimizer,
+        replay, episodic memory, or LTM.
+        """
+        prepared = dict(prepared or {})
+        if self.perception_mode != "discovered":
+            prepared["skip"] = True
+            return prepared
+        bundle = self.neural
+        organ = getattr(bundle, "_perception_organ", None) if bundle is not None else None
+        if organ is None:
+            organ = self._runtime_perception_organ
+            if bundle is not None:
+                bundle._perception_organ = organ
+        prev_motor = getattr(bundle, "prev_motor", None) if bundle is not None else None
+        proposals = [dict(p) for p in prepared.get("slot_proposals", []) if isinstance(p, dict)]
+        proposals, organ_diag, ret_map = organ.process(obs, proposals, prev_motor=prev_motor)
+        object_files = object_files_from_proposals(proposals)
+        prepared.update(
+            {
+                "skip": False,
+                "proposals": proposals,
+                "organ_diag": organ_diag,
+                "retinotopic_map": ret_map,
+                "object_files": object_files,
+            }
+        )
+        return prepared
 
     async def _perception_worker_loop(self, worker_idx: int) -> None:
         del worker_idx
         while self.running:
-            seq, obs, enqueued_s = await self._perception_queue.get()
+            seq, obs, enqueued_s, prepared = await self._perception_queue.get()
             self._perception_inflight += 1
             try:
+                if self._serial_prefetch_enabled():
+                    await self.stage_pipeline.mark_prefetching(seq)
+                prefetch_started = time.perf_counter()
                 if self.neural is not None:
                     encoders = getattr(self.neural, "encoders", None)
                     predecode = getattr(encoders, "predecode", None)
                     if callable(predecode):
                         try:
-                            predecode(obs)
+                            await asyncio.to_thread(predecode, obs)
                         except Exception:
                             logger.debug(
                                 "perception_predecode_failed agent_id=%s seq=%s",
@@ -660,12 +925,21 @@ class AgentRuntime:
                                 seq,
                                 exc_info=True,
                             )
-                self._perception_ready[seq] = (obs, enqueued_s, time.perf_counter())
+                prefetch_elapsed = time.perf_counter() - prefetch_started
+                if self._serial_prefetch_enabled():
+                    await self.stage_pipeline.mark_prefetched(
+                        seq,
+                        elapsed_s=prefetch_elapsed,
+                    )
+                    prepared = await asyncio.to_thread(self._prepare_perception_slot_evidence, obs)
+                self._perception_ready[seq] = (obs, enqueued_s, time.perf_counter(), prepared)
                 await self._drain_ready_perception()
             except asyncio.CancelledError:
                 raise
             except Exception:
-                self._perception_ready[seq] = (None, enqueued_s, time.perf_counter())
+                self._perception_ready[seq] = (None, enqueued_s, time.perf_counter(), None)
+                if self._serial_prefetch_enabled():
+                    await self.stage_pipeline.mark_failed(seq, "prefetch_worker_failed")
                 logger.debug(
                     "perception_worker_failed agent_id=%s seq=%s",
                     self.agent_id,
@@ -681,67 +955,55 @@ class AgentRuntime:
     async def _drain_ready_perception(self) -> None:
         async with self._perception_commit_lock:
             while self._perception_next_commit in self._perception_ready:
-                obs, enqueued_s, _ready_s = self._perception_ready.pop(
+                obs, enqueued_s, _ready_s, prepared = self._perception_ready.pop(
                     self._perception_next_commit
                 )
                 self._perception_next_commit += 1
                 if obs is None:
                     continue
+                if self._serial_prefetch_enabled():
+                    await self.stage_pipeline.mark_folding(self._perception_next_commit - 1)
+                fold_started = time.perf_counter()
+                if self._serial_prefetch_enabled():
+                    prepared = self._prepare_perception_fold(obs, prepared)
                 async with self.lock:
-                    self._commit_perception_observation_locked(obs)
+                    if self._serial_prefetch_enabled():
+                        self.perceptual_integrator.integrate(self.perceptual, obs)
+                    if self._serial_prefetch_enabled():
+                        self._apply_prepared_perception_observation_locked(obs, prepared)
+                    else:
+                        self._commit_perception_observation_locked(obs)
+                    if self._serial_prefetch_enabled():
+                        self._scene_version += 1
                     self._perception_committed += 1
                     now = time.perf_counter()
                     self._perception_last_commit_s = now
                     self.metrics["commit_lag_ms"] = (now - enqueued_s) * 1000.0
+                if self._serial_prefetch_enabled():
+                    await self.stage_pipeline.mark_folded(
+                        self._perception_next_commit - 1,
+                        elapsed_s=time.perf_counter() - fold_started,
+                    )
         self._refresh_perception_pipeline_metrics()
 
     def _commit_perception_observation_locked(self, obs: dict[str, Any]) -> None:
         """Commit anonymous perceptual object files from one frame, under lock."""
+        prepared = self._prepare_perception_slot_evidence(obs)
+        prepared = self._prepare_perception_fold(obs, prepared)
+        self._apply_prepared_perception_observation_locked(obs, prepared)
+
+    def _apply_prepared_perception_observation_locked(
+        self,
+        obs: dict[str, Any],
+        prepared: dict[str, Any] | None,
+    ) -> None:
+        """Apply prepared anonymous perceptual evidence to runtime state."""
         if self.perception_mode != "discovered":
             return
-        bundle = self.neural
-        proposals: list[dict[str, Any]] = []
-        if bundle is not None and getattr(bundle.stack, "has_slots", False):
-            try:
-                import torch
-
-                from decadic.cycle.discovery import extract_proposals
-                from decadic.cycle.neural_pipeline import _slot_mask_entropies
-
-                with torch.no_grad():
-                    patch_tokens = bundle.encoders.vision_patch_tokens(obs)
-                    if patch_tokens is not None:
-                        patch_tokens = patch_tokens.to(device=bundle.device)
-                        slot_out = bundle.stack.slot_encode(patch_tokens)
-                        centroids = bundle.stack.slots_module.centroids(slot_out["attn"])
-                        slots_np = slot_out["slots"][0].detach().float().cpu().numpy()
-                        presence_np = slot_out["presence"][0].detach().float().cpu().numpy()
-                        centroids_np = centroids[0].detach().float().cpu().numpy()
-                        mask_entropies = _slot_mask_entropies(slot_out["attn"])
-                        proposals = extract_proposals(
-                            slots_np,
-                            presence_np,
-                            centroids_np,
-                            threshold=C.slot_presence_threshold(),
-                        )
-                        for p in proposals:
-                            idx = int(p.get("idx", -1))
-                            if 0 <= idx < len(mask_entropies):
-                                p["mask_entropy"] = mask_entropies[idx]
-            except Exception:
-                logger.debug(
-                    "perception_slot_commit_failed agent_id=%s",
-                    self.agent_id,
-                    exc_info=True,
-                )
-        organ = getattr(bundle, "_perception_organ", None) if bundle is not None else None
-        if organ is None:
-            organ = self._runtime_perception_organ
-            if bundle is not None:
-                bundle._perception_organ = organ
-        prev_motor = getattr(bundle, "prev_motor", None) if bundle is not None else None
-        proposals, organ_diag, ret_map = organ.process(obs, proposals, prev_motor=prev_motor)
-        object_files = object_files_from_proposals(proposals)
+        prepared = prepared or {}
+        object_files = list(prepared.get("object_files") or [])
+        organ_diag = prepared.get("organ_diag")
+        ret_map = prepared.get("retinotopic_map")
         self.perceptual.object_files = [f.to_dict() for f in object_files]
         scene_dynamics_report = {
             "enabled": bool(C.scene_dynamics_enabled()),
@@ -801,8 +1063,14 @@ class AgentRuntime:
 
     def _refresh_perception_pipeline_metrics(self) -> None:
         elapsed = max(1e-6, time.perf_counter() - self._perception_started_at)
-        self.metrics["perceptual_processing_mode"] = self.perceptual_processing_mode
+        self.metrics["processing_mode"] = self.processing_mode
+        self.metrics["stage_pipeline_enabled"] = self._stage_pipeline_enabled()
+        self.metrics["perceptual_processing_mode"] = self.processing_mode
         self.metrics["pipeline_sessions"] = int(self.parallel_sessions)
+        self.metrics["prefetch_queue_depth"] = int(self._perception_queue.qsize())
+        self.metrics["prefetch_queue_max"] = int(self.prefetch_queue_max)
+        self.metrics["prefetch_overload_policy"] = str(self.prefetch_overload_policy)
+        self.metrics["ready_coalesce_policy"] = str(self.ready_coalesce_policy)
         self.metrics["perception_queue_depth"] = int(self._perception_queue.qsize())
         self.metrics["perception_inflight"] = int(self._perception_inflight)
         self.metrics["perception_ingest_hz"] = float(self._perception_ingested / elapsed)
@@ -810,12 +1078,186 @@ class AgentRuntime:
         self.metrics["frames_committed"] = int(self._perception_committed)
         self.metrics["frames_dropped"] = int(self._perception_dropped)
         self.metrics["batching_fallback"] = (
-            self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_BATCHING
+            self.processing_mode == PROCESSING_BATCHING
         )
         if self._perception_last_commit_s is not None:
             self.metrics["sample_age_ms"] = (
                 time.perf_counter() - self._perception_last_commit_s
             ) * 1000.0
+        self._refresh_stage_pipeline_metrics()
+
+    def _session_snapshots_locked(self) -> dict[str, Any]:
+        scene_ws = getattr(self.perceptual, "scene_workspace", None)
+        return {
+            "scene_version": int(self._scene_version),
+            "state_bus_version": int(self._state_bus_version),
+            "workspace_version": int(self._workspace_version),
+            "weight_version": int(self._weight_version),
+            "commit_index": int(self._commit_index),
+            "cycle_index": int(self.state_bus.cycle_index),
+            "priority_label": str(self.state_bus.priority_label),
+            "pain": float(self.state_bus.pain_scalar),
+            "pleasure": float(self.state_bus.pleasure_scalar),
+            "scene": scene_ws.snapshot() if scene_ws is not None else None,
+            "working_memory": self.perceptual.working_memory.snapshot(),
+        }
+
+    def _refresh_stage_pipeline_metrics(self) -> None:
+        m = self.stage_pipeline.metrics()
+        self.metrics["stage_pipeline_active_sessions"] = int(m["active_sessions"])
+        self.metrics["stage_pipeline_ready_sessions"] = int(m["ready_sessions"])
+        self.metrics["stage_pipeline_committed_sessions"] = int(m["committed_sessions"])
+        self.metrics["stage_pipeline_committed_per_s"] = float(m["committed_sessions_per_s"])
+        self.metrics["stage_pipeline_dropped_sessions"] = int(m["dropped_sessions"])
+        self.metrics["stage_pipeline_stale_sessions"] = int(m["stale_sessions"])
+        self.metrics["stage_pipeline_failed_sessions"] = int(m["failed_sessions"])
+        self.metrics["stage_pipeline_queue_depths"] = m["stage_queue_depths"]
+        self.metrics["stage_pipeline_inflight"] = m["stage_inflight"]
+        self.metrics["stage_pipeline_latency_ms"] = m["stage_latency_ms"]
+        self.metrics["stage_pipeline_recent_sessions"] = m["recent_sessions"]
+        self.metrics["stage_pipeline_selected_session"] = m["selected_session"]
+        self.metrics["frames_received"] = int(m.get("frames_received", 0))
+        self.metrics["frames_prefetched"] = int(m.get("frames_prefetched", 0))
+        self.metrics["frames_folded"] = int(m.get("frames_folded", 0))
+        self.metrics["frames_deep_processed"] = int(m.get("frames_deep_processed", 0))
+        self.metrics["coalesced_sessions"] = int(m.get("coalesced_sessions", 0))
+        self.metrics["information_loss"] = int(m.get("information_loss", 0))
+        self.metrics["producer_overlap_ratio"] = float(m.get("producer_overlap_ratio", 0.0))
+        self.metrics["decode_on_consume_ms"] = float(m.get("decode_on_consume_ms") or 0.0)
+        self.metrics["consume_wait_ms"] = float(m.get("consume_wait_ms") or 0.0)
+        self.metrics["ready_queue_depth"] = int(m.get("ready_queue_depth", 0))
+        self.metrics["ready_coalesce_policy"] = str(m.get("ready_coalesce_policy", self.ready_coalesce_policy))
+        self.metrics["prefetch_backpressure_events"] = int(m.get("prefetch_backpressure_events", 0))
+        self.metrics["prefetch_backpressure_ms"] = float(m.get("prefetch_backpressure_ms") or 0.0)
+        self.metrics["oldest_unfolded_age_ms"] = float(m.get("oldest_unfolded_age_ms") or 0.0)
+        self.metrics["prefetch_backpressure_warning"] = bool(
+            self.metrics["prefetch_backpressure_ms"] >= self.prefetch_backpressure_warn_ms
+            and self.metrics["prefetch_backpressure_events"] > 0
+        )
+        self.metrics["oldest_unfolded_warning"] = bool(
+            self.metrics["oldest_unfolded_age_ms"] >= self.prefetch_oldest_unfolded_warn_ms
+        )
+        self.metrics["fold_lag_ms"] = float(m.get("fold_lag_ms") or 0.0)
+        sel = m["selected_session"] or {}
+        self.metrics["stage_pipeline_arbitration_reason"] = str(
+            sel.get("arbitration_reason", "")
+        )
+        if m.get("commit_lag_ms") is not None:
+            self.metrics["commit_lag_ms"] = float(m["commit_lag_ms"])
+
+    def _cached_memory_context_for_cycle(self) -> list[float] | None:
+        if not C.memory_context_async_enabled() or self.neural is None:
+            return None
+        if self._memory_context_vector is not None:
+            return list(self._memory_context_vector)
+        return [0.0] * int(self.neural.cfg.memory_context_dim)
+
+    def _refresh_memory_recall_metrics(self) -> None:
+        stats = getattr(self.episodic, "recall_cache_stats", lambda: {})()
+        if isinstance(stats, dict):
+            self.metrics["memory_recall_cache_size"] = int(stats.get("size", 0) or 0)
+            self.metrics["memory_recall_cache_hits"] = int(stats.get("hits", 0) or 0)
+            self.metrics["memory_recall_cache_misses"] = int(stats.get("misses", 0) or 0)
+        pm_getter = getattr(self.episodic, "persistence_metrics", None)
+        pm = pm_getter() if callable(pm_getter) else {}
+        if isinstance(pm, dict):
+            self.metrics["episodic_sqlite_commit_count"] = int(pm.get("sqlite_commit_count", 0) or 0)
+            self.metrics["episodic_sqlite_batch_commit_count"] = int(pm.get("sqlite_batch_commit_count", 0) or 0)
+            self.metrics["episodic_sqlite_last_commit_ms"] = float(pm.get("sqlite_last_commit_ms", 0.0) or 0.0)
+            self.metrics["episodic_sqlite_wal_checkpoint_count"] = int(pm.get("sqlite_wal_checkpoint_count", 0) or 0)
+            self.metrics["episodic_write_batch_size_last"] = int(pm.get("episodic_write_batch_size_last", 0) or 0)
+            self.metrics["episodic_db_rows"] = int(pm.get("episodic_db_rows", 0) or 0)
+            self.metrics["episodic_db_pruned_rows"] = int(pm.get("episodic_db_pruned_rows", 0) or 0)
+            self.metrics["episodic_db_bytes"] = int(pm.get("memory_db_bytes", 0) or 0)
+            self.metrics["episodic_wal_bytes"] = int(pm.get("memory_wal_bytes", 0) or 0)
+            self.metrics["sqlite_commit_count"] = self.metrics["episodic_sqlite_commit_count"]
+            self.metrics["sqlite_batch_commit_count"] = self.metrics["episodic_sqlite_batch_commit_count"]
+            self.metrics["sqlite_last_commit_ms"] = self.metrics["episodic_sqlite_last_commit_ms"]
+            self.metrics["sqlite_wal_checkpoint_count"] = self.metrics["episodic_sqlite_wal_checkpoint_count"]
+            self.metrics["memory_db_bytes"] = self.metrics["episodic_db_bytes"]
+            self.metrics["memory_wal_bytes"] = self.metrics["episodic_wal_bytes"]
+        self.metrics["memory_recall_worker_ms"] = float(self._memory_context_worker_ms)
+        self.metrics["memory_recall_refresh_cycle"] = int(self._memory_context_refresh_cycle)
+        self.metrics["memory_recall_staleness_cycles"] = max(
+            0, int(self.state_bus.cycle_index) - int(self._memory_context_refresh_cycle)
+        )
+
+    def _refresh_ltm_metrics(self) -> None:
+        if self.ltm_graph is None:
+            return
+        try:
+            stats_getter = getattr(self.ltm_graph, "cached_belief_stats", None)
+            stats = stats_getter() if callable(stats_getter) else self.ltm_graph.belief_stats()
+            if isinstance(stats, dict):
+                self.metrics["ltm_property_beliefs"] = int(
+                    stats.get("total_property_beliefs", 0)
+                )
+                self.metrics["ltm_avg_property_confidence"] = float(
+                    stats.get("avg_property_confidence", 0.0)
+                )
+        except Exception:
+            pass
+        try:
+            metrics_getter = getattr(self.ltm_graph, "runtime_metrics", None)
+            ltm_metrics = metrics_getter() if callable(metrics_getter) else {}
+            if isinstance(ltm_metrics, dict):
+                self.metrics.update(ltm_metrics)
+                self.metrics["ltm_sqlite_commit_count"] = int(ltm_metrics.get("sqlite_commit_count", 0) or 0)
+                self.metrics["ltm_sqlite_batch_commit_count"] = int(ltm_metrics.get("sqlite_batch_commit_count", 0) or 0)
+                self.metrics["ltm_sqlite_last_commit_ms"] = float(ltm_metrics.get("sqlite_last_commit_ms", 0.0) or 0.0)
+                self.metrics["ltm_sqlite_wal_checkpoint_count"] = int(ltm_metrics.get("sqlite_wal_checkpoint_count", 0) or 0)
+                self.metrics["ltm_db_bytes"] = int(ltm_metrics.get("memory_db_bytes", 0) or 0)
+                self.metrics["ltm_wal_bytes"] = int(ltm_metrics.get("memory_wal_bytes", 0) or 0)
+                self.metrics["sqlite_commit_count"] = int(self.metrics.get("episodic_sqlite_commit_count", 0) or 0) + int(ltm_metrics.get("sqlite_commit_count", 0) or 0)
+                self.metrics["sqlite_batch_commit_count"] = int(self.metrics.get("episodic_sqlite_batch_commit_count", 0) or 0) + int(ltm_metrics.get("sqlite_batch_commit_count", 0) or 0)
+                self.metrics["sqlite_last_commit_ms"] = max(
+                    float(self.metrics.get("episodic_sqlite_last_commit_ms", 0.0) or 0.0),
+                    float(ltm_metrics.get("sqlite_last_commit_ms", 0.0) or 0.0),
+                )
+                self.metrics["sqlite_wal_checkpoint_count"] = int(self.metrics.get("episodic_sqlite_wal_checkpoint_count", 0) or 0) + int(ltm_metrics.get("sqlite_wal_checkpoint_count", 0) or 0)
+                self.metrics["memory_db_bytes"] = int(self.metrics.get("episodic_db_bytes", 0) or 0) + int(ltm_metrics.get("memory_db_bytes", 0) or 0)
+                self.metrics["memory_wal_bytes"] = int(self.metrics.get("episodic_wal_bytes", 0) or 0) + int(ltm_metrics.get("memory_wal_bytes", 0) or 0)
+        except Exception:
+            pass
+
+    def _maybe_schedule_memory_context_refresh(self, query: Any, cycle: int) -> None:
+        if not C.memory_context_async_enabled() or self.neural is None or query is None:
+            return
+        if self._memory_context_task is not None and not self._memory_context_task.done():
+            return
+        if int(cycle) - int(self._memory_context_refresh_cycle) < C.memory_context_refresh_cycles():
+            return
+        q_list = [float(x) for x in list(query)]
+        out_dim = int(self.neural.cfg.memory_context_dim)
+        top_k = int(os.environ.get("DECADIC_MEMORY_TOP_K", "5"))
+        min_salience = float(os.environ.get("DECADIC_MEMORY_MIN_SALIENCE", "0"))
+
+        async def refresh() -> None:
+            started = time.perf_counter()
+            try:
+                import numpy as np
+
+                q = np.asarray(q_list, dtype=np.float32)
+                vec = await asyncio.to_thread(
+                    self.episodic.retrieval_context_vector,
+                    q,
+                    out_dim,
+                    top_k=top_k,
+                    min_salience=min_salience,
+                    exclude_cycle=int(cycle),
+                )
+                self._memory_context_vector = [float(x) for x in vec.tolist()]
+                self._memory_context_query = list(q_list)
+                self._memory_context_refresh_cycle = int(cycle)
+                self._memory_context_worker_ms = (time.perf_counter() - started) * 1000.0
+            except Exception:
+                logger.debug("memory_context_refresh_failed agent_id=%s", self.agent_id, exc_info=True)
+            finally:
+                self._refresh_memory_recall_metrics()
+
+        self._memory_context_task = asyncio.create_task(
+            refresh(), name=f"decadic-memory-context-{self.agent_id}"
+        )
 
     async def _consolidation_runner(self) -> None:
         # Real dual-network consolidation when enabled: clone the current stack and
@@ -1011,17 +1453,7 @@ class AgentRuntime:
         self.metrics["stress"] = round(float(self.stress), 4)
         self.metrics["viability_mode"] = self.viability_mode
         self.metrics["time_to_death_s"] = self._time_to_death_s()
-        if self.ltm_graph is not None:
-            try:
-                stats = self.ltm_graph.belief_stats()
-                self.metrics["ltm_property_beliefs"] = int(
-                    stats.get("total_property_beliefs", 0)
-                )
-                self.metrics["ltm_avg_property_confidence"] = float(
-                    stats.get("avg_property_confidence", 0.0)
-                )
-            except Exception:
-                pass
+        self._refresh_ltm_metrics()
 
     def _capture_locomotion_telemetry(self, obs: dict[str, Any]) -> None:
         """Mirror the body's joint-brace signals into agent metrics.
@@ -1208,6 +1640,8 @@ class AgentRuntime:
         self,
         *,
         parallel_sessions: int | None = None,
+        processing_mode: str | None = None,
+        stage_pipeline_enabled: bool | None = None,
         perceptual_processing_mode: str | None = None,
         working_memory_slots: int | None = None,
         working_memory_decay: float | None = None,
@@ -1271,15 +1705,35 @@ class AgentRuntime:
         WM->LTM commit off the cognitive lock); drains+stops the worker when turned
         off. No rebuild; no consolidation is lost.
         """
-        if perceptual_processing_mode is not None:
-            mode = str(perceptual_processing_mode).strip().lower()
-            if mode in PERCEPTUAL_PROCESSING_MODES and mode != self.perceptual_processing_mode:
+        requested_mode = processing_mode
+        if requested_mode is None and stage_pipeline_enabled is not None:
+            requested_mode = (
+                PROCESSING_SERIAL_PREFETCH
+                if bool(stage_pipeline_enabled)
+                else PROCESSING_PERSISTENT_PERCEPTION
+            )
+        if requested_mode is None:
+            requested_mode = perceptual_processing_mode
+        if requested_mode is not None:
+            mode = str(requested_mode).strip().lower()
+            if mode == PROCESSING_STAGE_PIPELINE:
+                mode = PROCESSING_SERIAL_PREFETCH
+            if mode == PERCEPTUAL_PROCESSING_PERSISTENT:
+                mode = PROCESSING_PERSISTENT_PERCEPTION
+            if mode in PERCEPTUAL_PROCESSING_MODES and mode != self.processing_mode:
+                self.processing_mode = mode
                 self.perceptual_processing_mode = mode
                 self._clear_perception_pipeline()
+                self.stage_pipeline.clear()
+                self._rebuild_perception_queue_if_needed()
+                if self._stage_pipeline_enabled():
+                    self.stage_pipeline.start()
         if parallel_sessions is not None:
             k = max(1, min(MAX_PARALLEL_SESSIONS, int(parallel_sessions)))
             self.parallel_sessions = k
             self._obs_buffer = deque(self._obs_buffer, maxlen=k)
+            self.stage_pipeline.set_capacity(k)
+            self._rebuild_perception_queue_if_needed()
             extra = self._perception_workers[k:]
             for task in extra:
                 task.cancel()
@@ -1451,11 +1905,47 @@ class AgentRuntime:
                 self._brain_topology_cache = None
         self._refresh_plasticity_metrics()
 
+    def _refresh_hardware_metrics(self) -> None:
+        self.metrics["hardware_python_executable"] = sys.executable
+        self.metrics["cuda_required"] = bool(C.require_cuda())
+        try:
+            import torch
+
+            cuda_available = bool(torch.cuda.is_available())
+            self.metrics["hardware_torch_version"] = str(torch.__version__)
+            self.metrics["hardware_cuda_available"] = cuda_available
+            self.metrics["hardware_cuda_device"] = (
+                str(torch.cuda.get_device_name(0)) if cuda_available else ""
+            )
+            if cuda_available:
+                try:
+                    self.metrics["hardware_cuda_bf16"] = bool(torch.cuda.is_bf16_supported())
+                except Exception:
+                    self.metrics["hardware_cuda_bf16"] = False
+        except Exception as exc:
+            self.metrics["hardware_torch_version"] = ""
+            self.metrics["hardware_cuda_available"] = False
+            self.metrics["hardware_cuda_device"] = ""
+            self.metrics["cuda_warning"] = f"torch unavailable: {type(exc).__name__}"
+        device = getattr(self.neural, "device", None)
+        self.metrics["neural_device"] = str(device) if device is not None else "none"
+        warning = ""
+        if self.neural is not None and str(device) != "cuda":
+            warning = "neural bundle is not using CUDA"
+        if self.neural is not None and int(self.metrics.get("gpu_memory_max_allocated", 0) or 0) == 0:
+            warning = warning or "torch GPU allocation is zero"
+        self.metrics["cuda_warning"] = warning
+
     def capacity_config(self) -> dict[str, Any]:
         wm = self.perceptual.working_memory
         cfg: dict[str, Any] = {
             "parallel_sessions": self.parallel_sessions,
-            "perceptual_processing_mode": self.perceptual_processing_mode,
+            "processing_mode": self.processing_mode,
+            "stage_pipeline_enabled": self._stage_pipeline_enabled(),
+            "perceptual_processing_mode": self.processing_mode,
+            "prefetch_queue_max": int(self.prefetch_queue_max),
+            "prefetch_overload_policy": self.prefetch_overload_policy,
+            "ready_coalesce_policy": self.ready_coalesce_policy,
             "working_memory_slots": wm.capacity,
             "working_memory_decay": wm.decay,
             "assist_override": self.assist_override,
@@ -1478,6 +1968,13 @@ class AgentRuntime:
             "integration_window_ms": float(self.integration_window_ms),
             "episodic_async": bool(getattr(self.episodic, "async_enabled", False)),
             "ltm_async": bool(getattr(self.ltm_graph, "async_enabled", False)),
+            "ltm_consolidation_async": bool(getattr(self.ltm_graph, "async_enabled", False)),
+            "ltm_consolidation_queue_max": int(C.ltm_consolidation_queue_max()),
+            "ltm_semantic_evidence_interval": int(C.ltm_semantic_evidence_interval()),
+            "ltm_scene_edge_max_per_job": int(C.ltm_scene_edge_max_per_job()),
+            "ltm_match_cache_enabled": bool(C.ltm_match_cache_enabled()),
+            "ltm_match_recent_cap": int(C.ltm_match_recent_cap()),
+            "ltm_match_salient_cap": int(C.ltm_match_salient_cap()),
         }
         b = self.neural
         stack = getattr(b, "stack", None) if b is not None else None
@@ -1616,6 +2113,14 @@ class AgentRuntime:
 
     async def reset(self, preset: str | None = None) -> None:
         """Fresh mind: new weights, zeroed state bus / viability / perception, wiped episodes."""
+        restart_cycle = await self.suspend_cycle_worker()
+        if self._memory_context_task is not None and not self._memory_context_task.done():
+            self._memory_context_task.cancel()
+            try:
+                await self._memory_context_task
+            except asyncio.CancelledError:
+                pass
+            self._memory_context_task = None
         async with self.lock:
             self.state_bus = StateBus()
             self.perceptual = PerceptualState(perception_mode=self.perception_mode)
@@ -1633,6 +2138,11 @@ class AgentRuntime:
             )
             self.preset = self.neural.preset if self.neural else None
             self._last_observation = None
+            self._memory_context_vector = None
+            self._memory_context_query = None
+            self._memory_context_refresh_cycle = 0
+            self._memory_context_worker_ms = 0.0
+            self._cycle_deadline_s = time.perf_counter()
             self._wait_for_observation_after_reset = True
             self._debug_views = {}
             self._last_cycle_trace = None
@@ -1652,6 +2162,7 @@ class AgentRuntime:
             self._cognitive_history.clear()
             self._obs_buffer.clear()
             self._clear_perception_pipeline()
+            self.stage_pipeline.clear()
             self._runtime_perception_organ = PerceptionOrgan()
             self._loco_last_xy = None
             self._loco_origin_xy = None
@@ -1661,6 +2172,7 @@ class AgentRuntime:
             self.status = "alive"
             self.died_at_cycle = None
             self.metrics = self._initial_metrics()
+            self._refresh_hardware_metrics()
             self._refresh_perception_pipeline_metrics()
             self._refresh_homeostasis_metrics()
             self._refresh_plasticity_metrics()
@@ -1671,6 +2183,12 @@ class AgentRuntime:
                     self.out_queue.get_nowait()
                 except asyncio.QueueEmpty:
                     break
+            while not self.control_queue.empty():
+                try:
+                    self.control_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+        self.resume_cycle_worker(restart_cycle)
 
     async def stop(self) -> None:
         self.running = False
@@ -1697,6 +2215,7 @@ class AgentRuntime:
         if self._perception_workers:
             await asyncio.gather(*self._perception_workers, return_exceptions=True)
         self._perception_workers = []
+        await self.stage_pipeline.stop()
         if self._cycle_task is not None:
             self._cycle_task.cancel()
             try:
@@ -1806,6 +2325,12 @@ class AgentRuntime:
             self.metrics["gpu_memory_max_allocated"] = int(
                 diagnostics["gpu_memory_max_allocated"]
             )
+        if diagnostics.get("memory_recall_ms") is not None:
+            self.metrics["memory_recall_ms"] = float(diagnostics["memory_recall_ms"])
+        if diagnostics.get("memory_recall_on_critical_path") is not None:
+            self.metrics["memory_recall_on_critical_path"] = bool(
+                diagnostics["memory_recall_on_critical_path"]
+            )
         for key in ("parallel_sessions", "working_memory_slots"):
             if key == "parallel_sessions" and self._perception_pipeline_enabled():
                 self.metrics[key] = int(self.parallel_sessions)
@@ -1833,6 +2358,8 @@ class AgentRuntime:
                 self.metrics[key] = float(diagnostics[key])
         if isinstance(diagnostics.get("motor_command"), list):
             self.metrics["motor_command"] = [float(x) for x in diagnostics["motor_command"]]
+        self._refresh_hardware_metrics()
+        self._refresh_memory_recall_metrics()
         # NaN firewall telemetry: count cycles the firewall recovered from.
         nan_recovery = bool(diagnostics.get("nan_recovery", False))
         self.metrics["nan_recovery_last"] = nan_recovery
@@ -2073,22 +2600,57 @@ class AgentRuntime:
 
     async def _cycle_loop(self) -> None:
         while self.running:
-            await asyncio.sleep(self.cycle_interval_s)
+            scheduler = C.cycle_scheduler_mode()
+            self.metrics["cycle_scheduler_mode"] = scheduler
+            self.metrics["cycle_interval_ms"] = float(self.cycle_interval_s * 1000.0)
+            if scheduler == "fixed_sleep":
+                await asyncio.sleep(self.cycle_interval_s)
+                cycle_start_target = time.perf_counter()
+                self.metrics["cycle_idle_ms"] = float(self.cycle_interval_s * 1000.0)
+            else:
+                now_sched = time.perf_counter()
+                if self._cycle_deadline_s <= 0:
+                    self._cycle_deadline_s = now_sched
+                idle_s = max(0.0, self._cycle_deadline_s - now_sched)
+                if idle_s > 0:
+                    await asyncio.sleep(idle_s)
+                cycle_start_target = self._cycle_deadline_s
+                self.metrics["cycle_idle_ms"] = idle_s * 1000.0
             # A dead mind is frozen; only an admin revive/reset reanimates it.
             if self.paused or self.status == "dead":
+                await asyncio.sleep(self.cycle_interval_s)
+                self._cycle_deadline_s = time.perf_counter() + self.cycle_interval_s
                 continue
             t0 = time.perf_counter()
+            selected_session: DecadicSession | None = None
+            if self._serial_prefetch_enabled():
+                selected_session, _commit_bundle = await self.stage_pipeline.pop_commit_candidate()
+                if selected_session is None:
+                    self._refresh_stage_pipeline_metrics()
+                    m = self.stage_pipeline.metrics()
+                    active = int(m.get("active_sessions", 0) or 0) + int(
+                        m.get("ready_sessions", 0) or 0
+                    )
+                    if active > 0 or self._last_observation is not None:
+                        await asyncio.sleep(0.001)
+                        continue
             async with self.lock:
-                if self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_BATCHING:
+                if self._serial_prefetch_enabled():
+                    pending = []
+                    latest_observation = selected_session.observation if selected_session else None
+                elif self.processing_mode == PROCESSING_BATCHING:
                     pending = list(self._obs_buffer)
                     self._obs_buffer.clear()
+                    latest_observation = self._last_observation
                 else:
                     pending = []
+                    latest_observation = self._last_observation
                 if (
                     self._wait_for_observation_after_reset
                     and not pending
-                    and self._last_observation is None
+                    and latest_observation is None
                 ):
+                    await asyncio.sleep(0.001)
                     continue
                 self._wait_for_observation_after_reset = False
                 ctx = CycleContext(
@@ -2098,9 +2660,9 @@ class AgentRuntime:
                     episodic=self.episodic,
                     ltm_graph=self.ltm_graph,
                     homeostasis=self.homeostasis,
-                    last_observation=self._last_observation,
+                    last_observation=latest_observation,
                     pending_observations=pending,
-                    perceptual_processing_mode=self.perceptual_processing_mode,
+                    perceptual_processing_mode=self.processing_mode,
                     assist_override=self.assist_override,
                     curriculum_mode=self.curriculum_mode,
                     perception_mode=self.perception_mode,
@@ -2111,6 +2673,8 @@ class AgentRuntime:
                     ai_intero_pref_weight=self.ai_intero_pref_weight_override,
                     drive_priority_gain=self.drive_priority_gain_override,
                     motor_babble_sigma=self.motor_babble_sigma_override,
+                    cached_memory_context=self._cached_memory_context_for_cycle(),
+                    memory_recall_on_critical_path=not C.memory_context_async_enabled(),
                 )
                 if self.neural is not None:
                     msg = run_neural_cycle(ctx, self.neural)
@@ -2123,6 +2687,18 @@ class AgentRuntime:
                 # replay buffer (no-op unless the feature is enabled).
                 tr = None
                 if transition is not None and self.replay_buffer is not None:
+                    if selected_session is not None:
+                        transition = {
+                            **transition,
+                            "session_id": selected_session.session_id,
+                            "frame_seq": selected_session.frame_seq,
+                            "commit_index": self._commit_index,
+                            "stage_timings": dict(selected_session.timings_ms),
+                            "snapshot_versions": dict(
+                                selected_session.to_dict().get("snapshots", {})
+                            ),
+                            "selected_status": "selected",
+                        }
                     dojo = self.dojo_training if isinstance(self.dojo_training, dict) else None
                     if dojo is not None:
                         transition = {
@@ -2173,13 +2749,37 @@ class AgentRuntime:
                     self._last_cognitive_trace = cognitive
                     self._cognitive_history.append(_compact_cognitive(cognitive))
                 self._check_death()
+                self._state_bus_version += 1
+                self._workspace_version += 1
+                self._weight_version += 1
+                self._commit_index += 1
             wall_ms = (time.perf_counter() - t0) * 1000.0
+            if scheduler == "deadline":
+                self._cycle_deadline_s = cycle_start_target + self.cycle_interval_s
+                while self._cycle_deadline_s < time.perf_counter() - self.cycle_interval_s:
+                    self._cycle_deadline_s += self.cycle_interval_s
+                self.metrics["cycle_overrun_ms"] = max(
+                    0.0, (time.perf_counter() - (cycle_start_target + self.cycle_interval_s)) * 1000.0
+                )
+            else:
+                self.metrics["cycle_overrun_ms"] = max(0.0, wall_ms - self.cycle_interval_s * 1000.0)
+            self.metrics["cycle_compute_ratio"] = wall_ms / max(1e-6, self.cycle_interval_s * 1000.0)
             elapsed = time.perf_counter() - self._started_perf
             self.metrics["cycles_completed"] = int(self.state_bus.cycle_index)
             self.metrics["last_cycle_wall_ms"] = wall_ms
             if elapsed > 1e-6:
                 self.metrics["approx_cycles_per_sec"] = self.state_bus.cycle_index / elapsed
             self._apply_cycle_diagnostics(diagnostics)
+            self._maybe_schedule_memory_context_refresh(
+                diagnostics.get("memory_query_vector"), int(self.state_bus.cycle_index)
+            )
+            if selected_session is not None:
+                act_type = outbound.get("action", {}).get("type") if isinstance(outbound, dict) else None
+                await self.stage_pipeline.mark_committed(
+                    selected_session.session_id,
+                    action_type=str(act_type) if act_type is not None else None,
+                )
+                self._refresh_stage_pipeline_metrics()
             self._maybe_dump_cycle_trace(outbound, diagnostics)
             if cycle_profile_enabled():
                 logger.info(
@@ -2208,6 +2808,7 @@ class AgentRuntime:
                     self.agent_id,
                     self.state_bus.cycle_index,
                 )
+            await asyncio.sleep(0)
 
     async def handle_observation_dict(self, obs: dict[str, Any]) -> None:
         """Integrate observation under lock and apply collision fast-path."""
@@ -2247,12 +2848,10 @@ class AgentRuntime:
                 1.0, float(effort.get("strain_total", 0.0) or 0.0) * strain_pain_gain()
             )
 
-        # Decode the camera frame + audio into encoder-ready tensors ONCE here, OFF
-        # the cognitive lock. run_neural_cycle then reuses the stashed tensors instead
-        # of base64-decoding + CLIP-preprocessing the same frame two-to-three times
-        # inside the critical section. Pure CPU work; a no-op in zeros mode / stub
-        # cognition (self.neural is None) and harmless if it ever fails.
-        if self.neural is not None:
+        # Legacy batching has no producer worker, so keep its decode-on-ingest
+        # optimization. Serial prefetch and persistent perception do this in the
+        # producer workers instead.
+        if self.processing_mode == PROCESSING_BATCHING and self.neural is not None:
             encoders = getattr(self.neural, "encoders", None)
             predecode = getattr(encoders, "predecode", None)
             if callable(predecode):
@@ -2265,7 +2864,8 @@ class AgentRuntime:
 
         async with self.lock:
             self._wait_for_observation_after_reset = False
-            self.perceptual_integrator.integrate(self.perceptual, obs)
+            if not self._serial_prefetch_enabled():
+                self.perceptual_integrator.integrate(self.perceptual, obs)
             self.metrics["last_observation_iso"] = obs.get("timestamp")
             self._capture_locomotion_telemetry(obs)
 
@@ -2354,11 +2954,13 @@ class AgentRuntime:
                 ) + 1
             self._refresh_homeostasis_metrics()
             self._last_observation = dict(obs)
-            if self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_BATCHING:
+            if self.processing_mode == PROCESSING_BATCHING:
                 self._obs_buffer.append(dict(obs))
             # Fast-path damage can kill between cognitive cycles.
             self._check_death()
-        if self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_PERSISTENT:
+        if self._serial_prefetch_enabled():
+            await self._enqueue_perception_observation(obs)
+        elif self.processing_mode == PROCESSING_PERSISTENT_PERCEPTION:
             await self._enqueue_perception_observation(obs)
 
     def last_vision_png(self, camera: str | None = None) -> bytes | None:
@@ -2504,7 +3106,7 @@ class AgentRuntime:
             "command": command,
             "timestamp": datetime.now(UTC).isoformat(),
         }
-        return self._put_outbound(msg, drop_oldest=True)
+        return self._put_control_outbound(msg)
 
     def _apply_live_teacher(self, outbound: dict[str, Any]) -> None:
         """Attach Skill Dojo teacher metadata without suppressing student action.
@@ -2565,8 +3167,8 @@ class AgentRuntime:
         """Queue an outbound websocket message.
 
         Normal cycle outputs are high-rate and disposable if the body is slow.
-        Body commands are low-rate operator/control messages, so when requested
-        they may evict stale queued cycle outputs to make room.
+        Body/control commands use ``control_queue`` and are drained first by the
+        websocket sender.
         """
         try:
             self.out_queue.put_nowait(msg)
@@ -2589,6 +3191,14 @@ class AgentRuntime:
             except asyncio.QueueFull:
                 continue
         return False
+
+    def _put_control_outbound(self, msg: dict[str, Any]) -> bool:
+        """Queue a low-rate control message on the priority lane."""
+        try:
+            self.control_queue.put_nowait(msg)
+            return True
+        except asyncio.QueueFull:
+            return False
 
     def snapshot_state(self) -> dict[str, Any]:
         # The bounded "now" graph (working memory) plus the unbounded long-term

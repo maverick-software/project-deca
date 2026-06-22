@@ -40,6 +40,15 @@ def _png_b64(color=(40, 160, 90)) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
+def _hf_encoder_or_skip() -> FrozenSensoryEncoders:
+    try:
+        return FrozenSensoryEncoders(
+            mode="hf", device=torch.device("cuda"), proprio_dim_out=_PROPRIO_OUT
+        )
+    except OSError as exc:
+        pytest.skip(f"CLIP/Whisper weights unavailable locally: {exc}")
+
+
 def test_predecode_is_noop_in_zeros_mode():
     enc = FrozenSensoryEncoders(
         mode="zeros", device=torch.device("cpu"), proprio_dim_out=_PROPRIO_OUT
@@ -52,9 +61,7 @@ def test_predecode_is_noop_in_zeros_mode():
 
 @pytest.mark.skipif(not _CUDA, reason="pre-decode parity needs CLIP/Whisper on a CUDA GPU")
 def test_predecode_stashes_and_matches_inline_decode():
-    enc = FrozenSensoryEncoders(
-        mode="hf", device=torch.device("cuda"), proprio_dim_out=_PROPRIO_OUT
-    )
+    enc = _hf_encoder_or_skip()
     if enc._clip_vision is None:
         pytest.skip("CLIP weights unavailable")
     b64 = _png_b64()

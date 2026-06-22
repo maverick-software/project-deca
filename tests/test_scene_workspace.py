@@ -44,7 +44,7 @@ def test_scene_workspace_persists_occluded_entities_then_expires():
     assert ws.snapshot()["entity_count"] == 0
 
 
-def test_scene_workspace_focus_excludes_stuff_and_prioritizes_looming():
+def test_scene_workspace_admits_extended_entities_and_prioritizes_looming():
     ws = SceneWorkspace()
     ws.update(
         [
@@ -57,9 +57,9 @@ def test_scene_workspace_focus_excludes_stuff_and_prioritizes_looming():
     snap = ws.snapshot()
     focused = snap["focus_ids"]
     assert len(focused) == 1
+    assert any(e["kind_hint"] == "stuff" and e["entity_role"] == "extended_entity" for e in snap["entities"])
     ent = next(e for e in snap["entities"] if e["entity_id"] == focused[0])
     assert ent["object_id"] == "obj-0002"
-    assert all(e["kind_hint"] != "stuff" for e in snap["entities"] if e["entity_id"] in focused)
 
 
 def test_scene_workspace_builds_anonymous_spatial_relations():
@@ -75,4 +75,3 @@ def test_scene_workspace_builds_anonymous_spatial_relations():
     assert "co_visible" in kinds
     assert "near" in kinds
     assert "left_of" in kinds or "right_of" in kinds
-

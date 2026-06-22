@@ -68,7 +68,7 @@ def test_discovery_health_detects_center_collapse():
     assert health.reason == "skipped_perception_collapsed"
 
 
-def test_uniform_stuff_is_low_confidence_not_memory_object():
+def test_uniform_extended_region_is_provisional_entity():
     files = object_files_from_proposals(
         [
             {
@@ -82,27 +82,42 @@ def test_uniform_stuff_is_low_confidence_not_memory_object():
         ]
     )
     assert files[0].kind_hint == "stuff"
+    assert files[0].entity_role == "extended_entity"
+    assert files[0].provisional is True
     assert files[0].confidence < 0.2
     health = evaluate_discovery_health(files)
-    assert health.reason == "skipped_low_confidence"
+    assert health.reason == "recorded_provisional_evidence"
 
 
 def test_ltm_skips_unhealthy_slots_and_keeps_copresent_slots_distinct():
     g = LongTermGraph()
     bad = MemorySlot(
-        entity_id="floor",
+        entity_id="extended-a",
         appearance=[1.0, 0.0],
         seen_count=3,
         confidence=0.1,
         kind_hint="stuff",
+        entity_role="extended_entity",
     )
     assert g.consolidate([bad], cycle=1, min_seen=2) == []
     assert g.counts() == (0, 0)
 
+    support = MemorySlot(
+        entity_id="extended-b",
+        appearance=[0.0, 1.0],
+        seen_count=3,
+        confidence=0.12,
+        kind_hint="stuff",
+        entity_role="extended_entity",
+        precision=0.35,
+        provisional=False,
+    )
+    assert len(g.consolidate([support], cycle=2, min_seen=2)) == 1
+    assert g.counts() == (1, 0)
+
     a = MemorySlot(entity_id="obj-a", appearance=[1.0, 0.0], seen_count=3, confidence=1.0)
     b = MemorySlot(entity_id="obj-b", appearance=[1.0, 0.0], seen_count=3, confidence=1.0)
-    ids = g.consolidate([a, b], cycle=2, min_seen=2)
+    ids = g.consolidate([a, b], cycle=3, min_seen=2)
     assert len(ids) == 2
     assert len(set(ids)) == 2
-    assert g.counts() == (2, 1)
-
+    assert g.counts() == (3, 1)

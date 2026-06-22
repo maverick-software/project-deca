@@ -94,7 +94,8 @@ Set-Location '$RepoRoot'
 `$env:DECADIC_REPRESENTED_SELF = '1'      # Phase 5: self as a represented object
 `$env:DECADIC_MEMORY_EFFICIENT_TRAINING = '1'  # Phase 6: 8-bit Adam + bf16 on CUDA
 `$env:UV_CACHE_DIR = Join-Path '$RepoRoot' '.uv-cache'
-uv run --extra body python -m uvicorn decadic.api.app:app --host 127.0.0.1 --port $ServerPort
+`$env:DECADIC_REQUIRE_CUDA = '1'
+& '.\.venv\Scripts\python.exe' -m uvicorn decadic.api.app:app --host 127.0.0.1 --port $ServerPort
 Write-Host ''
 Write-Host 'Server stopped. Press any key to close this window.' -ForegroundColor Yellow
 [void][System.Console]::ReadKey(`$true)

@@ -176,3 +176,77 @@ def test_ltm_graph_enabled_by_default(monkeypatch):
     assert config.ltm_graph_enabled() is True
     monkeypatch.setenv("DECADIC_LTM_GRAPH", "0")
     assert config.ltm_graph_enabled() is False
+
+
+def test_semantic_evidence_records_provisional_framework_graph():
+    g = LongTermGraph()
+    slot = MemorySlot(
+        entity_id="obj-0",
+        appearance=[1.0, 0.0, 0.0],
+        seen_count=1,
+        confidence=0.08,
+        kind_hint="stuff",
+        entity_role="extended_entity",
+        precision=0.08,
+        provisional=True,
+        property_evidence={"shape_extent": 0.9, "floor_label": 1.0},
+    )
+
+    counts = g.record_semantic_evidence(
+        [slot],
+        events=[{"type": "collision", "intensity": 0.8}],
+        scene_relationships=[{"src": "obj-0", "dst": "self", "kind": "near", "confidence": 0.7}],
+        cycle=1,
+    )
+
+    assert counts["entities"] == 1
+    assert counts["events"] == 1
+    assert counts["relationships"] >= 2
+    snap = g.snapshot()
+    assert snap["total_nodes"] == 0
+    assert snap["semantic"]["entities"] == 1
+    assert snap["semantic"]["events"] == 1
+    payload = next(iter(g._semantic["entity"].values()))["payload"]
+    assert "floor_label" not in payload.get("property_keys", [])
+
+
+def test_repeated_semantic_patterns_form_conclusions_and_values():
+    g = LongTermGraph()
+    slot = MemorySlot(
+        entity_id="obj-0",
+        appearance=[1.0, 0.0, 0.0],
+        seen_count=4,
+        confidence=0.6,
+        precision=0.6,
+        provisional=False,
+    )
+    for cycle in (1, 2, 3):
+        g.record_semantic_evidence([slot], events=[{"type": "collision", "intensity": 0.8}], cycle=cycle)
+
+    stats = g.semantic_stats()
+    assert stats["correlations"] >= 1
+    assert stats["conclusions"] >= 1
+    assert stats["values"] >= 1
+
+
+def test_ltm_match_cache_matches_bounded_candidate_window(monkeypatch):
+    monkeypatch.setenv("DECADIC_LTM_MATCH_RECENT_CAP", "4")
+    monkeypatch.setenv("DECADIC_LTM_MATCH_SALIENT_CAP", "4")
+    g = LongTermGraph()
+    for i in range(20):
+        vec = [0.0] * 20
+        vec[i] = 1.0
+        slot = MemorySlot(
+            entity_id=f"obj-{i}",
+            appearance=vec,
+            seen_count=3,
+            confidence=1.0,
+            precision=1.0,
+        )
+        g.consolidate([slot], cycle=i, min_seen=2)
+
+    assert g.match([0.0] * 19 + [1.0]) is not None
+    stats = g.match_cache_stats()
+    assert stats["enabled"] is True
+    assert stats["size"] <= 8
+    assert stats["hits"] >= 1

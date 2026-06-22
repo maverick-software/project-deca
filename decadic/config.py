@@ -23,9 +23,45 @@ DEFAULT_WM_DECAY = 0.9  # per-integration salience decay → object permanence t
 DEFAULT_WM_MIN_SALIENCE = 0.05  # slots below this are dropped from the live graph
 DEFAULT_PARALLEL_SESSIONS = 10  # K: perceptual pipeline capacity / batched fallback frames
 MAX_PARALLEL_SESSIONS = 16
+DEFAULT_PREFETCH_QUEUE_MAX_FRAMES = 32
+DEFAULT_PREFETCH_QUEUE_HARD_MAX = 128
+DEFAULT_PREFETCH_BACKPRESSURE_WARN_MS = 1.0
+DEFAULT_PREFETCH_OLDEST_UNFOLDED_WARN_MS = 1000.0
+DEFAULT_REQUIRE_CUDA = True
+DEFAULT_EPISODIC_RECALL_CACHE_ENABLED = True
+DEFAULT_EPISODIC_RECALL_RECENT_CAP = 2048
+DEFAULT_EPISODIC_RECALL_SALIENT_CAP = 2048
+DEFAULT_EPISODIC_RECALL_SQL_FALLBACK_CAP = 512
+DEFAULT_SQLITE_WAL = True
+DEFAULT_SQLITE_SYNCHRONOUS = "NORMAL"
+DEFAULT_SQLITE_WAL_AUTOCHECKPOINT = 1000
+DEFAULT_SQLITE_VECTOR_BLOB_ENABLED = True
+DEFAULT_SQLITE_WRITE_LEGACY_JSON_VECTORS = False
+DEFAULT_EPISODIC_WRITE_BATCH_SIZE = 64
+DEFAULT_EPISODIC_WRITE_BATCH_MS = 250.0
+DEFAULT_EPISODIC_DB_RETENTION_ENABLED = True
+DEFAULT_EPISODIC_DB_RECENT_CAP = 100_000
+DEFAULT_EPISODIC_DB_SALIENT_CAP = 25_000
+DEFAULT_EPISODIC_DB_PRUNE_INTERVAL_WRITES = 5_000
+DEFAULT_EPISODIC_DB_PRUNE_BATCH = 5_000
+DEFAULT_MEMORY_CONTEXT_REFRESH_CYCLES = 4
+DEFAULT_MEMORY_CONTEXT_ASYNC = True
+DEFAULT_API_SNAPSHOT_CACHE = True
+DEFAULT_METRICS_LIGHTWEIGHT = True
+DEFAULT_CYCLE_SCHEDULER = "deadline"
+PROCESSING_SERIAL_PREFETCH = "serial_prefetch"
+PROCESSING_STAGE_PIPELINE = "stage_pipeline"
+PROCESSING_PERSISTENT_PERCEPTION = "persistent_parallel_perception"
+PROCESSING_BATCHING = "batching_observations"
+PREFETCH_OVERLOAD_POLICIES = {"block", "drop_oldest"}
+READY_COALESCE_POLICIES = {"freshest", "oldest"}
 PERCEPTUAL_PROCESSING_PERSISTENT = "persistent_parallel"
 PERCEPTUAL_PROCESSING_BATCHING = "batching_observations"
 PERCEPTUAL_PROCESSING_MODES = {
+    PROCESSING_SERIAL_PREFETCH,
+    PROCESSING_STAGE_PIPELINE,
+    PROCESSING_PERSISTENT_PERCEPTION,
+    PROCESSING_BATCHING,
     PERCEPTUAL_PROCESSING_PERSISTENT,
     PERCEPTUAL_PROCESSING_BATCHING,
 }
@@ -39,17 +75,198 @@ DEFAULT_WM_SCENE_ALPHA = 0.3  # EMA rate of the persisting scene latent (new evi
 DEFAULT_WM_SCENE_BLEND = 0.5  # scene-latent share of the attention vector vs entity hashes
 
 
-def perceptual_processing_mode() -> str:
-    """Runtime scheduling mode for incoming perceptual observations."""
-    explicit = os.environ.get("DECADIC_PERCEPTUAL_PROCESSING_MODE")
+def processing_mode() -> str:
+    """Runtime scheduling mode for incoming observations."""
+    explicit = os.environ.get("DECADIC_PROCESSING_MODE")
     if explicit:
         mode = explicit.strip().lower()
-        if mode in PERCEPTUAL_PROCESSING_MODES:
+        if mode == PROCESSING_STAGE_PIPELINE:
+            return PROCESSING_SERIAL_PREFETCH
+        if mode in (PROCESSING_SERIAL_PREFETCH, PROCESSING_PERSISTENT_PERCEPTION, PROCESSING_BATCHING):
             return mode
+        if mode == PERCEPTUAL_PROCESSING_PERSISTENT:
+            return PROCESSING_PERSISTENT_PERCEPTION
+    stage_flag = os.environ.get("DECADIC_STAGE_PIPELINING_ENABLED", "1").strip().lower()
+    if stage_flag not in ("0", "false", "no", "off"):
+        return PROCESSING_SERIAL_PREFETCH
+    legacy = os.environ.get("DECADIC_PERCEPTUAL_PROCESSING_MODE")
+    if legacy:
+        mode = legacy.strip().lower()
+        if mode == PERCEPTUAL_PROCESSING_PERSISTENT:
+            return PROCESSING_PERSISTENT_PERCEPTION
+        if mode == PERCEPTUAL_PROCESSING_BATCHING:
+            return PROCESSING_BATCHING
     flag = os.environ.get("DECADIC_PERSISTENT_PARALLEL_PERCEPTION", "1").strip().lower()
     if flag in ("0", "false", "no", "off"):
-        return PERCEPTUAL_PROCESSING_BATCHING
-    return PERCEPTUAL_PROCESSING_PERSISTENT
+        return PROCESSING_BATCHING
+    return PROCESSING_PERSISTENT_PERCEPTION
+
+
+def perceptual_processing_mode() -> str:
+    """Compatibility alias for older dashboard/runtime callers."""
+    return processing_mode()
+
+
+def prefetch_queue_max_frames(parallel_sessions: int | None = None) -> int:
+    """Bound accepted-but-unfolded perception work.
+
+    The default preserves evidence by blocking ingress under sustained overload,
+    while preventing unbounded queue growth. The effective size is never below
+    ``max(32, parallel_sessions * 3)`` and is hard-clamped to 128.
+    """
+    try:
+        requested = int(
+            os.environ.get("DECADIC_PREFETCH_QUEUE_MAX_FRAMES", str(DEFAULT_PREFETCH_QUEUE_MAX_FRAMES))
+        )
+    except (TypeError, ValueError):
+        requested = DEFAULT_PREFETCH_QUEUE_MAX_FRAMES
+    try:
+        k = int(parallel_sessions if parallel_sessions is not None else DEFAULT_PARALLEL_SESSIONS)
+    except (TypeError, ValueError):
+        k = DEFAULT_PARALLEL_SESSIONS
+    floor = max(DEFAULT_PREFETCH_QUEUE_MAX_FRAMES, max(1, k) * 3)
+    return max(1, min(DEFAULT_PREFETCH_QUEUE_HARD_MAX, max(requested, floor)))
+
+
+def prefetch_overload_policy() -> str:
+    raw = os.environ.get("DECADIC_PREFETCH_OVERLOAD_POLICY", "block").strip().lower()
+    return raw if raw in PREFETCH_OVERLOAD_POLICIES else "block"
+
+
+def ready_coalesce_policy() -> str:
+    raw = os.environ.get("DECADIC_READY_COALESCE_POLICY", "freshest").strip().lower()
+    return raw if raw in READY_COALESCE_POLICIES else "freshest"
+
+
+def prefetch_backpressure_warn_ms() -> float:
+    return max(
+        0.0,
+        float(
+            os.environ.get(
+                "DECADIC_PREFETCH_BACKPRESSURE_WARN_MS",
+                str(DEFAULT_PREFETCH_BACKPRESSURE_WARN_MS),
+            )
+        ),
+    )
+
+
+def prefetch_oldest_unfolded_warn_ms() -> float:
+    return max(
+        0.0,
+        float(
+            os.environ.get(
+                "DECADIC_PREFETCH_OLDEST_UNFOLDED_WARN_MS",
+                str(DEFAULT_PREFETCH_OLDEST_UNFOLDED_WARN_MS),
+            )
+        ),
+    )
+
+
+def require_cuda() -> bool:
+    return os.environ.get("DECADIC_REQUIRE_CUDA", "1" if DEFAULT_REQUIRE_CUDA else "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def episodic_recall_cache_enabled() -> bool:
+    return os.environ.get(
+        "DECADIC_EPISODIC_RECALL_CACHE_ENABLED",
+        "1" if DEFAULT_EPISODIC_RECALL_CACHE_ENABLED else "0",
+    ).strip().lower() in ("1", "true", "yes", "on")
+
+
+def episodic_recall_recent_cap() -> int:
+    return max(1, int(os.environ.get("DECADIC_EPISODIC_RECALL_RECENT_CAP", str(DEFAULT_EPISODIC_RECALL_RECENT_CAP))))
+
+
+def episodic_recall_salient_cap() -> int:
+    return max(1, int(os.environ.get("DECADIC_EPISODIC_RECALL_SALIENT_CAP", str(DEFAULT_EPISODIC_RECALL_SALIENT_CAP))))
+
+
+def episodic_recall_sql_fallback_cap() -> int:
+    return max(1, int(os.environ.get("DECADIC_EPISODIC_RECALL_SQL_FALLBACK_CAP", str(DEFAULT_EPISODIC_RECALL_SQL_FALLBACK_CAP))))
+
+
+def sqlite_wal_enabled() -> bool:
+    return _env_bool("DECADIC_SQLITE_WAL", DEFAULT_SQLITE_WAL)
+
+
+def sqlite_synchronous() -> str:
+    value = os.environ.get("DECADIC_SQLITE_SYNCHRONOUS", DEFAULT_SQLITE_SYNCHRONOUS).strip().upper()
+    return value if value in ("OFF", "NORMAL", "FULL", "EXTRA") else DEFAULT_SQLITE_SYNCHRONOUS
+
+
+def sqlite_wal_autocheckpoint() -> int:
+    return max(1, int(os.environ.get("DECADIC_SQLITE_WAL_AUTOCHECKPOINT", str(DEFAULT_SQLITE_WAL_AUTOCHECKPOINT))))
+
+
+def sqlite_vector_blob_enabled() -> bool:
+    return _env_bool("DECADIC_SQLITE_VECTOR_BLOB_ENABLED", DEFAULT_SQLITE_VECTOR_BLOB_ENABLED)
+
+
+def sqlite_write_legacy_json_vectors() -> bool:
+    return _env_bool("DECADIC_SQLITE_WRITE_LEGACY_JSON_VECTORS", DEFAULT_SQLITE_WRITE_LEGACY_JSON_VECTORS)
+
+
+def episodic_write_batch_size() -> int:
+    return max(1, int(os.environ.get("DECADIC_EPISODIC_WRITE_BATCH_SIZE", str(DEFAULT_EPISODIC_WRITE_BATCH_SIZE))))
+
+
+def episodic_write_batch_ms() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_EPISODIC_WRITE_BATCH_MS", str(DEFAULT_EPISODIC_WRITE_BATCH_MS))))
+
+
+def episodic_db_retention_enabled() -> bool:
+    return _env_bool("DECADIC_EPISODIC_DB_RETENTION_ENABLED", DEFAULT_EPISODIC_DB_RETENTION_ENABLED)
+
+
+def episodic_db_recent_cap() -> int:
+    return max(1, int(os.environ.get("DECADIC_EPISODIC_DB_RECENT_CAP", str(DEFAULT_EPISODIC_DB_RECENT_CAP))))
+
+
+def episodic_db_salient_cap() -> int:
+    return max(1, int(os.environ.get("DECADIC_EPISODIC_DB_SALIENT_CAP", str(DEFAULT_EPISODIC_DB_SALIENT_CAP))))
+
+
+def episodic_db_prune_interval_writes() -> int:
+    return max(1, int(os.environ.get("DECADIC_EPISODIC_DB_PRUNE_INTERVAL_WRITES", str(DEFAULT_EPISODIC_DB_PRUNE_INTERVAL_WRITES))))
+
+
+def episodic_db_prune_batch() -> int:
+    return max(1, int(os.environ.get("DECADIC_EPISODIC_DB_PRUNE_BATCH", str(DEFAULT_EPISODIC_DB_PRUNE_BATCH))))
+
+
+def memory_context_refresh_cycles() -> int:
+    return max(1, int(os.environ.get("DECADIC_MEMORY_CONTEXT_REFRESH_CYCLES", str(DEFAULT_MEMORY_CONTEXT_REFRESH_CYCLES))))
+
+
+def memory_context_async_enabled() -> bool:
+    return os.environ.get(
+        "DECADIC_MEMORY_CONTEXT_ASYNC",
+        "1" if DEFAULT_MEMORY_CONTEXT_ASYNC else "0",
+    ).strip().lower() in ("1", "true", "yes", "on")
+
+
+def api_snapshot_cache_enabled() -> bool:
+    return os.environ.get(
+        "DECADIC_API_SNAPSHOT_CACHE",
+        "1" if DEFAULT_API_SNAPSHOT_CACHE else "0",
+    ).strip().lower() in ("1", "true", "yes", "on")
+
+
+def metrics_lightweight_enabled() -> bool:
+    return os.environ.get(
+        "DECADIC_METRICS_LIGHTWEIGHT",
+        "1" if DEFAULT_METRICS_LIGHTWEIGHT else "0",
+    ).strip().lower() in ("1", "true", "yes", "on")
+
+
+def cycle_scheduler_mode() -> str:
+    mode = os.environ.get("DECADIC_CYCLE_SCHEDULER", DEFAULT_CYCLE_SCHEDULER).strip().lower()
+    return mode if mode in ("deadline", "fixed_sleep") else DEFAULT_CYCLE_SCHEDULER
 
 # Persistent, anonymous scene workspace. This is pre-cognitive sensory state: it
 # integrates object files into an egocentric scene model before bounded attention
@@ -956,6 +1173,13 @@ DEFAULT_SLOT_SPATIAL_SEPARATION_WEIGHT = 0.02  # discourages center-collapsed ce
 DEFAULT_ASSOC_APPEARANCE_WEIGHT = 0.6  # appearance-cosine share of the match score (vs position)
 DEFAULT_ASSOC_MATCH_THRESHOLD = 0.35  # min combined score to bind a proposal to an existing slot
 DEFAULT_APPEARANCE_EMA = 0.5  # EMA rate of a slot's appearance fingerprint
+DEFAULT_PROVISIONAL_ENTRY_ENABLED = True
+DEFAULT_ENTITY_ENTRY_CONFIDENCE_FLOOR = 0.05
+DEFAULT_ENTITY_PRECISION_ETA = 0.18
+DEFAULT_ENTITY_PROMOTION_PRECISION = 0.2
+DEFAULT_ENTITY_PROVISIONAL_DECAY_BOOST = 1.25
+DEFAULT_EPISTEMIC_MATURITY_ENABLED = False
+DEFAULT_EPISTEMIC_S_MAX = 0.85
 
 # Body-self / agency ("mine") discovery.
 DEFAULT_AGENCY_WEIGHT = 0.3  # weight of the agency-head self-supervised motion loss
@@ -984,6 +1208,18 @@ DEFAULT_LTM_GRAPH_ENABLED = True
 DEFAULT_LTM_MATCH_THRESHOLD = 0.6  # cosine over appearance embeddings for re-identification
 DEFAULT_LTM_CONSOLIDATE_MIN_SEEN = 2  # cycles a slot must persist before it is committed
 DEFAULT_LTM_SNAPSHOT_LIMIT = 64  # nodes returned to the dashboard (graph itself is unbounded)
+DEFAULT_LTM_CONSOLIDATION_ASYNC = True
+DEFAULT_LTM_CONSOLIDATION_QUEUE_MAX = 4096
+DEFAULT_LTM_SEMANTIC_EVIDENCE_INTERVAL = 4
+DEFAULT_LTM_SCENE_EDGE_MAX_PER_JOB = 32
+DEFAULT_LTM_MATCH_CACHE_ENABLED = True
+DEFAULT_LTM_MATCH_RECENT_CAP = 4096
+DEFAULT_LTM_MATCH_SALIENT_CAP = 4096
+DEFAULT_LTM_RETENTION_ENABLED = True
+DEFAULT_LTM_MAX_NODES = 50_000
+DEFAULT_LTM_MAX_SEMANTIC_RECORDS = 200_000
+DEFAULT_LTM_PRUNE_STALE_CYCLES = 50_000
+DEFAULT_LTM_PRUNE_BATCH = 2_000
 
 
 def ltm_graph_enabled() -> bool:
@@ -1000,6 +1236,63 @@ def ltm_consolidate_min_seen() -> int:
 
 def ltm_snapshot_limit() -> int:
     return max(1, int(os.environ.get("DECADIC_LTM_SNAPSHOT_LIMIT", str(DEFAULT_LTM_SNAPSHOT_LIMIT))))
+
+
+def ltm_consolidation_async_enabled() -> bool:
+    return _env_bool("DECADIC_LTM_CONSOLIDATION_ASYNC", DEFAULT_LTM_CONSOLIDATION_ASYNC)
+
+
+def ltm_consolidation_queue_max() -> int:
+    return max(
+        1,
+        int(os.environ.get("DECADIC_LTM_CONSOLIDATION_QUEUE_MAX", str(DEFAULT_LTM_CONSOLIDATION_QUEUE_MAX))),
+    )
+
+
+def ltm_semantic_evidence_interval() -> int:
+    return max(
+        1,
+        int(os.environ.get("DECADIC_LTM_SEMANTIC_EVIDENCE_INTERVAL", str(DEFAULT_LTM_SEMANTIC_EVIDENCE_INTERVAL))),
+    )
+
+
+def ltm_scene_edge_max_per_job() -> int:
+    return max(
+        0,
+        int(os.environ.get("DECADIC_LTM_SCENE_EDGE_MAX_PER_JOB", str(DEFAULT_LTM_SCENE_EDGE_MAX_PER_JOB))),
+    )
+
+
+def ltm_match_cache_enabled() -> bool:
+    return _env_bool("DECADIC_LTM_MATCH_CACHE_ENABLED", DEFAULT_LTM_MATCH_CACHE_ENABLED)
+
+
+def ltm_match_recent_cap() -> int:
+    return max(1, int(os.environ.get("DECADIC_LTM_MATCH_RECENT_CAP", str(DEFAULT_LTM_MATCH_RECENT_CAP))))
+
+
+def ltm_match_salient_cap() -> int:
+    return max(1, int(os.environ.get("DECADIC_LTM_MATCH_SALIENT_CAP", str(DEFAULT_LTM_MATCH_SALIENT_CAP))))
+
+
+def ltm_retention_enabled() -> bool:
+    return _env_bool("DECADIC_LTM_RETENTION_ENABLED", DEFAULT_LTM_RETENTION_ENABLED)
+
+
+def ltm_max_nodes() -> int:
+    return max(1, int(os.environ.get("DECADIC_LTM_MAX_NODES", str(DEFAULT_LTM_MAX_NODES))))
+
+
+def ltm_max_semantic_records() -> int:
+    return max(1, int(os.environ.get("DECADIC_LTM_MAX_SEMANTIC_RECORDS", str(DEFAULT_LTM_MAX_SEMANTIC_RECORDS))))
+
+
+def ltm_prune_stale_cycles() -> int:
+    return max(0, int(os.environ.get("DECADIC_LTM_PRUNE_STALE_CYCLES", str(DEFAULT_LTM_PRUNE_STALE_CYCLES))))
+
+
+def ltm_prune_batch() -> int:
+    return max(1, int(os.environ.get("DECADIC_LTM_PRUNE_BATCH", str(DEFAULT_LTM_PRUNE_BATCH))))
 
 
 def slots_k() -> int:
@@ -1058,6 +1351,67 @@ def assoc_match_threshold() -> float:
 
 def appearance_ema() -> float:
     return min(1.0, max(0.0, float(os.environ.get("DECADIC_APPEARANCE_EMA", str(DEFAULT_APPEARANCE_EMA)))))
+
+
+def provisional_entry_enabled() -> bool:
+    return _env_bool("DECADIC_PROVISIONAL_ENTRY_ENABLED", DEFAULT_PROVISIONAL_ENTRY_ENABLED)
+
+
+def entity_entry_confidence_floor() -> float:
+    return min(
+        1.0,
+        max(
+            0.0,
+            float(
+                os.environ.get(
+                    "DECADIC_ENTITY_ENTRY_CONFIDENCE_FLOOR",
+                    str(DEFAULT_ENTITY_ENTRY_CONFIDENCE_FLOOR),
+                )
+            ),
+        ),
+    )
+
+
+def entity_precision_eta() -> float:
+    return min(
+        1.0,
+        max(0.0, float(os.environ.get("DECADIC_ENTITY_PRECISION_ETA", str(DEFAULT_ENTITY_PRECISION_ETA)))),
+    )
+
+
+def entity_promotion_precision() -> float:
+    return min(
+        1.0,
+        max(
+            0.0,
+            float(
+                os.environ.get(
+                    "DECADIC_ENTITY_PROMOTION_PRECISION",
+                    str(DEFAULT_ENTITY_PROMOTION_PRECISION),
+                )
+            ),
+        ),
+    )
+
+
+def entity_provisional_decay_boost() -> float:
+    return max(
+        1.0,
+        float(
+            os.environ.get(
+                "DECADIC_ENTITY_PROVISIONAL_DECAY_BOOST",
+                str(DEFAULT_ENTITY_PROVISIONAL_DECAY_BOOST),
+            )
+        ),
+    )
+
+
+def epistemic_maturity_enabled() -> bool:
+    return _env_bool("DECADIC_EPISTEMIC_MATURITY_ENABLED", DEFAULT_EPISTEMIC_MATURITY_ENABLED)
+
+
+def epistemic_s_max() -> float:
+    return min(0.99, max(0.0, float(os.environ.get("DECADIC_EPISTEMIC_S_MAX", str(DEFAULT_EPISTEMIC_S_MAX)))))
 
 
 def agency_weight() -> float:

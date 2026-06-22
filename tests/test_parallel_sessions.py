@@ -82,6 +82,8 @@ def test_default_perceptual_pipeline_capacity_is_ten(monkeypatch, tmp_path):
     from decadic.agents.runtime import AgentRuntime
 
     monkeypatch.delenv("DECADIC_PARALLEL_SESSIONS", raising=False)
+    monkeypatch.delenv("DECADIC_PROCESSING_MODE", raising=False)
+    monkeypatch.delenv("DECADIC_STAGE_PIPELINING_ENABLED", raising=False)
     monkeypatch.delenv("DECADIC_PERCEPTUAL_PROCESSING_MODE", raising=False)
     monkeypatch.delenv("DECADIC_PERSISTENT_PARALLEL_PERCEPTION", raising=False)
     monkeypatch.setenv("DECADIC_USE_NEURAL", "0")
@@ -90,8 +92,13 @@ def test_default_perceptual_pipeline_capacity_is_ten(monkeypatch, tmp_path):
     rt = AgentRuntime("pipeline-defaults")
     assert C.DEFAULT_PARALLEL_SESSIONS == 10
     assert rt.parallel_sessions == 10
-    assert rt.perceptual_processing_mode == C.PERCEPTUAL_PROCESSING_PERSISTENT
-    assert rt.capacity_config()["perceptual_processing_mode"] == "persistent_parallel"
+    assert rt.processing_mode == C.PROCESSING_SERIAL_PREFETCH
+    assert rt.perceptual_processing_mode == C.PROCESSING_SERIAL_PREFETCH
+    assert rt.capacity_config()["processing_mode"] == "serial_prefetch"
+    assert rt.capacity_config()["stage_pipeline_enabled"] is True
+    assert rt.capacity_config()["prefetch_queue_max"] == 32
+    assert rt.capacity_config()["prefetch_overload_policy"] == "block"
+    assert rt.capacity_config()["ready_coalesce_policy"] == "freshest"
 
 
 def test_perception_ready_buffer_commits_in_sequence(monkeypatch, tmp_path):
@@ -101,6 +108,7 @@ def test_perception_ready_buffer_commits_in_sequence(monkeypatch, tmp_path):
     monkeypatch.setenv("DECADIC_BACKUPS_DIR", str(tmp_path))
     monkeypatch.setenv("DECADIC_CONSOLIDATION_STUB_INTERVAL_S", "0")
     rt = AgentRuntime("pipeline-order")
+    rt.configure(processing_mode=C.PROCESSING_PERSISTENT_PERCEPTION)
     committed: list[int] = []
 
     def fake_commit(obs):
@@ -109,10 +117,10 @@ def test_perception_ready_buffer_commits_in_sequence(monkeypatch, tmp_path):
     rt._commit_perception_observation_locked = fake_commit  # type: ignore[method-assign]
 
     async def run():
-        rt._perception_ready[2] = ({"seq": 2}, 1.0, 1.0)
+        rt._perception_ready[2] = ({"seq": 2}, 1.0, 1.0, None)
         await rt._drain_ready_perception()
         assert committed == []
-        rt._perception_ready[1] = ({"seq": 1}, 1.0, 1.0)
+        rt._perception_ready[1] = ({"seq": 1}, 1.0, 1.0, None)
         await rt._drain_ready_perception()
 
     asyncio.run(run())
@@ -128,8 +136,13 @@ def test_configure_perceptual_processing_mode(monkeypatch, tmp_path):
     monkeypatch.setenv("DECADIC_CONSOLIDATION_STUB_INTERVAL_S", "0")
     rt = AgentRuntime("pipeline-config")
     cfg = rt.configure(perceptual_processing_mode="batching_observations")
+    assert cfg["processing_mode"] == "batching_observations"
     assert cfg["perceptual_processing_mode"] == "batching_observations"
     assert rt.metrics["batching_fallback"] is True
     cfg = rt.configure(perceptual_processing_mode="persistent_parallel", parallel_sessions=4)
-    assert cfg["perceptual_processing_mode"] == "persistent_parallel"
+    assert cfg["processing_mode"] == "persistent_parallel_perception"
+    assert cfg["perceptual_processing_mode"] == "persistent_parallel_perception"
     assert cfg["parallel_sessions"] == 4
+    cfg = rt.configure(processing_mode="stage_pipeline")
+    assert cfg["processing_mode"] == "serial_prefetch"
+    assert cfg["stage_pipeline_enabled"] is True

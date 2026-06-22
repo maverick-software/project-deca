@@ -2747,7 +2747,18 @@ async def _run(
     # the body's only driver: a death signal or a command drought -> go limp.
     liveness: dict[str, Any] = {"lifeless": False, "last_action": time.perf_counter()}
 
-    async with websockets.connect(ws_url, max_size=None) as ws:
+    # The native MuJoCo viewer can momentarily stall the adapter's asyncio loop
+    # while GLFW creates/syncs the window. The default websockets keepalive treats
+    # that as a dead connection and closes with 1011 ping timeout, which makes
+    # the dashboard's Live Window button appear broken. The server receives
+    # regular observations as its real liveness signal, so disable client-side
+    # keepalive pings here.
+    async with websockets.connect(
+        ws_url,
+        max_size=None,
+        ping_interval=None,
+        ping_timeout=None,
+    ) as ws:
 
         async def receiver() -> None:
             async for raw in ws:

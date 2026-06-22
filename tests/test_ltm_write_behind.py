@@ -125,3 +125,53 @@ def test_live_toggle_off_on_preserves_state(tmp_path):
         assert graph.counts() == sync.counts()  # nothing lost across the toggles
     finally:
         graph.close()
+
+
+def test_full_consolidation_job_updates_semantics_and_scene_edges(tmp_path):
+    slots = _slots(0)
+    for idx, slot in enumerate(slots):
+        slot.position = [float(idx), 0.0, 0.0]
+        slot.scene_entity_id = f"scene-{idx}"  # type: ignore[attr-defined]
+        slot.property_evidence = {"compactness": 0.7}  # type: ignore[attr-defined]
+    graph = WriteBehindLongTermGraph(tmp_path / "async.db", enabled=True)
+    try:
+        report = graph.enqueue_consolidation_job(
+            slots,
+            all_slots=slots,
+            events=[{"type": "contact", "intensity": 0.5}],
+            scene_relationships=[
+                {"src": "scene-0", "dst": "scene-1", "kind": "near", "confidence": 0.9}
+            ],
+            cycle=4,
+            min_seen=2,
+        )
+        assert report["status"] == "queued_consolidation"
+        graph.flush()
+        snap = graph.snapshot()
+        assert snap["total_nodes"] == 2
+        assert any(e["kind"] == "scene_near" for e in snap["edges"])
+        stats = graph.belief_stats()
+        assert stats["total_property_beliefs"] == 2
+        assert stats["semantic_entities"] >= 2
+        assert graph.runtime_metrics()["ltm_consolidation_jobs_completed"] >= 1
+    finally:
+        graph.close()
+
+
+def test_semantic_evidence_interval_throttles_low_salience_jobs(tmp_path, monkeypatch):
+    monkeypatch.setenv("DECADIC_LTM_SEMANTIC_EVIDENCE_INTERVAL", "10")
+    graph = WriteBehindLongTermGraph(tmp_path / "async.db", enabled=True)
+    try:
+        graph.enqueue_consolidation_job(
+            [],
+            all_slots=_slots(0),
+            events=[],
+            scene_relationships=[],
+            cycle=3,
+            min_seen=2,
+        )
+        graph.flush()
+        assert graph.belief_stats()["semantic_entities"] == 0
+        assert graph.runtime_metrics()["ltm_semantic_jobs_skipped_by_interval"] == 1
+    finally:
+        graph.close()

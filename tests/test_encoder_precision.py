@@ -61,6 +61,16 @@ def _obs(ts: str, *, image: bool = True) -> dict:
     return o
 
 
+def _hf_encoder_or_skip() -> FrozenSensoryEncoders:
+    try:
+        enc = FrozenSensoryEncoders(
+            mode="hf", device=torch.device("cuda"), proprio_dim_out=_PROPRIO_OUT
+        )
+    except OSError as exc:
+        pytest.skip(f"CLIP/Whisper weights unavailable locally: {exc}")
+    return enc
+
+
 def test_encoder_autocast_dtype_explicit(monkeypatch):
     monkeypatch.setenv("DECADIC_ENCODER_PRECISION", "fp32")
     assert encoder_autocast_dtype() is torch.float32
@@ -88,9 +98,7 @@ def test_cpu_encoder_is_fp32_regardless_of_flag(monkeypatch):
 @pytest.mark.skipif(not _CUDA, reason="bf16 encoder path needs a CUDA GPU")
 def test_gpu_bf16_encoder_returns_finite_fp32(monkeypatch):
     monkeypatch.setenv("DECADIC_ENCODER_PRECISION", "auto")
-    enc = FrozenSensoryEncoders(
-        mode="hf", device=torch.device("cuda"), proprio_dim_out=_PROPRIO_OUT
-    )
+    enc = _hf_encoder_or_skip()
     if enc._clip_vision is None or enc._whisper_encoder is None:
         pytest.skip("CLIP/Whisper weights unavailable")
     assert enc._compute_dtype is torch.bfloat16
@@ -103,9 +111,7 @@ def test_gpu_bf16_encoder_returns_finite_fp32(monkeypatch):
 @pytest.mark.skipif(not _CUDA, reason="patch-token path needs CLIP on a CUDA GPU")
 def test_patch_token_cache_skips_redundant_forward(monkeypatch):
     monkeypatch.setenv("DECADIC_ENCODER_PRECISION", "auto")
-    enc = FrozenSensoryEncoders(
-        mode="hf", device=torch.device("cuda"), proprio_dim_out=_PROPRIO_OUT
-    )
+    enc = _hf_encoder_or_skip()
     if enc._clip_vision is None:
         pytest.skip("CLIP weights unavailable")
     o1 = _obs("frame-A")

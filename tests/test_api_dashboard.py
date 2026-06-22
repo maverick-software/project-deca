@@ -278,14 +278,23 @@ def test_configure_capacity(api_app):
         )
         body = r.json()
         assert body["parallel_sessions"] == 4
+        assert body["processing_mode"] == "batching_observations"
         assert body["perceptual_processing_mode"] == "batching_observations"
+        assert body["stage_pipeline_enabled"] is False
         assert body["working_memory_slots"] == 20
         assert abs(body["working_memory_decay"] - 0.8) < 1e-6
 
         m = client.get(f"/agent/{aid}/metrics").json()["metrics"]
         assert m["parallel_sessions"] == 4
+        assert m["processing_mode"] == "batching_observations"
         assert m["perceptual_processing_mode"] == "batching_observations"
+        assert m["stage_pipeline_enabled"] is False
         assert m["working_memory_slots"] == 20
+
+        r2 = client.post(f"/agent/{aid}/config?processing_mode=stage_pipeline")
+        body2 = r2.json()
+        assert body2["processing_mode"] == "serial_prefetch"
+        assert body2["stage_pipeline_enabled"] is True
 
         assert client.post("/agent/nope/config").status_code == 404
 

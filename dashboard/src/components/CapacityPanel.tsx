@@ -26,13 +26,16 @@ export default function CapacityPanel(props: {
   const s = props.capacity?.working_memory_slots ?? metrics?.working_memory_slots ?? 12;
   const decay = props.capacity?.working_memory_decay ?? metrics?.working_memory_decay ?? 0.9;
   const processingMode =
+    props.capacity?.processing_mode ??
+    metrics?.processing_mode ??
     props.capacity?.perceptual_processing_mode ??
     metrics?.perceptual_processing_mode ??
-    "persistent_parallel";
+    "serial_prefetch";
 
   const plast = props.capacity?.plasticity;
   const [local, setLocal] = useState<CapacityConfig>({
     parallel_sessions: k,
+    processing_mode: processingMode,
     perceptual_processing_mode: processingMode,
     working_memory_slots: s,
     working_memory_decay: decay,
@@ -77,6 +80,7 @@ export default function CapacityPanel(props: {
   useEffect(() => {
     setLocal({
       parallel_sessions: k,
+      processing_mode: processingMode,
       perceptual_processing_mode: processingMode,
       working_memory_slots: s,
       working_memory_decay: decay,
@@ -240,15 +244,36 @@ export default function CapacityPanel(props: {
       <>
       <h3 className="cap-subhead">
         Workspace capacity
-        <Info tip="Throughput and memory knobs for the global workspace. Persistent mode uses K as perception pipeline capacity. Batching mode uses K as recent observations encoded together each cycle. S = working-memory slots. Decay controls object permanence." />
+        <Info tip="Throughput and memory knobs for the global workspace. Serial prefetch uses K as prepared-observation capacity: every frame folds into scene perception, while one serial Decadic cycle deep-processes at a time. Perception-only mode folds scene perception without serial deep-processing queueing. Batching mode pools recent observations." />
       </h3>
 
       <div className="view-toggle">
         <button
           type="button"
-          className={`seg${local.perceptual_processing_mode !== "batching_observations" ? " active" : ""}`}
+          className={`seg${local.processing_mode === "serial_prefetch" || local.processing_mode === "stage_pipeline" ? " active" : ""}`}
           onClick={() => {
-            const next = { ...local, perceptual_processing_mode: "persistent_parallel" };
+            const next = {
+              ...local,
+              processing_mode: "serial_prefetch",
+              perceptual_processing_mode: "serial_prefetch",
+              stage_pipeline_enabled: true,
+            };
+            setLocal(next);
+            void commit(next);
+          }}
+        >
+          Serial Cognition + Lossless Prefetch
+        </button>
+        <button
+          type="button"
+          className={`seg${local.processing_mode === "persistent_parallel_perception" ? " active" : ""}`}
+          onClick={() => {
+            const next = {
+              ...local,
+              processing_mode: "persistent_parallel_perception",
+              perceptual_processing_mode: "persistent_parallel_perception",
+              stage_pipeline_enabled: false,
+            };
             setLocal(next);
             void commit(next);
           }}
@@ -257,9 +282,14 @@ export default function CapacityPanel(props: {
         </button>
         <button
           type="button"
-          className={`seg${local.perceptual_processing_mode === "batching_observations" ? " active" : ""}`}
+          className={`seg${local.processing_mode === "batching_observations" ? " active" : ""}`}
           onClick={() => {
-            const next = { ...local, perceptual_processing_mode: "batching_observations" };
+            const next = {
+              ...local,
+              processing_mode: "batching_observations",
+              perceptual_processing_mode: "batching_observations",
+              stage_pipeline_enabled: false,
+            };
             setLocal(next);
             void commit(next);
           }}
@@ -270,12 +300,16 @@ export default function CapacityPanel(props: {
 
       <label className="cap-row">
         <span>
-          {local.perceptual_processing_mode === "batching_observations"
+          {local.processing_mode === "serial_prefetch" || local.processing_mode === "stage_pipeline"
+            ? "K - prepared frames"
+            : local.processing_mode === "batching_observations"
             ? "K - batched frames"
             : "K - pipeline sessions"}
-          <Info tip={local.perceptual_processing_mode === "batching_observations"
+          <Info tip={local.processing_mode === "serial_prefetch" || local.processing_mode === "stage_pipeline"
+            ? "Default mode: every frame is prefetched and folded into the scene model; one serial Decadic cycle deep-processes prepared frames. Overload coalesces folded frames instead of losing information."
+            : local.processing_mode === "batching_observations"
             ? "Legacy fallback: observations encoded per cycle in one batched, no-grad pass."
-            : "Default mode: max simultaneous perception pipeline sessions. Commits into the scene workspace remain ordered."} />
+            : "Fallback mode: max simultaneous perception pipeline sessions. Commits into the scene workspace remain ordered while cognition stays serialized."} />
         </span>
         <input
           type="range"
@@ -339,7 +373,11 @@ export default function CapacityPanel(props: {
         </div>
         <div>
           <span className="cap-k">
-            {local.perceptual_processing_mode === "batching_observations" ? "batched frames" : "pipeline sessions"}
+            {local.processing_mode === "serial_prefetch" || local.processing_mode === "stage_pipeline"
+              ? "prepared frames"
+              : local.processing_mode === "batching_observations"
+              ? "batched frames"
+              : "pipeline sessions"}
           </span>
           <span className="cap-v">{metrics?.parallel_sessions ?? 0}</span>
         </div>
@@ -376,6 +414,79 @@ export default function CapacityPanel(props: {
           <span className="cap-v">{fmtBytes(metrics?.gpu_memory_max_allocated ?? 0)}</span>
         </div>
       </div>
+
+      {(local.processing_mode === "serial_prefetch" || local.processing_mode === "stage_pipeline") && (
+        <div className="cap-readouts">
+          <div>
+            <span className="cap-k">received/folded</span>
+            <span className="cap-v">
+              {metrics?.frames_received ?? 0}/{metrics?.frames_folded ?? 0}
+            </span>
+          </div>
+          <div>
+            <span className="cap-k">deep processed</span>
+            <span className="cap-v">{metrics?.frames_deep_processed ?? 0}</span>
+          </div>
+          <div>
+            <span className="cap-k">raw prefetch</span>
+            <span className="cap-v">
+              {metrics?.prefetch_queue_depth ?? 0}/{metrics?.prefetch_queue_max ?? 0}
+            </span>
+          </div>
+          <div>
+            <span className="cap-k">folded ready</span>
+            <span className="cap-v">{metrics?.ready_queue_depth ?? 0}</span>
+          </div>
+          <div>
+            <span className="cap-k">active</span>
+            <span className="cap-v">{metrics?.stage_pipeline_active_sessions ?? 0}</span>
+          </div>
+          <div>
+            <span className="cap-k">coalesced/loss</span>
+            <span className="cap-v">
+              {metrics?.coalesced_sessions ?? 0}/{metrics?.information_loss ?? 0}
+            </span>
+          </div>
+          <div>
+            <span className="cap-k">backpressure</span>
+            <span className="cap-v">
+              {metrics?.prefetch_backpressure_events ?? 0}/{(metrics?.prefetch_backpressure_ms ?? 0).toFixed(1)} ms
+            </span>
+          </div>
+          <div>
+            <span className="cap-k">oldest unfolded</span>
+            <span className="cap-v">{(metrics?.oldest_unfolded_age_ms ?? 0).toFixed(0)} ms</span>
+          </div>
+          <div>
+            <span className="cap-k">policies</span>
+            <span className="cap-v">
+              {metrics?.prefetch_overload_policy ?? "block"}/{metrics?.ready_coalesce_policy ?? "freshest"}
+            </span>
+          </div>
+          <div>
+            <span className="cap-k">producer overlap</span>
+            <span className="cap-v">{((metrics?.producer_overlap_ratio ?? 0) * 100).toFixed(0)}%</span>
+          </div>
+          <div>
+            <span className="cap-k">decode consume</span>
+            <span className="cap-v">{(metrics?.decode_on_consume_ms ?? 0).toFixed(1)} ms</span>
+          </div>
+          <div>
+            <span className="cap-k">consume wait</span>
+            <span className="cap-v">{(metrics?.consume_wait_ms ?? 0).toFixed(1)} ms</span>
+          </div>
+          <div>
+            <span className="cap-k">selected frame</span>
+            <span className="cap-v">
+              {String(metrics?.stage_pipeline_selected_session?.frame_seq ?? "none")}
+            </span>
+          </div>
+          <div>
+            <span className="cap-k">arbiter</span>
+            <span className="cap-v">{metrics?.stage_pipeline_arbitration_reason ?? "none"}</span>
+          </div>
+        </div>
+      )}
 
       {metrics?.perception_feedback && (
         <div className="cap-readouts">

@@ -71,3 +71,8 @@ class CycleContext:
     ai_intero_pref_weight: float | None = None
     drive_priority_gain: float | None = None
     motor_babble_sigma: float | None = None
+    # Runtime-precomputed episodic recall context. When provided, Stage 3 uses
+    # this vector instead of querying episodic memory inside the cognitive lock.
+    cached_memory_context: list[float] | None = None
+    cached_memory_query: list[float] | None = None
+    memory_recall_on_critical_path: bool = True

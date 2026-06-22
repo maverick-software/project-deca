@@ -39,10 +39,12 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from decadic import config as C
 from decadic.memory.semantic_graph import DEFAULT_MATCH_THRESHOLD, LongTermGraph
 
 logger = logging.getLogger(__name__)
@@ -66,7 +68,27 @@ class _SlotSnapshot:
     appearance: list[float] | None
     confidence: float
     kind_hint: str
+    entity_role: str
+    precision: float
+    provisional: bool
+    evidence_count: float
+    contradiction_pressure: float
+    event_links: list[str]
+    relationship_links: list[str]
+    scene_entity_id: str | None
     property_evidence: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LtmConsolidationJob:
+    slots: list[_SlotSnapshot]
+    all_slots: list[_SlotSnapshot]
+    events: list[dict[str, Any]]
+    scene_relationships: list[dict[str, Any]]
+    cycle: int
+    min_seen: int
+    property_update: bool
+    relationship_update: bool
 
 
 def _snapshot_slot(s: Any) -> _SlotSnapshot:
@@ -83,8 +105,28 @@ def _snapshot_slot(s: Any) -> _SlotSnapshot:
         appearance=list(app) if app else None,
         confidence=float(getattr(s, "confidence", 1.0) or 0.0),
         kind_hint=str(getattr(s, "kind_hint", "object")),
+        entity_role=str(getattr(s, "entity_role", "compact_entity")),
+        precision=float(getattr(s, "precision", getattr(s, "confidence", 0.0)) or 0.0),
+        provisional=bool(getattr(s, "provisional", True)),
+        evidence_count=float(getattr(s, "evidence_count", 0.0) or 0.0),
+        contradiction_pressure=float(getattr(s, "contradiction_pressure", 0.0) or 0.0),
+        event_links=list(getattr(s, "event_links", []) or []),
+        relationship_links=list(getattr(s, "relationship_links", []) or []),
+        scene_entity_id=(
+            str(getattr(s, "scene_entity_id", ""))
+            if getattr(s, "scene_entity_id", None)
+            else None
+        ),
         property_evidence=dict(getattr(s, "property_evidence", {}) or {}),
     )
+
+
+def _safe_dict_list(items: Any, *, limit: int | None = None) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in list(items or [])[: limit or 10_000]:
+        if isinstance(item, dict):
+            out.append(dict(item))
+    return out
 
 
 class WriteBehindLongTermGraph(LongTermGraph):
@@ -103,6 +145,11 @@ class WriteBehindLongTermGraph(LongTermGraph):
         self._queue: queue.Queue | None = None
         self._worker: threading.Thread | None = None
         self._async_enabled = False
+        self._jobs_enqueued = 0
+        self._jobs_completed = 0
+        self._sync_fallbacks = 0
+        self._semantic_jobs_skipped_by_interval = 0
+        self._last_worker_ms = 0.0
         if enabled:
             self.set_async(True)
 
@@ -172,6 +219,7 @@ class WriteBehindLongTermGraph(LongTermGraph):
         )
         try:
             q.put_nowait(job)
+            self._jobs_enqueued += 1
         except queue.Full:
             # Never drop a consolidation and never reorder: drain the backlog first,
             # then apply this one inline. Backpressure is the safety valve, not the
@@ -188,22 +236,183 @@ class WriteBehindLongTermGraph(LongTermGraph):
             )
         return []
 
+    def enqueue_consolidation_job(
+        self,
+        slots: Any,
+        *,
+        all_slots: Any | None = None,
+        events: list[dict[str, Any]] | None = None,
+        scene_relationships: list[dict[str, Any]] | None = None,
+        cycle: int = 0,
+        min_seen: int = 2,
+        property_update: bool = True,
+        relationship_update: bool = True,
+    ) -> dict[str, Any]:
+        """Queue the full Stage-10 LTM job, including semantic evidence.
+
+        Stage 10 should call this method instead of calling ``consolidate``,
+        ``bump_edge`` and ``record_semantic_evidence`` itself. The job snapshots
+        all live WM data immediately; the worker never reads mutable slots.
+        """
+        job = LtmConsolidationJob(
+            slots=[_snapshot_slot(s) for s in slots],
+            all_slots=[_snapshot_slot(s) for s in (all_slots if all_slots is not None else slots)],
+            events=_safe_dict_list(events, limit=64),
+            scene_relationships=_safe_dict_list(scene_relationships),
+            cycle=int(cycle),
+            min_seen=int(min_seen),
+            property_update=bool(property_update),
+            relationship_update=bool(relationship_update),
+        )
+        q = self._queue if self._async_enabled else None
+        if q is None:
+            self._sync_fallbacks += 1
+            return self._apply_consolidation_job(job)
+        try:
+            q.put_nowait(job)
+            self._jobs_enqueued += 1
+        except queue.Full:
+            logger.warning("ltm consolidation queue full; flushing and applying synchronously")
+            self.flush()
+            self._sync_fallbacks += 1
+            return self._apply_consolidation_job(job)
+        return {
+            "status": "queued_consolidation",
+            "queued": True,
+            "accepted_ids": [],
+            "identity_refresh": False,
+            "property_update": bool(property_update and job.slots),
+            "relationship_update": bool(relationship_update and job.slots),
+            "relationship_updates_skipped": 0 if relationship_update else 1,
+            "semantic_update": {},
+            **self.cached_belief_stats(),
+        }
+
+    def _apply_consolidation_job(self, job: LtmConsolidationJob) -> dict[str, Any]:
+        started = time.perf_counter()
+        with self.write_batch():
+            ids = super().consolidate(
+                job.slots,
+                cycle=job.cycle,
+                min_seen=job.min_seen,
+                property_update=job.property_update,
+                relationship_update=job.relationship_update,
+            )
+            scene_edges = 0
+            if job.relationship_update and ids:
+                scene_to_ltm: dict[str, str] = {}
+                for slot, node_id in zip(job.slots, ids):
+                    if slot.scene_entity_id:
+                        scene_to_ltm[str(slot.scene_entity_id)] = str(node_id)
+                rels = sorted(
+                    job.scene_relationships,
+                    key=lambda r: float(r.get("confidence", 0.0) or 0.0),
+                    reverse=True,
+                )[: C.ltm_scene_edge_max_per_job()]
+                for rel in rels:
+                    src = scene_to_ltm.get(str(rel.get("src")))
+                    dst = scene_to_ltm.get(str(rel.get("dst")))
+                    kind = str(rel.get("kind", "scene_relation"))
+                    if src and dst and src != dst:
+                        super().bump_edge(
+                            src,
+                            dst,
+                            kind=f"scene_{kind}",
+                            weight=float(rel.get("confidence", 1.0) or 1.0),
+                            cycle=job.cycle,
+                        )
+                        scene_edges += 1
+            semantic_update: dict[str, Any] = {}
+            semantic_allowed = (
+                job.cycle % C.ltm_semantic_evidence_interval() == 0
+                or bool(job.events)
+            )
+            if job.all_slots and semantic_allowed:
+                semantic_update = super().record_semantic_evidence(
+                    job.all_slots,
+                    events=job.events,
+                    scene_relationships=job.scene_relationships,
+                    cycle=job.cycle,
+                    promoted_ids=list(ids),
+                )
+            elif job.all_slots:
+                self._semantic_jobs_skipped_by_interval += 1
+            retention = super().prune_retention(cycle=job.cycle)
+            stats = super().belief_stats()
+        self._jobs_completed += 1
+        self._last_worker_ms = (time.perf_counter() - started) * 1000.0
+        status = "promoted_entity" if ids else "recorded_provisional_evidence"
+        if not ids and semantic_update.get("values", 0):
+            status = "updated_value"
+        elif not ids and semantic_update.get("conclusions", 0):
+            status = "formed_conclusion"
+        elif not ids and semantic_update.get("correlations", 0):
+            status = "strengthened_correlation"
+        elif not ids and semantic_update.get("relationships", 0):
+            status = "strengthened_relationship"
+        return {
+            "status": status,
+            "queued": False,
+            "accepted_ids": list(ids),
+            "identity_refresh": bool(ids),
+            "property_update": bool(job.property_update and ids),
+            "relationship_update": bool(job.relationship_update and ids),
+            "relationship_updates_skipped": 0 if job.relationship_update else 1,
+            "scene_edges": scene_edges,
+            "semantic_update": semantic_update,
+            "retention": retention,
+            **stats,
+        }
+
+    def record_semantic_evidence(
+        self,
+        slots: Any,
+        *,
+        events: list[dict[str, Any]] | None = None,
+        scene_relationships: list[dict[str, Any]] | None = None,
+        cycle: int = 0,
+        promoted_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Record provisional semantic evidence from immutable slot snapshots.
+
+        This path is intentionally synchronous and lightweight: it updates the
+        in-memory semantic graph immediately so the dashboard and subsequent
+        cycles can see provisional entities from moment one. SQLite writes still
+        happen through the graph lock, preserving the same serialization rules.
+        """
+        snaps = [_snapshot_slot(s) for s in slots]
+        return super().record_semantic_evidence(
+            snaps,
+            events=events,
+            scene_relationships=scene_relationships,
+            cycle=cycle,
+            promoted_ids=promoted_ids,
+        )
+
     def _drain_loop(self, q: queue.Queue) -> None:
         while True:
             item = q.get()
             try:
                 if item is _SENTINEL:
                     return
-                snaps, affect, cycle, min_seen, property_update, relationship_update = item
                 try:
-                    super().consolidate(
-                        snaps,
-                        affect,
-                        cycle=cycle,
-                        min_seen=min_seen,
-                        property_update=property_update,
-                        relationship_update=relationship_update,
-                    )
+                    if isinstance(item, LtmConsolidationJob):
+                        self._apply_consolidation_job(item)
+                    else:
+                        started = time.perf_counter()
+                        snaps, affect, cycle, min_seen, property_update, relationship_update = item
+                        with self.write_batch():
+                            super().consolidate(
+                                snaps,
+                                affect,
+                                cycle=cycle,
+                                min_seen=min_seen,
+                                property_update=property_update,
+                                relationship_update=relationship_update,
+                            )
+                            super().prune_retention(cycle=cycle)
+                        self._jobs_completed += 1
+                        self._last_worker_ms = (time.perf_counter() - started) * 1000.0
                 except Exception:  # pragma: no cover - persistence must not kill worker
                     logger.exception("ltm write-behind consolidate failed")
             finally:
@@ -226,6 +435,28 @@ class WriteBehindLongTermGraph(LongTermGraph):
     def restore_from(self, path: Path) -> None:
         self.flush()
         super().restore_from(path)
+
+    def runtime_metrics(self) -> dict[str, Any]:
+        q = self._queue
+        match_stats = self.match_cache_stats()
+        return {
+            "ltm_consolidation_queue_depth": int(q.qsize()) if q is not None else 0,
+            "ltm_consolidation_queue_max": int(self._max_queue),
+            "ltm_consolidation_worker_ms": float(self._last_worker_ms),
+            "ltm_consolidation_jobs_enqueued": int(self._jobs_enqueued),
+            "ltm_consolidation_jobs_completed": int(self._jobs_completed),
+            "ltm_consolidation_sync_fallbacks": int(self._sync_fallbacks),
+            "ltm_semantic_jobs_skipped_by_interval": int(
+                self._semantic_jobs_skipped_by_interval
+            ),
+            "ltm_match_ms": float(match_stats.get("last_ms", 0.0)),
+            "ltm_match_cache_size": int(match_stats.get("size", 0)),
+            "ltm_match_cache_hits": int(match_stats.get("hits", 0)),
+            "ltm_match_cache_misses": int(match_stats.get("misses", 0)),
+            "ltm_match_cache_enabled": bool(match_stats.get("enabled", False)),
+            "ltm_write_batch_size_last": 1,
+            **self.persistence_metrics(),
+        }
 
     def close(self) -> None:
         """Drain and stop the worker; the graph stays usable in synchronous mode."""

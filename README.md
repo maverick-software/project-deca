@@ -9,7 +9,7 @@ The current branch includes several major upgrades beyond the original Phase 2 s
 - **Fly/human-inspired perception organ** - live camera frames now produce anonymous object files through retinotopic contrast, local motion, flow, looming, stuff/background, and body-candidate cues before Working Memory or LTM.
 - **Retinotopic bootstrap repair** - if CLIP patch tokens or SlotAttention are not yet producing usable proposals, the perception organ falls back to label-free image-region proposals. This fixes the "camera sees objects but graph/LTM shows 0 objects" starvation path without weakening LTM gates.
 - **Persistent 3D Scene Workspace** - object files feed a persistent egocentric rendered space with visible/occluded entities, spatial relations, focus selection, object permanence, and prediction health. Working Memory is now the small focus cache, not the whole scene.
-- **Persistent Parallel Perceptual Processing** - incoming frames enter a default-on, 10-session perceptual pipeline. Perception can process frames concurrently, but commits them into the persistent scene workspace in timestamp order; Decadic cognition remains one serialized decision loop. The old recent-frame batching path is still available as **Batching Perceptual Observations**.
+- **Serial Cognition + Lossless Prefetch** - incoming frames enter a default-on, 10-capacity producer path that predecodes observations, folds every frame into the anonymous scene model in arrival order, and feeds one prepared observation at a time to the serialized Decadic cycle. Under overload, folded frames may be coalesced out of deep cognition, but their perceptual evidence is not lost.
 - **Optional/default-on scene dynamics** - a trainable perception-side head predicts next anonymous entity state from prior scene state plus efference copy, with constant-velocity fallback when disabled.
 - **Anonymous property-belief LTM** - repeated perceptual evidence strengthens beliefs on one anonymous entity instead of duplicating nodes for the same property. Beliefs track evidence count, confidence, variance/instability, and remain label-free.
 - **Stricter memory write gates** - Stage 10 accepts only stable, confident, non-collapsed object files; bad perception skips permanent writes with explicit reasons.
@@ -751,20 +751,38 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu126  
 
 7. **Less CPU on the lock (always on, no toggle).** Two pure wins run unconditionally: **(a)** logging is non-blocking — the root logger only enqueues to a `QueueHandler`, and a background `QueueListener` owns the stream/rotating-file handlers (same JSON output, same order), so a per-cycle `logger.info` never blocks on a slow console; **(b)** the camera frame is **decoded once** — `predecode` base64-decodes + CLIP/Whisper-preprocesses each frame a single time at observation-arrival (off the cognitive lock) and stashes the CPU tensors on the observation, so the pooled-vision and patch-token paths share one decode instead of three inside the cycle (byte-identical output). Trace/probe file writes likewise leave the cycle via a background JSONL writer (inherits the existing `DECADIC_CYCLE_TRACE_EVERY` / probe-capture gating).
 
-8. **Persistent Parallel Perceptual Processing (default on).** `DECADIC_PARALLEL_SESSIONS`
-   now defaults to `10` and means perception pipeline capacity in the default mode:
-   each incoming frame gets a sequence number and enters a bounded perceptual pipeline.
-   Workers may stage frames concurrently, but commits into the anonymous scene workspace
-   are ordered, so frame `N+1` cannot overwrite the world model before frame `N`.
-   The Decadic cycle remains serialized and samples the latest coherent scene. Set
-   `DECADIC_PERCEPTUAL_PROCESSING_MODE=batching_observations` or
-   `DECADIC_PERSISTENT_PARALLEL_PERCEPTION=0` to restore the legacy behavior where up
-   to `K` recent observations are encoded together and recency-pooled into one cycle.
-   In **Agent Settings → Workspace capacity**, the segmented control switches between
-   **Persistent Parallel Perceptual Processing** and **Batching Perceptual Observations**;
-   the `K` slider is labeled as pipeline sessions or batched frames accordingly, and
-   live readouts show queue depth, in-flight sessions, committed percepts/sec, dropped
-   frames, and scene sample age.
+8. **Serial Cognition + Lossless Prefetch (default on).**
+   `DECADIC_PARALLEL_SESSIONS` defaults to `10` and means prepared-frame capacity
+   in the default mode. Every incoming frame receives a session id, is predecoded
+   by producer workers, prepared outside the cognition lock, and then applied to
+   the anonymous scene/perception model in arrival order before it is eligible for
+   deep cognition. The raw prefetch queue is bounded by
+   `DECADIC_PREFETCH_QUEUE_MAX_FRAMES` (effective default
+   `max(32, DECADIC_PARALLEL_SESSIONS * 3)`, hard-clamped to `128`). The default
+   overload policy is `block`, which backpressures the body/camera adapter instead
+   of silently dropping accepted evidence. `DECADIC_PREFETCH_OVERLOAD_POLICY=drop_oldest`
+   is available only as an explicit opt-in and counts dropped unfolded frames as
+   `information_loss`. The Decadic cycle still
+   deep-processes exactly one prepared observation at a time, under the runtime lock.
+   State Bus, Global Workspace broadcast, action output, optimizer / recurrent
+   buffers, replay, episodic memory, and LTM remain serialized. Under overload,
+   already-folded frames can be coalesced out of deep cognition, so information is
+   preserved even when not every frame receives a full cognitive pass. Set
+   `DECADIC_PROCESSING_MODE=serial_prefetch` explicitly for this mode;
+   `DECADIC_PROCESSING_MODE=stage_pipeline` is accepted as a deprecated alias. Set
+   `DECADIC_PROCESSING_MODE=persistent_parallel_perception` for the perception-only
+   pipeline fallback, or `DECADIC_PROCESSING_MODE=batching_observations` for the
+   legacy recent-frame encode+pool path. `DECADIC_STAGE_PIPELINING_ENABLED=0` maps
+   unset mode selection back to the perception-only fallback. The older
+   `DECADIC_PERCEPTUAL_PROCESSING_MODE` and
+   `DECADIC_PERSISTENT_PARALLEL_PERCEPTION` variables remain compatibility aliases.
+   In **Agent Settings -> Workspace capacity**, the segmented control switches among
+   **Serial Cognition + Lossless Prefetch**, **Persistent Parallel Perceptual
+   Processing**, and **Batching Perceptual Observations**. Live readouts expose
+   received/folded frames, deep-processed frames, raw prefetch queue, folded-ready
+   queue, backpressure time, oldest-unfolded age, coalesced/loss counts, producer
+   overlap, decode-on-consume latency, selected frame, and arbitration reason. See
+   `docs/decadic_stage_pipeline.md` for the full mutability and commit contract.
 
 > **Cognition vs. wall clock.** Speeding the cycle from ~1 Hz to 10–20 Hz means the agent *thinks* 10–20× more per real second, while wall-clock-timed processes (metabolic drain, consolidation sync interval, landscape refresh) keep their real-time cadence. The science is unchanged — the agent simply gets far more cognition per unit of the same world time. Adjust the `*_INTERVAL_S` / metabolic constants if you want to preserve the old cognition-to-event ratio.
 
@@ -783,9 +801,14 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu126  
 | `DECADIC_BACKUPS_DIR` | Checkpoint JSON + `agent_{id}_brain.pt` |
 | `DECADIC_LOG_DIR` | Rotating JSON logs + optional cycle traces |
 | `DECADIC_CYCLE_INTERVAL_S` | Cycle tick interval |
-| `DECADIC_PARALLEL_SESSIONS` | Perception pipeline capacity in default persistent mode; batched-frame count in legacy batching mode (default `10`, max `16`) |
-| `DECADIC_PERCEPTUAL_PROCESSING_MODE` | `persistent_parallel` (default) or `batching_observations` (legacy recent-frame encode+pool path) |
-| `DECADIC_PERSISTENT_PARALLEL_PERCEPTION` | Boolean alias for the default-on mode (`1` default; set `0` to use `batching_observations` when the explicit mode var is unset) |
+| `DECADIC_PARALLEL_SESSIONS` | Prepared-frame capacity in `serial_prefetch`; perception-session capacity in `persistent_parallel_perception`; batched-frame count in `batching_observations` (default `10`, max `16`) |
+| `DECADIC_PROCESSING_MODE` | `serial_prefetch` (default), `persistent_parallel_perception`, or `batching_observations`; `stage_pipeline` is accepted as a deprecated alias for `serial_prefetch` |
+| `DECADIC_STAGE_PIPELINING_ENABLED` | Default-on boolean (`1`). Set `0` to make unset mode selection fall back to perception-only pipelining. |
+| `DECADIC_PERCEPTUAL_PROCESSING_MODE` | Compatibility alias: `persistent_parallel` / `persistent_parallel_perception` or `batching_observations` when `DECADIC_PROCESSING_MODE` is unset and stage pipelining is disabled |
+| `DECADIC_PERSISTENT_PARALLEL_PERCEPTION` | Compatibility boolean alias for perception-only fallback selection (`1` default; set `0` to use `batching_observations` when explicit mode vars are unset and stage pipelining is disabled) |
+| `DECADIC_PREFETCH_QUEUE_MAX_FRAMES` | Raw serial-prefetch queue bound before fold/apply. Effective minimum is `max(32, DECADIC_PARALLEL_SESSIONS * 3)` and hard max is `128` |
+| `DECADIC_PREFETCH_OVERLOAD_POLICY` | `block` (default, lossless backpressure) or explicit `drop_oldest` (drops unfolded queued evidence and increments `information_loss`) |
+| `DECADIC_READY_COALESCE_POLICY` | `freshest` (default: folded evidence stays, newest receives deep cognition under overload) or `oldest` (FIFO deep-cognition preference) |
 | `DECADIC_SESSION_RECENCY` | Recency-pooling decay used only by `batching_observations` mode (default `0.7`) |
 | `DECADIC_CONSOLIDATION_STUB_INTERVAL_S` | Heartbeat cadence for the consolidation runner when consolidation is OFF (`0` disables) |
 | `DECADIC_CYCLE_TRACE_EVERY` | Cycle trace JSONL every N cycles (`0` off) |

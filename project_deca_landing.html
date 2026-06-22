@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Deca — A mind, not a model</title>
+<style>
+  :root{
+    --bg:#06080d; --bg2:#0b1018; --panel:#0e1622; --panel2:#111c2b;
+    --line:#1d2a3a; --text:#e8eef6; --muted:#8a97a8; --faint:#5b6577;
+    --cyan:#3ce1ff; --blue:#5b8cff; --amber:#ff9a4d; --green:#54e6a8;
+    --grad:linear-gradient(120deg,#3ce1ff,#5b8cff 55%,#9b6bff);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:
+      radial-gradient(900px 500px at 80% -10%, rgba(91,140,255,.16), transparent 60%),
+      radial-gradient(700px 500px at 0% 10%, rgba(60,225,255,.10), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  .mono{font-family:'JetBrains Mono','SF Mono',ui-monospace,Menlo,Consolas,monospace}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  .accent{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* NAV */
+  nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);
+    background:rgba(6,8,13,.66);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:66px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:700;letter-spacing:.5px}
+  .brand .dot{width:26px;height:26px;border-radius:50%;
+    background:conic-gradient(from 0deg,#3ce1ff,#5b8cff,#9b6bff,#3ce1ff);
+    box-shadow:0 0 18px rgba(60,225,255,.5)}
+  .navlinks{display:flex;gap:28px;align-items:center}
+  .navlinks a{color:var(--muted);font-size:14.5px}
+  .navlinks a:hover{color:var(--text)}
+  .btn{display:inline-block;padding:11px 20px;border-radius:10px;font-weight:600;font-size:14.5px;
+    background:var(--grad);color:#04121d;border:none;cursor:pointer;transition:transform .15s,box-shadow .15s}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(60,225,255,.28)}
+  .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+  .btn.ghost:hover{border-color:var(--cyan);box-shadow:none}
+  @media(max-width:760px){.navlinks a:not(.btn){display:none}}
+
+  /* HERO */
+  header.hero{padding:88px 0 70px}
+  .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:40px;align-items:center}
+  .eyebrow{font-size:12.5px;letter-spacing:3px;color:var(--cyan);font-weight:700;text-transform:uppercase}
+  h1{font-size:clamp(40px,6vw,68px);line-height:1.02;margin:18px 0 0;font-weight:800;letter-spacing:-1.5px}
+  .hero p.lead{font-size:19px;color:var(--muted);margin:22px 0 0;max-width:560px}
+  .chips{display:flex;flex-wrap:wrap;gap:9px;margin-top:26px}
+  .chip{font-size:12.5px;padding:7px 13px;border:1px solid var(--line);border-radius:999px;color:var(--text);background:var(--panel)}
+  .chip b{color:var(--cyan);font-weight:700}
+  .cta-row{display:flex;gap:14px;margin-top:32px;flex-wrap:wrap}
+  @media(max-width:880px){.hero-grid{grid-template-columns:1fr}.ring-wrap{order:-1}}
+
+  /* RING */
+  .ring-wrap{display:flex;justify-content:center}
+  .ring{width:100%;max-width:420px;filter:drop-shadow(0 16px 50px rgba(60,225,255,.12))}
+  .ring .node{fill:var(--panel2);stroke:var(--line);stroke-width:1.5}
+  .ring .num{fill:var(--text);font:700 15px/1 'Segoe UI',sans-serif;text-anchor:middle}
+  .ring .ringline{fill:none;stroke:url(#g);stroke-width:1.5;opacity:.5}
+  .ring .center{fill:var(--muted);font:600 11px/1 ui-monospace,monospace;text-anchor:middle;letter-spacing:2px}
+  .ring .center.b{fill:var(--text);font-weight:800;font-size:15px;letter-spacing:1px}
+  .spark{fill:var(--cyan);filter:drop-shadow(0 0 8px var(--cyan))}
+
+  /* SECTIONS */
+  section{padding:74px 0;border-top:1px solid var(--line)}
+  .kicker{font-size:12.5px;letter-spacing:3px;color:var(--cyan);font-weight:700;text-transform:uppercase}
+  h2{font-size:clamp(28px,4vw,40px);font-weight:800;letter-spacing:-.8px;margin:12px 0 0;max-width:760px}
+  .sub{color:var(--muted);font-size:18px;margin-top:16px;max-width:680px}
+
+  /* THESIS */
+  .bet{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:40px}
+  .bet .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px}
+  .bet .card h3{font-size:16px;margin-bottom:8px}
+  .bet .card .x{color:var(--muted);font-size:14px;text-decoration:line-through;text-decoration-color:#3a4453}
+  .bet .card .y{color:var(--text);font-size:15px;margin-top:6px}
+  .bet .card .y b{color:var(--cyan)}
+  @media(max-width:760px){.bet{grid-template-columns:1fr}}
+
+  /* FRAMEWORK */
+  .fw{display:grid;grid-template-columns:.9fr 1.1fr;gap:44px;align-items:center;margin-top:38px}
+  .stages{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stage{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px 13px}
+  .stage .n{font:800 13px/1 ui-monospace,monospace;color:var(--cyan);min-width:22px;padding-top:2px}
+  .stage .t{font-size:13.5px;color:var(--text)}
+  .bus{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .bus .lbl{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+  .bus .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .bus .b{font-size:12.5px;padding:6px 11px;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}
+  .bus .b b{color:var(--amber)}
+  @media(max-width:880px){.fw{grid-template-columns:1fr}}
+
+  /* FEATURE GRID */
+  .feat{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:40px}
+  .f{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:26px;transition:transform .18s,border-color .18s}
+  .f:hover{transform:translateY(-4px);border-color:rgba(60,225,255,.4)}
+  .f .ic{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    background:rgba(60,225,255,.10);border:1px solid rgba(60,225,255,.25);margin-bottom:16px;font-size:21px}
+  .f h3{font-size:17.5px;margin-bottom:9px}
+  .f p{color:var(--muted);font-size:14.5px}
+  @media(max-width:880px){.feat{grid-template-columns:1fr 1fr}}
+  @media(max-width:600px){.feat{grid-template-columns:1fr}}
+
+  /* COMPARISON */
+  .vs{margin-top:38px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel)}
+  .vs .head{display:grid;grid-template-columns:1fr 1fr;font-weight:700;font-size:13px;letter-spacing:1px;text-transform:uppercase}
+  .vs .head div{padding:15px 22px}
+  .vs .head .l{color:var(--muted);border-right:1px solid var(--line)}
+  .vs .head .r{color:var(--cyan)}
+  .vs .r0{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+  .vs .r0 div{padding:15px 22px;font-size:14.5px}
+  .vs .r0 .l{color:var(--muted);border-right:1px solid var(--line)}
+  .vs .r0 .r{color:var(--text)}
+
+  /* CREDIBILITY */
+  .cred{display:grid;grid-template-columns:1.2fr .8fr;gap:30px;align-items:center;margin-top:36px}
+  .paper{background:linear-gradient(135deg,rgba(91,140,255,.12),rgba(155,107,255,.08));border:1px solid var(--line);border-radius:16px;padding:28px}
+  .paper .tag{font-size:11.5px;letter-spacing:2px;color:var(--amber);font-weight:700;text-transform:uppercase}
+  .paper h3{font-size:20px;margin:10px 0 6px;line-height:1.25}
+  .paper .by{color:var(--muted);font-size:14px}
+  .paper .accepted{margin-top:14px;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--green)}
+  .paper .accepted .d{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+  @media(max-width:880px){.cred{grid-template-columns:1fr}}
+
+  /* ROADMAP */
+  .road{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:34px}
+  .ph{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .ph .st{font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
+  .ph.done .st{color:var(--green)} .ph.now .st{color:var(--cyan)} .ph.next .st{color:var(--muted)}
+  .ph h4{font-size:15.5px;margin:10px 0 6px}
+  .ph p{color:var(--muted);font-size:13.5px}
+  @media(max-width:880px){.road{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.road{grid-template-columns:1fr}}
+
+  /* CTA */
+  .final{text-align:center;border-top:1px solid var(--line)}
+  .final h2{margin:0 auto}
+  .final .sub{margin:16px auto 0}
+  .final .cta-row{justify-content:center;margin-top:30px}
+  footer{border-top:1px solid var(--line);padding:30px 0;color:var(--muted);font-size:13.5px}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+
+  /* reveal */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span> PROJECT&nbsp;DECA</div>
+    <div class="navlinks">
+      <a href="#thesis">The bet</a>
+      <a href="#cycle">Architecture</a>
+      <a href="#system">What's built</a>
+      <a href="#theory">Theory</a>
+      <a href="#contact" class="btn">Get in touch</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">Original Cognitive Architecture</div>
+      <h1>A mind,<br>not a <span class="accent">model</span>.</h1>
+      <p class="lead">Project Deca is an embodied AI that perceives, feels, remembers, and acts from its own drives — with <b>no large language model at its core</b>. It learns from its own experience, the way living things do.</p>
+      <div class="chips">
+        <span class="chip"><b>No</b> LLM core</span>
+        <span class="chip"><b>No</b> external reward</span>
+        <span class="chip"><b>No</b> labeled data</span>
+        <span class="chip">Embodied</span>
+        <span class="chip">Self-supervised</span>
+      </div>
+      <div class="cta-row">
+        <a href="#cycle" class="btn">See the architecture</a>
+        <a href="#contact" class="btn ghost">Hire / Acquire</a>
+      </div>
+    </div>
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 400 400" aria-label="The Decadic Cycle">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#3ce1ff"/><stop offset="0.55" stop-color="#5b8cff"/><stop offset="1" stop-color="#9b6bff"/>
+          </linearGradient>
+        </defs>
+        <circle class="ringline" cx="200" cy="200" r="150"/>
+        <!-- traveling spark -->
+        <circle r="5" class="spark">
+          <animateMotion dur="10s" repeatCount="indefinite"
+            path="M200,50 A150,150 0 1,1 199.9,50"/>
+        </circle>
+        <!-- 10 nodes -->
+        <g id="nodes"></g>
+        <text x="200" y="194" class="center b">DECADIC</text>
+        <text x="200" y="214" class="center">CYCLE · A–F</text>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<section id="thesis">
+  <div class="wrap">
+    <div class="kicker reveal">The bet</div>
+    <h2 class="reveal">Most AI predicts the next token, or chases a reward someone designed for it. Deca makes a different bet.</h2>
+    <p class="sub reveal">That intelligence is what emerges when an embodied system — driven by its own survival and curiosity — builds a model of its world and itself, continuously, from raw experience.</p>
+    <div class="bet">
+      <div class="card reveal"><h3>Where it lives</h3><div class="x">A text box, or a fixed dataset</div><div class="y">An <b>embodied world</b> — it has a body, senses, and consequences</div></div>
+      <div class="card reveal"><h3>How it learns</h3><div class="x">Human labels and feedback</div><div class="y">Its own <b>prediction errors</b> — no labels, no supervision</div></div>
+      <div class="card reveal"><h3>What moves it</h3><div class="x">A reward function we hand it</div><div class="y">Its own <b>drives</b> — survival and curiosity</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="cycle">
+  <div class="wrap">
+    <div class="kicker reveal">The architecture</div>
+    <h2 class="reveal">Ten stages. One continuous loop.</h2>
+    <p class="sub reveal">Deca runs the <b>Decadic Cycle of Expression</b> — an original ten-stage model of how cognition unfolds from perception to action — as a live, asynchronous process. A persistent <b>State Bus (A–F)</b> carries mind, emotion, narrative, priority, metacognition, and self-model across every cycle.</p>
+    <div class="fw">
+      <div class="stages reveal">
+        <div class="stage"><span class="n">1</span><span class="t">Sensory perception</span></div>
+        <div class="stage"><span class="n">2</span><span class="t">Experience framing &amp; fusion</span></div>
+        <div class="stage"><span class="n">3</span><span class="t">Heuristic &amp; memory</span></div>
+        <div class="stage"><span class="n">4</span><span class="t">Risk · utility · curiosity</span></div>
+        <div class="stage"><span class="n">5</span><span class="t">Pre-normative conclusion</span></div>
+        <div class="stage"><span class="n">6</span><span class="t">Emotion / physiology</span></div>
+        <div class="stage"><span class="n">7</span><span class="t">Reprioritize · state of mind</span></div>
+        <div class="stage"><span class="n">8</span><span class="t">Strategy formation</span></div>
+        <div class="stage"><span class="n">9</span><span class="t">Behavioral response</span></div>
+        <div class="stage"><span class="n">10</span><span class="t">Normative memory mapping</span></div>
+      </div>
+      <div class="reveal">
+        <div class="bus">
+          <div class="lbl">Persistent State Bus</div>
+          <div class="row">
+            <span class="b"><b>A</b> · State of mind</span>
+            <span class="b"><b>B</b> · Emotion / pain · pleasure</span>
+            <span class="b"><b>C</b> · Internal narrative</span>
+            <span class="b"><b>D</b> · Priority</span>
+            <span class="b"><b>E</b> · Metacognition</span>
+            <span class="b"><b>F</b> · Self-model / efference</span>
+          </div>
+        </div>
+        <p class="sub" style="margin-top:18px">Each stage is a small trainable neural module — not a pretrained language model. The cycle never stops: stage 10 feeds the next cycle's stage 1, producing a developing mind rather than static behavior.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="system">
+  <div class="wrap">
+    <div class="kicker reveal">What's built</div>
+    <h2 class="reveal">A working system — running today, end to end.</h2>
+    <p class="sub reveal">Not a slide deck. A live, embodied agent that perceives, learns, and acts from its own motivation.</p>
+    <div class="feat">
+      <div class="f reveal"><div class="ic">🦾</div><h3>Embodied</h3><p>A physical humanoid in simulation — proprioception, touch, vision, and audio. The architecture is body-agnostic: any world or robot can become its body.</p></div>
+      <div class="f reveal"><div class="ic">🔄</div><h3>Self-supervised</h3><p>Predictive coding and forward-model error drive learning every cycle. No labels, no human feedback — it learns by predicting its world and being wrong.</p></div>
+      <div class="f reveal"><div class="ic">🔥</div><h3>Intrinsic drive</h3><p>Two innate motivations: homeostatic survival (hunger, thirst, integrity) and need-gated curiosity that rewards real learning progress. Everything else is learned.</p></div>
+      <div class="f reveal"><div class="ic">🧠</div><h3>Brain-like memory</h3><p>Fast episodic memory, a persistent self-indexed knowledge graph, and offline replay consolidation — a complementary-learning-systems design, the way biological memory works.</p></div>
+      <div class="f reveal"><div class="ic">⛔</div><h3>No LLM in the core</h3><p>The cognitive core is custom neural modules, not a pretrained language model. Language, if added, is a faculty — never the seat of cognition.</p></div>
+      <div class="f reveal"><div class="ic">👁️</div><h3>Observable</h3><p>A live dashboard renders the real network, the loss landscape, the self-model graph, and a per-cycle "why" trace. You can watch it think.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="different">
+  <div class="wrap">
+    <div class="kicker reveal">Why it's bleeding edge</div>
+    <h2 class="reveal">A fundamentally different architecture.</h2>
+    <div class="vs reveal">
+      <div class="head"><div class="l">Conventional AI</div><div class="r">Project Deca</div></div>
+      <div class="r0"><div class="l">Predicts the next token</div><div class="r">Lives and acts in an embodied world</div></div>
+      <div class="r0"><div class="l">Trained on labeled data</div><div class="r">Learns from its own raw experience</div></div>
+      <div class="r0"><div class="l">Optimizes a designed reward</div><div class="r">Driven by its own survival &amp; curiosity</div></div>
+      <div class="r0"><div class="l">Frozen weights at inference</div><div class="r">Learns continuously, online, forever</div></div>
+      <div class="r0"><div class="l">A model you query</div><div class="r">A mind that persists and develops</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="theory">
+  <div class="wrap">
+    <div class="kicker reveal">Theory &amp; originality</div>
+    <h2 class="reveal">Grounded in original theory — and defensible IP.</h2>
+    <p class="sub reveal">The Decadic Cycle and its companion framework — a structural account of subjective experience — are original work by the project's author.</p>
+    <div class="cred">
+      <div class="paper reveal">
+        <div class="tag">Peer-reviewed venue</div>
+        <h3>"The Extra Ingredient: A Structural Solution to the Hard Problem of Consciousness"</h3>
+        <div class="by">Charles R.&nbsp;W. Sears</div>
+        <div class="accepted"><span class="d"></span> Accepted for presentation at the ASSC annual meeting<br></div>
+        <p class="sub" style="font-size:14px;margin-top:14px">The theoretical foundation behind Deca's architecture — and the basis for its design choices around self-modeling, affect, and memory.</p>
+      </div>
+      <div class="reveal">
+        <p class="sub" style="margin-top:0">Deca is the computational instantiation of that theory: a system designed from first principles around self-indexed world-modeling, affective valuation, temporal integration, and persistent self-reference — rather than scaled-up next-token prediction.</p>
+        <p class="sub">The framework and its implementations are protected, original intellectual property.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="status">
+  <div class="wrap">
+    <div class="kicker reveal">Where it is</div>
+    <h2 class="reveal">A working research prototype — with a clear frontier.</h2>
+    <p class="sub reveal">The full architecture runs end-to-end: embodied, self-driven, self-learning. Honest about the stage, and where it's going.</p>
+    <div class="road">
+      <div class="ph done reveal"><div class="st">✓ Built</div><h4>The architecture</h4><p>All ten stages, the State Bus, intrinsic drives, memory, consolidation, and the embodied body — running live.</p></div>
+      <div class="ph now reveal"><div class="st">● Now</div><h4>Sustained operation</h4><p>Hardening the system to run continuously and stably for days — the precondition for measuring real competence.</p></div>
+      <div class="ph next reveal"><div class="st">→ Next</div><h4>Emergent skill</h4><p>Demonstrating locomotion and foraging that emerge from the agent's own drives, then scaling the network.</p></div>
+      <div class="ph next reveal"><div class="st">→ Horizon</div><h4>Language &amp; scale</h4><p>Language as a learned faculty; larger cognition; new bodies and worlds.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="contact" class="final">
+  <div class="wrap">
+    <div class="kicker reveal">Get involved</div>
+    <h2 class="reveal">Hire the architect. Acquire the IP.<br>Or build it together.</h2>
+    <p class="sub reveal">Project Deca is the work of one person designing and building a genuinely new kind of AI. If you're an investor, a lab, or a company who wants to be early on this — let's talk.</p>
+    <div class="cta-row reveal">
+      <a href="mailto:charles.r.sears@gmail.com?subject=Project%20Deca" class="btn">Contact the architect</a>
+      <a href="mailto:charles.r.sears@gmail.com?subject=Project%20Deca%20—%20Acquisition" class="btn ghost">Acquisition inquiries</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>PROJECT DECA — an original cognitive architecture.</div>
+    <div>© 2026 Charles R. W. Sears · charles.r.sears@gmail.com</div>
+  </div>
+</footer>
+
+<script>
+  // Build the 10 decadic ring nodes
+  (function(){
+    const cx=200, cy=200, R=150, g=document.getElementById('nodes');
+    if(!g) return;
+    for(let i=0;i<10;i++){
+      const a=(-90 + i*36) * Math.PI/180;
+      const x=cx+R*Math.cos(a), y=cy+R*Math.sin(a);
+      const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',x);c.setAttribute('cy',y);c.setAttribute('r',18);c.setAttribute('class','node');
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',x);t.setAttribute('y',y+5);t.setAttribute('class','num');t.textContent=i+1;
+      g.appendChild(c);g.appendChild(t);
+    }
+  })();
+  // Scroll reveal
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}})},{threshold:.12});
+  document.querySelectorAll('.reveal').forEach((el,i)=>{el.style.transitionDelay=(i%4*60)+'ms';io.observe(el);});
+</script>
+</body>
+</html>

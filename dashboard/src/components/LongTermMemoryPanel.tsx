@@ -1,11 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { AgentState, LtmEdge, LtmGraphSnapshot, LtmNode } from "../api";
 import Info from "./Info";
 
-// The persistent, unbounded long-term knowledge graph (the "hippocampal index"):
-// one permanent node per consolidated object, keyed by its learned appearance and
-// colored by an appearance-derived hue (no semantic labels). Working memory stays
-// bounded; this graph grows without limit, so the counters are the headline.
+// The persistent, unbounded long-term knowledge graph. Promoted entity nodes
+// remain the compatibility view; the semantic counters show provisional
+// Framework-style evidence from moment one.
 
 const W = 380;
 const H = 320;
@@ -15,8 +14,11 @@ const PAD = 18;
 const SEED_R = 120;
 const ITER = 160;
 const REP = 1500; // repulsion strength
-const SPRING = 190; // edge spring length scale
+const EDGE_LEN = 72; // preferred visible distance between linked LTM nodes
+const EDGE_STRENGTH = 0.08;
 const COOL = 15; // max per-step displacement at iteration 0
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 8;
 
 type XY = { x: number; y: number };
 
@@ -67,7 +69,8 @@ function layout(nodes: LtmNode[], edges: LtmEdge[]): Map<string, XY> {
       const dx = pi.x - pj.x;
       const dy = pi.y - pj.y;
       const d = Math.sqrt(dx * dx + dy * dy) + 0.01;
-      const f = ((d * d) / SPRING) * (0.5 + 0.5 * Math.min(1, e.weight));
+      const target = EDGE_LEN * (1 + 0.35 * (1 - Math.min(1, e.weight)));
+      const f = ((d - target) / target) * EDGE_STRENGTH;
       const fx = (dx / d) * f;
       const fy = (dy / d) * f;
       disp[i].x -= fx;
@@ -115,6 +118,7 @@ function nodeStroke(n: LtmNode): string {
 }
 
 export default function LongTermMemoryPanel(props: { state: AgentState }) {
+  const [zoom, setZoom] = useState(1);
   const ltm: LtmGraphSnapshot | null | undefined = props.state.perceptual.ltm_graph;
   const nodes = ltm?.nodes ?? [];
   const edges = ltm?.edges ?? [];
@@ -124,6 +128,7 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
   const ltmStatus = props.state.perceptual.ltm_consolidation;
   const totalBeliefs = ltm?.total_property_beliefs ?? 0;
   const unstableBeliefs = ltm?.unstable_property_count ?? 0;
+  const semantic = ltm?.semantic;
 
   // Recompute the force layout only when the graph structure actually changes,
   // not on every cycle tick (keeps the view stable and cheap).
@@ -132,12 +137,18 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
     [nodes, edges.length, totalNodes],
   );
   const pos = useMemo(() => layout(nodes, edges), [sig]); // eslint-disable-line react-hooks/exhaustive-deps
+  const viewW = W / zoom;
+  const viewH = H / zoom;
+  const viewBox = `${CX - viewW / 2} ${CY - viewH / 2} ${viewW} ${viewH}`;
+  const zoomBy = (factor: number) => {
+    setZoom((z) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, +(z * factor).toFixed(2))));
+  };
 
   return (
     <div className="panel span-5">
       <h2>
         Long-term Memory
-        <Info tip="The persistent, unbounded long-term knowledge graph - the agent's lifelong relational memory. Each node is an object the agent has stably perceived and consolidated out of working memory, keyed by its learned appearance (color = appearance, not a label). Edges form when objects are seen together. Working memory is a bounded 'now' buffer; this graph grows without limit, so the headline counters show its real size while the view shows a recent window." />
+        <Info tip="The persistent semantic graph. Provisional anonymous percepts enter immediately as evidence; promotion into stable nodes is stricter and precision-based. Runtime records remain label-free: entities, events, relationships, correlations, conclusions, and contextual values." />
       </h2>
 
       <div className="strip-label">
@@ -159,6 +170,27 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
           <span>flow {health.flow_confidence.toFixed(3)}</span>
         </div>
       )}
+      {semantic && (
+        <div className="health-strip ok">
+          <span>entities {semantic.entities}</span>
+          <span>events {semantic.events}</span>
+          <span>relationships {semantic.relationships}</span>
+          <span>correlations {semantic.correlations}</span>
+          <span>conclusions {semantic.conclusions}</span>
+          <span>values {semantic.values}</span>
+        </div>
+      )}
+      {ltmStatus?.semantic_update && (
+        <div className="health-strip ok">
+          <span>last semantic write</span>
+          <span>e {ltmStatus.semantic_update.entities ?? 0}</span>
+          <span>ev {ltmStatus.semantic_update.events ?? 0}</span>
+          <span>rel {ltmStatus.semantic_update.relationships ?? 0}</span>
+          <span>corr {ltmStatus.semantic_update.correlations ?? 0}</span>
+          <span>conc {ltmStatus.semantic_update.conclusions ?? 0}</span>
+          <span>val {ltmStatus.semantic_update.values ?? 0}</span>
+        </div>
+      )}
       {(ltmStatus?.property_update || totalBeliefs > 0) && (
         <div className={`health-strip ${unstableBeliefs > 0 ? "warn" : "ok"}`}>
           <span>beliefs {totalBeliefs}</span>
@@ -170,14 +202,31 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
 
       {nodes.length === 0 ? (
         <div className="ltm-empty">
-          No long-term nodes yet. The graph grows as the agent stably perceives
-          objects and consolidates them out of working memory.
+          No promoted long-term nodes yet. Provisional semantic evidence should
+          still appear in the counters above as soon as percepts enter working memory.
         </div>
       ) : (
-        <svg
-          className="graph-svg"
-          viewBox={`0 0 ${W} ${H}`}
+        <div className="ltm-graph-wrap">
+          <div className="ltm-zoom-controls" aria-label="LTM graph zoom controls">
+            <button type="button" className="icon-btn" title="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
+              -
+            </button>
+            <span>{zoom.toFixed(1)}x</span>
+            <button type="button" className="icon-btn" title="Zoom in" onClick={() => zoomBy(1.25)}>
+              +
+            </button>
+            <button type="button" className="btn" title="Reset LTM graph zoom" onClick={() => setZoom(1)}>
+              Reset
+            </button>
+          </div>
+          <svg
+          className="graph-svg ltm-graph-svg"
+          viewBox={viewBox}
           preserveAspectRatio="xMidYMid meet"
+          onWheel={(e) => {
+            e.preventDefault();
+            zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12);
+          }}
         >
           {edges.map((e, i) => {
             const a = pos.get(e.source);
@@ -217,7 +266,8 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
               </circle>
             );
           })}
-        </svg>
+          </svg>
+        </div>
       )}
 
       {nodes.length > 0 && (

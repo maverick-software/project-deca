@@ -37,7 +37,17 @@ export type PlasticityConfig = {
 
 export type CapacityConfig = {
   parallel_sessions: number;
+  processing_mode?:
+    | "serial_prefetch"
+    | "stage_pipeline"
+    | "persistent_parallel_perception"
+    | "batching_observations"
+    | string;
+  stage_pipeline_enabled?: boolean;
   perceptual_processing_mode?: "persistent_parallel" | "batching_observations" | string;
+  prefetch_queue_max?: number;
+  prefetch_overload_policy?: string;
+  ready_coalesce_policy?: string;
   working_memory_slots: number;
   working_memory_decay: number;
   // Manual assist-harness level; null = Auto (curriculum). Send -1 to clear.
@@ -177,6 +187,15 @@ export type LtmEdge = {
   weight: number;
 };
 
+export type SemanticStats = {
+  entities: number;
+  events: number;
+  relationships: number;
+  correlations: number;
+  conclusions: number;
+  values: number;
+};
+
 export type LtmGraphSnapshot = {
   nodes: LtmNode[];
   edges: LtmEdge[];
@@ -185,6 +204,7 @@ export type LtmGraphSnapshot = {
   total_edges: number;
   total_property_beliefs?: number;
   unstable_property_count?: number;
+  semantic?: SemanticStats;
 };
 
 export type WorkingMemorySlot = {
@@ -206,6 +226,13 @@ export type WorkingMemorySlot = {
   agency?: number | null;
   confidence?: number | null;
   kind_hint?: string | null;
+  entity_role?: string | null;
+  precision?: number | null;
+  provisional?: boolean;
+  evidence_count?: number;
+  contradiction_pressure?: number;
+  event_links?: string[];
+  relationship_links?: string[];
   motion?: number[] | null;
   local_motion?: number | null;
   retina_contrast?: number | null;
@@ -252,6 +279,8 @@ export type ObjectFileSnapshot = {
   persistence: number;
   agency: number;
   kind_hint: string;
+  entity_role?: string;
+  provisional?: boolean;
   confidence: number;
   presence: number;
   spread?: number | null;
@@ -313,6 +342,13 @@ export type LtmConsolidationStatus = {
   property_update?: boolean;
   relationship_update?: boolean;
   relationship_updates_skipped?: number;
+  semantic_update?: Partial<SemanticStats>;
+  semantic_entities?: number;
+  semantic_events?: number;
+  semantic_relationships?: number;
+  semantic_correlations?: number;
+  semantic_conclusions?: number;
+  semantic_values?: number;
   total_property_beliefs?: number;
   unstable_property_count?: number;
   avg_property_confidence?: number;
@@ -322,6 +358,8 @@ export type SceneEntitySnapshot = {
   entity_id: string;
   object_id?: string | null;
   kind_hint: string;
+  entity_role?: string;
+  provisional?: boolean;
   visible: boolean;
   occluded: boolean;
   occlusion_age: number;
@@ -614,7 +652,42 @@ export type Metrics = {
   status?: AgentStatus;
   died_at_cycle?: number | null;
   parallel_sessions?: number;
+  processing_mode?: string;
+  stage_pipeline_enabled?: boolean;
   perceptual_processing_mode?: string;
+  stage_pipeline_active_sessions?: number;
+  stage_pipeline_ready_sessions?: number;
+  stage_pipeline_committed_sessions?: number;
+  stage_pipeline_committed_per_s?: number;
+  stage_pipeline_dropped_sessions?: number;
+  stage_pipeline_stale_sessions?: number;
+  stage_pipeline_failed_sessions?: number;
+  stage_pipeline_queue_depths?: Record<string, number>;
+  stage_pipeline_inflight?: Record<string, number>;
+  stage_pipeline_latency_ms?: Record<string, number>;
+  stage_pipeline_recent_sessions?: Array<Record<string, unknown>>;
+  stage_pipeline_selected_session?: Record<string, unknown> | null;
+  stage_pipeline_arbitration_reason?: string | null;
+  frames_received?: number;
+  frames_prefetched?: number;
+  frames_folded?: number;
+  frames_deep_processed?: number;
+  coalesced_sessions?: number;
+  information_loss?: number;
+  producer_overlap_ratio?: number;
+  decode_on_consume_ms?: number;
+  consume_wait_ms?: number;
+  ready_queue_depth?: number;
+  ready_coalesce_policy?: string;
+  fold_lag_ms?: number;
+  prefetch_queue_depth?: number;
+  prefetch_queue_max?: number;
+  prefetch_overload_policy?: string;
+  prefetch_backpressure_events?: number;
+  prefetch_backpressure_ms?: number;
+  oldest_unfolded_age_ms?: number;
+  prefetch_backpressure_warning?: boolean;
+  oldest_unfolded_warning?: boolean;
   pipeline_sessions?: number;
   perception_queue_depth?: number;
   perception_inflight?: number;
@@ -922,6 +995,10 @@ export async function configureAgent(
   const params = new URLSearchParams();
   if (cfg.parallel_sessions != null)
     params.set("parallel_sessions", String(cfg.parallel_sessions));
+  if (cfg.processing_mode != null)
+    params.set("processing_mode", String(cfg.processing_mode));
+  if (cfg.stage_pipeline_enabled != null)
+    params.set("stage_pipeline_enabled", cfg.stage_pipeline_enabled ? "1" : "0");
   if (cfg.perceptual_processing_mode != null)
     params.set("perceptual_processing_mode", String(cfg.perceptual_processing_mode));
   if (cfg.working_memory_slots != null)

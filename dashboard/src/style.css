@@ -728,6 +728,39 @@ body {
 
 /* Long-term knowledge graph (the unbounded hippocampal index) */
 .ltm-counter { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+.ltm-graph-wrap { position: relative; margin-top: 6px; }
+.ltm-graph-wrap .graph-svg { margin-top: 0; }
+.ltm-zoom-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: rgba(13, 17, 26, 0.88);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ltm-zoom-controls .icon-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  background: #111827;
+  color: var(--text);
+  line-height: 1;
+  cursor: pointer;
+}
+.ltm-zoom-controls .btn {
+  height: 24px;
+  padding: 0 8px;
+}
 .ltm-empty {
   font-size: 13px;
   color: var(--text-dim);

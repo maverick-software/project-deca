@@ -154,6 +154,8 @@ def _stable_object_file_snapshots(wm: Any) -> list[dict[str, Any]]:
                 "retina_contrast": float(getattr(s, "retina_contrast", 0.0) or 0.0),
                 "looming": float(getattr(s, "looming", 0.0) or 0.0),
                 "property_evidence": dict(getattr(s, "property_evidence", {}) or {}),
+                "entity_role": str(getattr(s, "entity_role", "compact_entity")),
+                "provisional": bool(getattr(s, "provisional", True)),
             }
         )
     return out
@@ -352,9 +354,13 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # attention parses the patch-feature map into object proposals; the pooled
     # slots are injected additively into z0 (zero-init projection -> starts at
     # exact bottom-up parity) so the deliberative stack sees object structure.
-    persistent_perception = (
-        getattr(ctx, "perceptual_processing_mode", "") == C.PERCEPTUAL_PROCESSING_PERSISTENT
-    )
+    runtime_mode = getattr(ctx, "perceptual_processing_mode", "")
+    persistent_perception = runtime_mode in {
+        C.PERCEPTUAL_PROCESSING_PERSISTENT,
+        C.PROCESSING_SERIAL_PREFETCH,
+        C.PROCESSING_PERSISTENT_PERCEPTION,
+        C.PROCESSING_STAGE_PIPELINE,
+    }
     discovered = (
         not persistent_perception
         and ctx.perception_mode == "discovered"
@@ -449,13 +455,27 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         ctx.latents["percept_key"] = percept_key_np.astype(float).tolist()
     tm0 = time.perf_counter()
     qv = query_vector_from_state_bus(ctx.state_bus, percept_key_np)
-    mem_np = ctx.episodic.retrieval_context_vector(
-        qv,
-        bundle.cfg.memory_context_dim,
-        top_k=int(os.environ.get("DECADIC_MEMORY_TOP_K", "5")),
-        min_salience=float(os.environ.get("DECADIC_MEMORY_MIN_SALIENCE", "0")),
-    )
-    mem_ms = (time.perf_counter() - tm0) * 1000.0  # episodic recall → stage 3
+    cached_mem = getattr(ctx, "cached_memory_context", None)
+    if cached_mem is not None:
+        mem_np = np.asarray(cached_mem, dtype=np.float32).reshape(-1)
+        if mem_np.size >= bundle.cfg.memory_context_dim:
+            mem_np = mem_np[: bundle.cfg.memory_context_dim].copy()
+        else:
+            padded = np.zeros(bundle.cfg.memory_context_dim, dtype=np.float32)
+            padded[: mem_np.size] = mem_np
+            mem_np = padded
+        mem_ms = 0.0
+        memory_recall_on_critical_path = False
+    else:
+        mem_np = ctx.episodic.retrieval_context_vector(
+            qv,
+            bundle.cfg.memory_context_dim,
+            top_k=int(os.environ.get("DECADIC_MEMORY_TOP_K", "5")),
+            min_salience=float(os.environ.get("DECADIC_MEMORY_MIN_SALIENCE", "0")),
+        )
+        mem_ms = (time.perf_counter() - tm0) * 1000.0  # episodic recall → stage 3
+        memory_recall_on_critical_path = True
+    ctx.latents["memory_query_vector"] = qv.astype(float).tolist()
     mem_t = torch.as_tensor(mem_np, device=bundle.device, dtype=z0_bu.dtype).unsqueeze(0)
 
     # Loop 1 — precision-gated top-down predictive perception. History (last z5,
@@ -1707,6 +1727,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         # stage10 includes the per-cycle episodic SQLite write.
         "encoders_ms": round(enc_ms + encode_phase_ms, 4),
         "memory_recall_ms": round(mem_ms, 4),
+        "memory_recall_on_critical_path": bool(memory_recall_on_critical_path),
+        "memory_query_vector": qv.astype(float).tolist(),
         "stage10_ms": round(ms10, 4),
         "working_memory_slots": wm_slots,
         "forward_model_error": round(l_fwd_val, 6),

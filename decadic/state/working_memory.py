@@ -23,6 +23,11 @@ from decadic.config import (
     DEFAULT_WM_SCENE_ALPHA,
     DEFAULT_WM_SCENE_BLEND,
     DEFAULT_WORKING_MEMORY_SLOTS,
+    entity_entry_confidence_floor,
+    entity_precision_eta,
+    entity_promotion_precision,
+    entity_provisional_decay_boost,
+    provisional_entry_enabled,
 )
 from decadic.state.body_map import BODY_PARTS
 
@@ -103,6 +108,13 @@ class MemorySlot:
     occlusion_age: int = 0
     property_evidence: dict[str, Any] = field(default_factory=dict)
     scene_entity_id: str | None = None
+    entity_role: str = "compact_entity"
+    precision: float = 0.0
+    provisional: bool = True
+    evidence_count: float = 0.0
+    contradiction_pressure: float = 0.0
+    event_links: list[str] = field(default_factory=list)
+    relationship_links: list[str] = field(default_factory=list)
 
     def heading(self) -> float | None:
         """Planar heading (radians) inferred from remembered position history."""
@@ -143,6 +155,11 @@ class MemorySlot:
             node["agency"] = round(float(self.agency), 4)
         node["confidence"] = round(float(self.confidence), 4)
         node["kind_hint"] = self.kind_hint
+        node["entity_role"] = self.entity_role
+        node["precision"] = round(float(self.precision), 4)
+        node["provisional"] = bool(self.provisional)
+        node["evidence_count"] = round(float(self.evidence_count), 4)
+        node["contradiction_pressure"] = round(float(self.contradiction_pressure), 4)
         if self.scene_entity_id is not None:
             node["scene_entity_id"] = self.scene_entity_id
         if self.prediction_error:
@@ -296,18 +313,20 @@ class WorkingMemory:
         """
         self.cycle += 1
         for slot in self.slots.values():
-            slot.salience *= self.decay
+            decay = self.decay / entity_provisional_decay_boost() if slot.provisional else self.decay
+            slot.salience *= max(0.0, min(0.9999, decay))
             slot.audio_intensity *= AUDIO_DECAY
 
         matched: list[dict[str, Any]] = []
         used: set[str] = set()
         clean: list[dict[str, Any]] = []
+        entry_floor = entity_entry_confidence_floor() if provisional_entry_enabled() else 0.2
         for prop in proposals:
             try:
                 conf = float(prop.get("confidence", prop.get("presence", 0.0)) or 0.0)
             except (TypeError, ValueError):
                 conf = 0.0
-            if str(prop.get("kind_hint", "object")) == "stuff" or conf < 0.2:
+            if conf < entry_floor:
                 continue
             clean.append(prop)
         ordered = sorted(clean, key=lambda p: float(p.get("confidence", p.get("presence", 0.0)) or 0.0), reverse=True)
@@ -428,7 +447,12 @@ class WorkingMemory:
             occlusion_age=int(_as_float(prop.get("occlusion_age"))),
             property_evidence=_as_property_evidence(prop.get("property_evidence")),
             scene_entity_id=str(prop.get("scene_entity_id")) if prop.get("scene_entity_id") else None,
+            entity_role=_entity_role(prop),
+            precision=max(0.0, min(1.0, _as_float(prop.get("precision")) or _as_conf(prop))),
+            provisional=True,
+            evidence_count=max(0.0, _as_conf(prop)),
         )
+        slot.provisional = not _slot_promoted(slot)
         if uv is not None:
             slot.uv_history.append(list(uv))
         rel = slot.relative
@@ -446,6 +470,7 @@ class WorkingMemory:
         appearance_ema: float,
     ) -> None:
         if appearance is not None:
+            prior_app = list(slot.appearance) if slot.appearance is not None else None
             if slot.appearance is None or len(slot.appearance) != len(appearance):
                 slot.appearance = appearance
             else:
@@ -453,6 +478,13 @@ class WorkingMemory:
                 slot.appearance = [
                     (1.0 - a) * o + a * n for o, n in zip(slot.appearance, appearance)
                 ]
+            if prior_app is not None and len(prior_app) == len(appearance):
+                sim = _cosine(prior_app, appearance)
+                if sim < 0.25:
+                    slot.contradiction_pressure = min(
+                        1.0,
+                        slot.contradiction_pressure + (0.25 - sim),
+                    )
         if uv is not None:
             slot.uv = list(uv)
             slot.uv_history.append(list(uv))
@@ -469,6 +501,12 @@ class WorkingMemory:
         slot.seen_count += 1
         slot.confidence = _as_conf(prop)
         slot.kind_hint = str(prop.get("kind_hint", slot.kind_hint or "object"))
+        slot.entity_role = _entity_role(prop)
+        eta = entity_precision_eta()
+        signal = max(slot.confidence, 0.05)
+        slot.precision = min(1.0, max(0.0, slot.precision + eta * signal * (1.0 - slot.precision)))
+        slot.evidence_count += signal
+        slot.provisional = not _slot_promoted(slot)
         motion = _as_uv(prop.get("motion"))
         if motion is not None:
             slot.motion = motion
@@ -581,6 +619,10 @@ class WorkingMemory:
                 )
                 target.audio_intensity = max(target.audio_intensity, max(0.0, min(1.0, intensity)))
                 target.last_event = et or target.last_event
+                link = f"event:{_anonymous_event_class(et)}:{self.cycle}"
+                if link not in target.event_links:
+                    target.event_links.append(link)
+                    target.event_links = target.event_links[-16:]
 
     def _bind_events(self, events: list[dict[str, Any]] | None) -> None:
         """Annotate a slot with the latest event keyed to its entity id."""
@@ -699,6 +741,13 @@ class WorkingMemory:
                     "agency": _fin(round(s.agency, 4)) if s.agency_seen > 0 else None,
                     "confidence": _fin(round(s.confidence, 4)),
                     "kind_hint": s.kind_hint,
+                    "entity_role": s.entity_role,
+                    "precision": _fin(round(s.precision, 4)),
+                    "provisional": bool(s.provisional),
+                    "evidence_count": _fin(round(s.evidence_count, 4)),
+                    "contradiction_pressure": _fin(round(s.contradiction_pressure, 4)),
+                    "event_links": list(s.event_links[-8:]),
+                    "relationship_links": list(s.relationship_links[-8:]),
                     "motion": _fin_seq(list(s.motion)) if s.motion is not None else None,
                     "local_motion": _fin(round(s.local_motion, 4)),
                     "retina_contrast": _fin(round(s.retina_contrast, 4)),
@@ -741,6 +790,40 @@ def _as_uv(value: Any) -> list[float] | None:
     return None
 
 
+def _entity_role(prop: dict[str, Any]) -> str:
+    role = str(prop.get("entity_role", "") or "").strip()
+    if role in ("compact_entity", "extended_entity", "body_coupled_entity", "boundary_entity", "field_entity"):
+        return role
+    kind = str(prop.get("kind_hint", "object"))
+    if kind == "body_part_candidate":
+        return "body_coupled_entity"
+    if kind == "stuff":
+        return "extended_entity"
+    try:
+        spread = float(prop.get("spread", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        spread = 0.0
+    if spread >= 0.34:
+        return "extended_entity"
+    return "compact_entity"
+
+
+def _slot_promoted(slot: MemorySlot) -> bool:
+    precision = float(slot.precision if slot.precision is not None else slot.confidence)
+    return precision >= entity_promotion_precision() and int(slot.seen_count) >= 2
+
+
+def _anonymous_event_class(event_type: str) -> str:
+    et = str(event_type or "").lower()
+    if et in ("collision", "damage", "environment_damage", "fall", "combat_hit", "threat_near"):
+        return "aversive_state_change"
+    if et in ("food", "eat", "nourish", "water", "drink", "hydrate", "offer"):
+        return "interoceptive_relief"
+    if et:
+        return "sensory_state_change"
+    return "state_change"
+
+
 def _as_conf(prop: dict[str, Any]) -> float:
     try:
         return max(0.0, min(1.0, float(prop.get("confidence", prop.get("presence", 0.0)) or 0.0)))
@@ -759,7 +842,22 @@ def _as_float(value: Any) -> float:
 def _as_property_evidence(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
-    forbidden = ("label", "class", "kind_name", "food", "water", "hand", "wall", "building", "ball")
+    forbidden = (
+        "label",
+        "class",
+        "kind_name",
+        "semantic_label",
+        "oracle",
+        "sim_kind",
+        "food",
+        "water",
+        "floor",
+        "hand",
+        "wall",
+        "building",
+        "ball",
+        "bear",
+    )
     out: dict[str, Any] = {}
     for k, v in value.items():
         key = str(k).strip()

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from decadic import config as C
 from decadic.agents.registry import AgentRegistry
 from decadic.api.environment import EnvironmentControlError, EnvironmentSupervisor
 from decadic.embodiment import stances as stance_lib
@@ -350,6 +352,8 @@ def create_app() -> FastAPI:
     async def configure_agent(
         agent_id: str,
         parallel_sessions: int | None = None,
+        processing_mode: str | None = None,
+        stage_pipeline_enabled: bool | None = None,
         perceptual_processing_mode: str | None = None,
         working_memory_slots: int | None = None,
         working_memory_decay: float | None = None,
@@ -393,6 +397,8 @@ def create_app() -> FastAPI:
             # episodic_async/ltm_async: live write-behind persistence toggles.
             config = agent.configure(
                 parallel_sessions=parallel_sessions,
+                processing_mode=processing_mode,
+                stage_pipeline_enabled=stage_pipeline_enabled,
                 perceptual_processing_mode=perceptual_processing_mode,
                 working_memory_slots=working_memory_slots,
                 working_memory_decay=working_memory_decay,
@@ -434,8 +440,16 @@ def create_app() -> FastAPI:
                 "agent_id": agent_id,
                 "perception_mode": perc.perception_mode,
                 "perceptual_processing": {
-                    "mode": agent.perceptual_processing_mode,
+                    "mode": agent.processing_mode,
+                    "stage_pipeline_enabled": agent._stage_pipeline_enabled(),
                     "pipeline_sessions": agent.parallel_sessions,
+                    "prefetch_queue_depth": int(agent.metrics.get("prefetch_queue_depth", 0)),
+                    "prefetch_queue_max": int(agent.metrics.get("prefetch_queue_max", 0)),
+                    "prefetch_overload_policy": str(agent.metrics.get("prefetch_overload_policy", "block")),
+                    "prefetch_backpressure_events": int(agent.metrics.get("prefetch_backpressure_events", 0)),
+                    "prefetch_backpressure_ms": float(agent.metrics.get("prefetch_backpressure_ms", 0.0)),
+                    "oldest_unfolded_age_ms": float(agent.metrics.get("oldest_unfolded_age_ms", 0.0)),
+                    "ready_coalesce_policy": str(agent.metrics.get("ready_coalesce_policy", "freshest")),
                     "queue_depth": int(agent.metrics.get("perception_queue_depth", 0)),
                     "inflight": int(agent.metrics.get("perception_inflight", 0)),
                     "ingest_hz": float(agent.metrics.get("perception_ingest_hz", 0.0)),
@@ -446,6 +460,7 @@ def create_app() -> FastAPI:
                     "sample_age_ms": float(agent.metrics.get("sample_age_ms", 0.0)),
                     "batching_fallback": bool(agent.metrics.get("batching_fallback", False)),
                 },
+                "stage_pipeline": agent.stage_pipeline.metrics(),
                 "egocentric_graph": {
                     "nodes": list(perc.egocentric_nodes),
                     "edges": list(perc.egocentric_edges),
@@ -493,6 +508,34 @@ def create_app() -> FastAPI:
                     else None
                 ),
                 "ltm_consolidation": dict(getattr(perc, "ltm_consolidation", {})),
+                "ltm_metrics": {
+                    key: agent.metrics.get(key)
+                    for key in (
+                        "ltm_consolidation_queue_depth",
+                        "ltm_consolidation_worker_ms",
+                        "ltm_consolidation_jobs_enqueued",
+                        "ltm_consolidation_jobs_completed",
+                        "ltm_consolidation_sync_fallbacks",
+                        "ltm_match_ms",
+                        "ltm_match_cache_size",
+                        "ltm_match_cache_hits",
+                        "ltm_match_cache_misses",
+                        "ltm_semantic_jobs_skipped_by_interval",
+                        "sqlite_commit_count",
+                        "sqlite_batch_commit_count",
+                        "sqlite_last_commit_ms",
+                        "sqlite_wal_checkpoint_count",
+                        "episodic_write_batch_size_last",
+                        "episodic_db_rows",
+                        "episodic_db_pruned_rows",
+                        "ltm_write_batch_size_last",
+                        "ltm_pruned_nodes",
+                        "ltm_pruned_edges",
+                        "ltm_pruned_semantic_records",
+                        "memory_db_bytes",
+                        "memory_wal_bytes",
+                    )
+                },
                 "discovery": (
                     perc.discovery_eval.snapshot()
                     if perc.perception_mode == "discovered"
@@ -760,6 +803,9 @@ def create_app() -> FastAPI:
             )
         except EnvironmentControlError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            logger.exception("environment_start_failed")
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return JSONResponse(status)
 
     @application.post("/environment/pause")
@@ -794,6 +840,9 @@ def create_app() -> FastAPI:
         agent = registry.get(agent_id)
         if agent is None:
             raise HTTPException(status_code=404, detail="Unknown agent")
+        if C.api_snapshot_cache_enabled():
+            payload = agent.snapshot_state()
+            return AgentStateResponse(agent_id=agent_id, payload=payload)
         async with agent.lock:
             payload = agent.snapshot_state()
         return AgentStateResponse(agent_id=agent_id, payload=payload)
@@ -804,9 +853,11 @@ def create_app() -> FastAPI:
         agent = registry.get(agent_id)
         if agent is None:
             raise HTTPException(status_code=404, detail="Unknown agent")
-        async with agent.lock:
+        if C.metrics_lightweight_enabled():
             metrics = dict(agent.metrics)
-            metrics["queue_depth"] = agent.out_queue.qsize()
+            metrics["queue_depth"] = agent.out_queue.qsize() + agent.control_queue.qsize()
+            metrics["telemetry_queue_depth"] = agent.out_queue.qsize()
+            metrics["control_queue_depth"] = agent.control_queue.qsize()
             metrics["viability"] = agent.viability.value
             metrics["priority_label"] = agent.state_bus.priority_label
             metrics["paused"] = agent.paused
@@ -815,7 +866,36 @@ def create_app() -> FastAPI:
             metrics["encoder_mode"] = agent.encoder_mode()
             metrics["preset"] = agent.preset
             metrics.update(agent.capacity_config())
+            metrics["metrics_payload_lightweight"] = True
+            return MetricsResponse(agent_id=agent_id, metrics=metrics)
+        async with agent.lock:
+            metrics = dict(agent.metrics)
+            metrics["queue_depth"] = agent.out_queue.qsize() + agent.control_queue.qsize()
+            metrics["telemetry_queue_depth"] = agent.out_queue.qsize()
+            metrics["control_queue_depth"] = agent.control_queue.qsize()
+            metrics["viability"] = agent.viability.value
+            metrics["priority_label"] = agent.state_bus.priority_label
+            metrics["paused"] = agent.paused
+            metrics["status"] = agent.status
+            metrics["died_at_cycle"] = agent.died_at_cycle
+            metrics["encoder_mode"] = agent.encoder_mode()
+            metrics["preset"] = agent.preset
+            metrics.update(agent.capacity_config())
+            metrics["metrics_payload_lightweight"] = False
         return MetricsResponse(agent_id=agent_id, metrics=metrics)
+
+    @application.get("/agent/{agent_id}/debug/stage-sessions")
+    async def get_debug_stage_sessions(agent_id: str, limit: int = 24) -> JSONResponse:
+        registry: AgentRegistry = application.state.registry
+        agent = registry.get(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Unknown agent")
+        return JSONResponse(
+            {
+                "agent_id": agent_id,
+                "sessions": agent.stage_pipeline.debug_sessions(limit=limit),
+            }
+        )
 
     @application.get("/agent/{agent_id}/memory", response_model=MemoryQueryResponse)
     async def get_memory(agent_id: str, limit: int = 50) -> MemoryQueryResponse:
@@ -856,10 +936,20 @@ def create_app() -> FastAPI:
         backups_dir.mkdir(parents=True, exist_ok=True)
         path = backups_dir / f"agent_{agent_id}_checkpoint.json"
         brain_name: str | None = None
-        async with agent.lock:
-            payload = agent.checkpoint_payload()
-            brain_name = agent.save_brain(backups_dir)
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        restart_cycle = await agent.suspend_cycle_worker()
+        try:
+            async with agent.lock:
+                agent._last_observation = None
+                agent._wait_for_observation_after_reset = True
+                agent._obs_buffer.clear()
+                agent._clear_perception_pipeline()
+                agent.stage_pipeline.clear()
+                agent._cycle_deadline_s = time.perf_counter()
+                payload = agent.checkpoint_payload()
+                brain_name = agent.save_brain(backups_dir)
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        finally:
+            agent.resume_cycle_worker(restart_cycle)
         return CheckpointResponse(
             agent_id=agent_id, path=str(path), neural_brain=brain_name
         )
@@ -875,10 +965,20 @@ def create_app() -> FastAPI:
         if not path.is_file():
             raise HTTPException(status_code=404, detail="Checkpoint file not found")
         payload = json.loads(path.read_text(encoding="utf-8"))
-        async with agent.lock:
-            agent.apply_checkpoint_payload(payload)
-            agent.load_brain(backups_dir)
-            snapshot = agent.snapshot_state()
+        restart_cycle = await agent.suspend_cycle_worker()
+        try:
+            async with agent.lock:
+                agent.apply_checkpoint_payload(payload)
+                agent.load_brain(backups_dir)
+                agent._last_observation = None
+                agent._wait_for_observation_after_reset = True
+                agent._obs_buffer.clear()
+                agent._clear_perception_pipeline()
+                agent.stage_pipeline.clear()
+                agent._cycle_deadline_s = time.perf_counter()
+                snapshot = agent.snapshot_state()
+        finally:
+            agent.resume_cycle_worker(restart_cycle)
         return AgentStateResponse(agent_id=agent_id, payload=snapshot)
 
     @application.websocket("/agent/{agent_id}/cycle")
@@ -894,7 +994,30 @@ def create_app() -> FastAPI:
 
         async def sender() -> None:
             while True:
-                msg = await agent.out_queue.get()
+                try:
+                    msg = agent.control_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    control_task = asyncio.create_task(agent.control_queue.get())
+                    telemetry_task = asyncio.create_task(agent.out_queue.get())
+                    done, pending = await asyncio.wait(
+                        {control_task, telemetry_task},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        await asyncio.gather(*pending, return_exceptions=True)
+                    if control_task in done:
+                        msg = control_task.result()
+                    else:
+                        telemetry = telemetry_task.result()
+                        # If a control message arrived before the telemetry was
+                        # written to the socket, prefer the control lane and
+                        # drop the stale telemetry frame.
+                        try:
+                            msg = agent.control_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            msg = telemetry
                 await websocket.send_json(msg)
 
         sender_task = asyncio.create_task(sender(), name=f"ws-sender-{agent_id}")

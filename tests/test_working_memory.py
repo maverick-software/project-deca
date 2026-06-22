@@ -153,3 +153,26 @@ def test_heading_from_position_history():
     h = wm.slots["m"].heading()
     assert h is not None
     assert abs(h - (math.pi / 2)) < 1e-6
+
+
+def test_low_confidence_extended_percept_enters_provisionally():
+    wm = WorkingMemory(capacity=8, decay=0.9)
+    wm.integrate_discovered(
+        [
+            {
+                "idx": 0,
+                "appearance": [1.0, 0.0, 0.0],
+                "presence": 0.08,
+                "confidence": 0.08,
+                "kind_hint": "stuff",
+                "entity_role": "extended_entity",
+                "spread": 0.5,
+                "uv": [0.5, 0.7],
+            }
+        ]
+    )
+    assert len(wm.slots) == 1
+    slot = next(iter(wm.slots.values()))
+    assert slot.provisional is True
+    assert slot.entity_role == "extended_entity"
+    assert slot.precision > 0.0

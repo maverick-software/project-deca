@@ -19,6 +19,7 @@ CENTROID_COLLAPSE_THRESHOLD = 0.035
 APPEARANCE_COLLAPSE_THRESHOLD = 0.985
 STUFF_SPREAD_THRESHOLD = 0.34
 LOW_CONFIDENCE_THRESHOLD = 0.2
+PROVISIONAL_CONFIDENCE_FLOOR = 0.05
 HEALTH_STATES = ("healthy", "low_confidence", "collapsed", "no_objects", "teacher_only", "stale_frame")
 FORBIDDEN_PROPERTY_TOKENS = (
     "label",
@@ -26,6 +27,7 @@ FORBIDDEN_PROPERTY_TOKENS = (
     "kind_name",
     "food",
     "water",
+    "floor",
     "hand",
     "wall",
     "building",
@@ -56,6 +58,8 @@ class ObjectFile:
     retina_contrast: float | None = None
     looming: float | None = None
     property_evidence: dict[str, Any] | None = None
+    entity_role: str = "compact_entity"
+    provisional: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -82,6 +86,8 @@ class ObjectFile:
             "retina_contrast": self.retina_contrast,
             "looming": self.looming,
             "property_evidence": dict(self.property_evidence or {}),
+            "entity_role": self.entity_role,
+            "provisional": self.provisional,
         }
 
 
@@ -137,6 +143,18 @@ def _kind_hint(spread: float | None, confidence: float) -> str:
     if confidence < LOW_CONFIDENCE_THRESHOLD:
         return "stuff"
     return "object"
+
+
+def _entity_role(kind_hint: str, spread: float | None, local_motion: float | None = None) -> str:
+    if kind_hint == "body_part_candidate":
+        return "body_coupled_entity"
+    if kind_hint == "stuff":
+        return "extended_entity"
+    if spread is not None and spread >= STUFF_SPREAD_THRESHOLD:
+        return "extended_entity"
+    if local_motion is not None and abs(float(local_motion)) > 0.12:
+        return "compact_entity"
+    return "compact_entity"
 
 
 def _clean_property_evidence(raw: Any) -> dict[str, Any]:
@@ -252,6 +270,8 @@ def object_files_from_proposals(proposals: list[dict[str, Any]]) -> list[ObjectF
         kind = str(p.get("kind_hint") or _kind_hint(spread, confidence))
         if kind == "stuff":
             confidence = min(confidence, 0.19)
+        role = _entity_role(kind, spread, local_motion)
+        provisional = bool(confidence < LOW_CONFIDENCE_THRESHOLD)
         depth = _depth_from_relative(rel)
         prop_ev = _property_evidence_from_proposal(
             p,
@@ -285,6 +305,8 @@ def object_files_from_proposals(proposals: list[dict[str, Any]]) -> list[ObjectF
                 retina_contrast=retina_contrast,
                 looming=looming,
                 property_evidence=prop_ev,
+                entity_role=role,
+                provisional=provisional,
             )
         )
     return out
@@ -323,7 +345,10 @@ def evaluate_discovery_health(
     tracked_count: int = 0,
     stable_tracked_objects: int = 0,
 ) -> DiscoveryHealth:
-    object_like = [f for f in files if f.kind_hint != "stuff" and f.confidence >= LOW_CONFIDENCE_THRESHOLD]
+    entity_like = [f for f in files if f.confidence >= PROVISIONAL_CONFIDENCE_FLOOR]
+    object_like = [
+        f for f in files if f.kind_hint != "stuff" and f.confidence >= LOW_CONFIDENCE_THRESHOLD
+    ]
     spread = _centroid_spread(object_like)
     cos_mean, cos_max = _appearance_cosines(object_like)
     entropies = [float(f.mask_entropy) for f in files if f.mask_entropy is not None]
@@ -337,8 +362,10 @@ def evaluate_discovery_health(
     reason = "healthy"
     if not files:
         reason = "skipped_no_objects"
-    elif not object_like:
+    elif not entity_like:
         reason = "skipped_low_confidence"
+    elif not object_like:
+        reason = "recorded_provisional_evidence"
     elif len(object_like) >= COLLAPSE_MIN_OBJECTS and spread < CENTROID_COLLAPSE_THRESHOLD:
         collapsed = True
         reason = "skipped_perception_collapsed"
@@ -355,6 +382,8 @@ def evaluate_discovery_health(
         status = "no_objects"
     elif reason == "healthy":
         status = "healthy"
+    elif reason == "recorded_provisional_evidence":
+        status = "low_confidence"
     else:
         status = "low_confidence"
     return DiscoveryHealth(

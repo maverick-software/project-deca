@@ -1,4 +1,45 @@
+import os
+import tempfile
+from pathlib import Path
+
 import pytest
+
+
+def _writable_tmp_root() -> Path:
+    """Return a Windows-safe pytest temp root before ``tmp_path`` initializes."""
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates = []
+    override = os.environ.get("DECADIC_TEST_TMP_ROOT")
+    if override:
+        candidates.append(Path(override))
+    if os.name == "nt":
+        candidates.append(Path("C:/tmp/decadic_pytest"))
+    candidates.append(repo_root / ".pytest_tmp")
+    candidates.append(Path(tempfile.gettempdir()) / "decadic_pytest")
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / f".write_probe_{os.getpid()}"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return candidate
+        except OSError:
+            continue
+    raise RuntimeError("No writable pytest temp root found")
+
+
+_TEST_TMP_ROOT = _writable_tmp_root()
+os.environ["TMP"] = str(_TEST_TMP_ROOT)
+os.environ["TEMP"] = str(_TEST_TMP_ROOT)
+os.environ["TMPDIR"] = str(_TEST_TMP_ROOT)
+tempfile.tempdir = str(_TEST_TMP_ROOT)
+
+
+def pytest_configure(config):
+    """Use a per-process basetemp so stale Windows locks cannot poison tmp_path."""
+    if getattr(config.option, "basetemp", None):
+        return
+    config.option.basetemp = str(_TEST_TMP_ROOT / f"run-{os.getpid()}")
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +63,7 @@ def _baseline_faculties(monkeypatch):
     explicitly-requested ones).
     """
     monkeypatch.setenv("DECADIC_DEVICE", "cpu")
+    monkeypatch.setenv("DECADIC_REQUIRE_CUDA", "0")
     monkeypatch.setenv("DECADIC_ENCODER_MODE", "zeros")
     monkeypatch.setenv("DECADIC_PERCEPTION_MODE", "oracle")
     monkeypatch.setenv("DECADIC_PERCEPTION_FEEDBACK_ENABLED", "0")

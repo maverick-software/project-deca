@@ -31,8 +31,10 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from pathlib import Path
 
+from decadic import config as C
 from decadic.memory.episodic_store import EpisodicRecord, EpisodicStore
 
 logger = logging.getLogger(__name__)
@@ -91,13 +93,16 @@ class WriteBehindEpisodicStore(EpisodicStore):
         if q is None:
             super().append(record)
             return
+        # Recall visibility is immediate and RAM-backed; only disk persistence is
+        # deferred. This prevents the hot recall path from forcing a write flush.
+        self._cache_record(record)
         try:
             q.put_nowait(record)
         except queue.Full:
             # Never drop a memory: the queue is saturated, so persist inline. This
             # is the safety valve, not the expected path.
             logger.warning("episodic write-behind queue full; writing synchronously")
-            super().append(record)
+            self._append_persist(record, update_cache=False)
 
     def _drain_loop(self, q: queue.Queue) -> None:
         while True:
@@ -105,12 +110,31 @@ class WriteBehindEpisodicStore(EpisodicStore):
             try:
                 if item is _SENTINEL:
                     return
+                batch = [item]
+                deadline = time.perf_counter() + (C.episodic_write_batch_ms() / 1000.0)
+                while len(batch) < C.episodic_write_batch_size():
+                    timeout = max(0.0, deadline - time.perf_counter())
+                    if timeout <= 0.0:
+                        break
+                    try:
+                        nxt = q.get(timeout=timeout)
+                    except queue.Empty:
+                        break
+                    if nxt is _SENTINEL:
+                        q.task_done()
+                        try:
+                            self._append_many_persist(batch, update_cache=False)
+                        except Exception:  # pragma: no cover
+                            logger.exception("episodic write-behind batch persist failed")
+                        return
+                    batch.append(nxt)
                 try:
-                    super().append(item)
+                    self._append_many_persist(batch, update_cache=False)
                 except Exception:  # pragma: no cover - persistence must not kill the worker
                     logger.exception("episodic write-behind persist failed")
             finally:
-                q.task_done()
+                for _ in range(1 if item is _SENTINEL else len(batch)):
+                    q.task_done()
 
     def flush(self) -> None:
         """Block until all queued writes have been persisted (no-op when sync)."""

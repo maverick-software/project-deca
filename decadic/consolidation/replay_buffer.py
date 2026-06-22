@@ -94,6 +94,13 @@ class Transition:
     scene_prev_features: Any | None = None
     scene_target_features: Any | None = None
     scene_match_mask: Any | None = None
+    # --- Serial prefetch / committed-session metadata -----------------------
+    session_id: str | None = None
+    frame_seq: int | None = None
+    commit_index: int | None = None
+    stage_timings: dict[str, float] | None = None
+    snapshot_versions: dict[str, Any] | None = None
+    selected_status: str | None = None
 
 
 class ReplayBuffer:
