@@ -24,11 +24,19 @@ from decadic.config import (
     DEFAULT_WM_SCENE_BLEND,
     DEFAULT_WORKING_MEMORY_SLOTS,
 )
+from decadic.state.body_map import BODY_PARTS
 
 # Audio/event salience is transient - it fades faster than spatial salience.
 AUDIO_DECAY = 0.6
 POS_HISTORY_LEN = 8
 SCENE_PREVIEW_BUCKETS = 32
+
+
+def _body_part_from_event(ev: dict[str, Any]) -> str | None:
+    raw = str(ev.get("source") or ev.get("body_part") or ev.get("sensor") or "").lower()
+    if raw.startswith("touch_"):
+        raw = raw[len("touch_") :]
+    return raw if raw in BODY_PARTS else None
 
 
 def _env_float(name: str, default: float) -> float:
@@ -82,6 +90,15 @@ class MemorySlot:
     # Sense of agency: how much this object's motion is explained by efference.
     agency: float = 0.0
     agency_seen: int = 0
+    # Anonymous object-file metadata. ``kind_hint`` is perceptual only: no semantic
+    # label enters cognition.
+    confidence: float = 1.0
+    kind_hint: str = "object"
+    motion: list[float] | None = None
+    local_motion: float = 0.0
+    retina_contrast: float = 0.0
+    looming: float = 0.0
+    property_evidence: dict[str, Any] = field(default_factory=dict)
 
     def heading(self) -> float | None:
         """Planar heading (radians) inferred from remembered position history."""
@@ -120,6 +137,8 @@ class MemorySlot:
             node["bearing"] = [round(float(x), 4) for x in self.bearing]
         if self.agency_seen > 0:
             node["agency"] = round(float(self.agency), 4)
+        node["confidence"] = round(float(self.confidence), 4)
+        node["kind_hint"] = self.kind_hint
         return node
 
 
@@ -272,7 +291,16 @@ class WorkingMemory:
 
         matched: list[dict[str, Any]] = []
         used: set[str] = set()
-        ordered = sorted(proposals, key=lambda p: float(p.get("presence", 0.0)), reverse=True)
+        clean: list[dict[str, Any]] = []
+        for prop in proposals:
+            try:
+                conf = float(prop.get("confidence", prop.get("presence", 0.0)) or 0.0)
+            except (TypeError, ValueError):
+                conf = 0.0
+            if str(prop.get("kind_hint", "object")) == "stuff" or conf < 0.2:
+                continue
+            clean.append(prop)
+        ordered = sorted(clean, key=lambda p: float(p.get("confidence", p.get("presence", 0.0)) or 0.0), reverse=True)
         for prop in ordered:
             appearance = _as_floats(prop.get("appearance"))
             uv = _as_uv(prop.get("uv"))
@@ -379,6 +407,13 @@ class WorkingMemory:
             appearance=appearance,
             uv=list(uv) if uv is not None else None,
             bearing=_as_uv(prop.get("bearing")),
+            confidence=_as_conf(prop),
+            kind_hint=str(prop.get("kind_hint", "object")),
+            motion=_as_uv(prop.get("motion")),
+            local_motion=_as_float(prop.get("local_motion")),
+            retina_contrast=_as_float(prop.get("retina_contrast")),
+            looming=_as_float(prop.get("looming")),
+            property_evidence=_as_property_evidence(prop.get("property_evidence")),
         )
         if uv is not None:
             slot.uv_history.append(list(uv))
@@ -418,6 +453,15 @@ class WorkingMemory:
         slot.salience = 1.0
         slot.last_seen_cycle = self.cycle
         slot.seen_count += 1
+        slot.confidence = _as_conf(prop)
+        slot.kind_hint = str(prop.get("kind_hint", slot.kind_hint or "object"))
+        motion = _as_uv(prop.get("motion"))
+        if motion is not None:
+            slot.motion = motion
+        slot.local_motion = _as_float(prop.get("local_motion"))
+        slot.retina_contrast = _as_float(prop.get("retina_contrast"))
+        slot.looming = _as_float(prop.get("looming"))
+        slot.property_evidence = _as_property_evidence(prop.get("property_evidence"))
 
     def update_agency(
         self,
@@ -469,10 +513,47 @@ class WorkingMemory:
             sign = 0.0
             if et in ("collision", "damage", "environment_damage", "fall", "combat_hit"):
                 sign = -1.0
+                target.property_evidence["predicts_integrity_loss"] = max(
+                    float(target.property_evidence.get("predicts_integrity_loss", 0.0) or 0.0),
+                    max(0.0, min(1.0, intensity)),
+                )
+                target.property_evidence["predicts_pain"] = max(
+                    float(target.property_evidence.get("predicts_pain", 0.0) or 0.0),
+                    max(0.0, min(1.0, intensity)),
+                )
+                part = _body_part_from_event(ev)
+                if part:
+                    key = f"predicts_{part}_pain"
+                    target.property_evidence[key] = max(
+                        float(target.property_evidence.get(key, 0.0) or 0.0),
+                        max(0.0, min(1.0, intensity)),
+                    )
             elif et == "threat_near":
                 sign = -0.5
+                target.property_evidence["predicts_pain"] = max(
+                    float(target.property_evidence.get("predicts_pain", 0.0) or 0.0),
+                    0.5 * max(0.0, min(1.0, intensity)),
+                )
             elif et in ("food", "eat", "nourish"):
                 sign = 1.0
+                target.property_evidence["predicts_energy_relief"] = max(
+                    float(target.property_evidence.get("predicts_energy_relief", 0.0) or 0.0),
+                    max(0.0, min(1.0, intensity)),
+                )
+                target.property_evidence["predicts_pleasure"] = max(
+                    float(target.property_evidence.get("predicts_pleasure", 0.0) or 0.0),
+                    max(0.0, min(1.0, intensity)),
+                )
+            elif et in ("water", "drink", "hydrate"):
+                sign = 1.0
+                target.property_evidence["predicts_hydration_relief"] = max(
+                    float(target.property_evidence.get("predicts_hydration_relief", 0.0) or 0.0),
+                    max(0.0, min(1.0, intensity)),
+                )
+                target.property_evidence["predicts_pleasure"] = max(
+                    float(target.property_evidence.get("predicts_pleasure", 0.0) or 0.0),
+                    max(0.0, min(1.0, intensity)),
+                )
             elif et == "offer":
                 sign = 0.5
             if sign != 0.0:
@@ -597,6 +678,13 @@ class WorkingMemory:
                     "uv": _fin_seq(list(s.uv)) if s.uv is not None else None,
                     "bearing": _fin_seq(list(s.bearing)) if s.bearing is not None else None,
                     "agency": _fin(round(s.agency, 4)) if s.agency_seen > 0 else None,
+                    "confidence": _fin(round(s.confidence, 4)),
+                    "kind_hint": s.kind_hint,
+                    "motion": _fin_seq(list(s.motion)) if s.motion is not None else None,
+                    "local_motion": _fin(round(s.local_motion, 4)),
+                    "retina_contrast": _fin(round(s.retina_contrast, 4)),
+                    "looming": _fin(round(s.looming, 4)),
+                    "property_evidence": dict(s.property_evidence),
                 }
                 for s in self.active_slots()
             ],
@@ -628,6 +716,51 @@ def _as_uv(value: Any) -> list[float] | None:
         except (TypeError, ValueError):
             return None
     return None
+
+
+def _as_conf(prop: dict[str, Any]) -> float:
+    try:
+        return max(0.0, min(1.0, float(prop.get("confidence", prop.get("presence", 0.0)) or 0.0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _as_float(value: Any) -> float:
+    try:
+        x = float(value)
+        return x if math.isfinite(x) else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _as_property_evidence(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    forbidden = ("label", "class", "kind_name", "food", "water", "hand", "wall", "building", "ball")
+    out: dict[str, Any] = {}
+    for k, v in value.items():
+        key = str(k).strip()
+        low = key.lower()
+        if not key or any(tok in low for tok in forbidden):
+            continue
+        if isinstance(v, (int, float)) and math.isfinite(float(v)):
+            out[key] = float(v)
+        elif isinstance(v, list):
+            vals: list[float] = []
+            ok = True
+            for x in v[:32]:
+                try:
+                    fx = float(x)
+                except (TypeError, ValueError):
+                    ok = False
+                    break
+                if not math.isfinite(fx):
+                    ok = False
+                    break
+                vals.append(fx)
+            if ok and vals:
+                out[key] = vals
+    return out
 
 
 def _cosine(a: list[float] | None, b: list[float] | None) -> float:

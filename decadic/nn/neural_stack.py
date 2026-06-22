@@ -209,6 +209,12 @@ class NeuralCognitiveStack(nn.Module):
         self._tactile_dim = int(_cfg.TACTILE_PRED_DIM)
         self.fwd_tactile_l1 = nn.Linear(cfg.d_model + cfg.n_actuators, cfg.motor_hidden)
         self.fwd_tactile_l2 = nn.Linear(cfg.motor_hidden, self._tactile_dim)
+        # Effort/body-state forward model: predicts localized effort, work,
+        # strain, fatigue, pain, and aggregate effort totals from (state, action).
+        self.has_effort_model = True
+        self._effort_dim = int(_cfg.EFFORT_PRED_DIM)
+        self.fwd_effort_l1 = nn.Linear(cfg.d_model + cfg.n_actuators, cfg.motor_hidden)
+        self.fwd_effort_l2 = nn.Linear(cfg.motor_hidden, self._effort_dim)
         # Successor-features head (long-horizon value / incentive salience):
         # psi(state, command) -> discounted future reservoir-change features. Built
         # unconditionally like the other world-model heads, but its OUTPUT layer is
@@ -561,6 +567,18 @@ class NeuralCognitiveStack(nn.Module):
         hidden = F.gelu(F.linear(x, w1, b1))
         return F.linear(hidden, w2, b2)
 
+    def forward_predict_effort(
+        self, state: torch.Tensor, u: torch.Tensor, *, detach_params: bool = False
+    ) -> torch.Tensor:
+        """Predict next localized effort/body-state from (state, motor command)."""
+        x = torch.cat([state, u], dim=-1)
+        w1, b1 = self.fwd_effort_l1.weight, self.fwd_effort_l1.bias
+        w2, b2 = self.fwd_effort_l2.weight, self.fwd_effort_l2.bias
+        if detach_params:
+            w1, b1, w2, b2 = w1.detach(), b1.detach(), w2.detach(), b2.detach()
+        hidden = F.gelu(F.linear(x, w1, b1))
+        return F.linear(hidden, w2, b2)
+
     def successor_predict(
         self, state: torch.Tensor, u: torch.Tensor, *, detach_params: bool = False
     ) -> torch.Tensor:
@@ -656,6 +674,7 @@ class NeuralCognitiveStack(nn.Module):
         s_hat = self.forward_predict(z5, motor_u)
         # Predicted next soft per-part contact load given this efference copy.
         t_hat = self.forward_predict_tactile(z5, motor_u)
+        e_hat = self.forward_predict_effort(z5, motor_u)
         mark(9)  # behavioral response
 
         zs = [z1, z2, z3, z4, z5]
@@ -719,6 +738,7 @@ class NeuralCognitiveStack(nn.Module):
             "motor_u": motor_u,
             "s_hat": s_hat,
             "t_hat": t_hat,
+            "e_hat": e_hat,
             "pc_loss": pc_loss,
             "pc_parts": pc_parts,
             "stage_metrics": stage_metrics,

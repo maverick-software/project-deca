@@ -21,12 +21,13 @@ import {
   type DojoStatus,
   type EnvironmentStatus,
   type Metrics,
+  type AgentState,
 } from "../api";
 import { heavyPresetWarning } from "../neuralPresets";
 import { usePolling } from "../usePolling";
 import Info from "./Info";
 
-const DOJO_SCENE = ["house", "food", "water"];
+const DOJO_SCENE = ["house", "food", "water", "npc"];
 
 type BannerKind = "info" | "warning" | "error" | "success";
 
@@ -204,6 +205,12 @@ function SkillLibraryPanel(props: {
                 <b>{props.selected.phases.some((p) => p.is_terminal) ? "yes" : "no"}</b>
                 <span>Checkpoint</span>
                 <b>{props.selected.checkpoint_on_graduate ? "on graduation" : "off"}</b>
+                <span>Caregiver</span>
+                <b>
+                  {props.selected.caregiver_enabled
+                    ? `enabled below ${props.selected.caregiver_threshold.toFixed(0)}%`
+                    : "off"}
+                </b>
               </div>
               {props.selected.warnings?.length ? (
                 <Banner kind="warning">{props.selected.warnings.join(" ")}</Banner>
@@ -422,6 +429,45 @@ function AttemptPanel(props: { status: DojoStatus }) {
   );
 }
 
+function CaregiverPanel(props: { status: DojoStatus }) {
+  const s = props.status;
+  const activeNeed = s.caregiver_need && s.caregiver_need !== "none";
+  const hydration = s.hydration ?? 100;
+  const energy = s.energy ?? 100;
+  const integrity = s.integrity ?? 100;
+  const threshold = s.caregiver_threshold ?? 80;
+  return (
+    <section className="dojo-subpanel">
+      <div className="dojo-subpanel-head">
+        <h4>Caregiver Scaffold</h4>
+        <span>{s.caregiver_enabled ? s.caregiver_status || "monitoring" : "off"}</span>
+      </div>
+      <div className="dojo-kv-grid compact">
+        <span>Reservoirs</span>
+        <b>
+          H{hydration.toFixed(0)} E{energy.toFixed(0)} I{integrity.toFixed(0)}
+        </b>
+        <span>Trigger</span>
+        <b>{s.caregiver_enabled ? `< ${threshold.toFixed(0)}%` : "disabled"}</b>
+        <span>Need</span>
+        <b>{activeNeed ? s.caregiver_need : "none"}</b>
+        <span>Request</span>
+        <b>{s.caregiver_request_kind ?? "none"}</b>
+        <span>Last offer</span>
+        <b>{s.caregiver_last_offer_item ?? "none"}</b>
+        <span>Deliveries</span>
+        <b>{s.caregiver_delivery_count}</b>
+      </div>
+      {s.caregiver_missing_parent && (
+        <Banner kind="error">Caregiver parent is missing. Embodied skill graduation is blocked.</Banner>
+      )}
+      {s.caregiver_pending && !s.caregiver_missing_parent && (
+        <Banner kind="info">Caregiver request pending through visible parent delivery.</Banner>
+      )}
+    </section>
+  );
+}
+
 function GateChecklist(props: { status: DojoStatus }) {
   const gate = props.status.gate;
   const failure = props.status.failure;
@@ -512,6 +558,7 @@ function LiveTrainingPanel(props: {
       <div className="dojo-live-grid">
         <TeacherAssistPanel status={s} />
         <AttemptPanel status={s} />
+        <CaregiverPanel status={s} />
       </div>
       <div className="dojo-live-warning">
         <Banner kind="info">Graduation requires zero live teacher support.</Banner>
@@ -648,6 +695,7 @@ function ManualScaffoldPanel(props: {
 export default function SkillDojoPanel(props: {
   agentId: string | null;
   metrics: Metrics | null;
+  state?: AgentState | null;
   creationPreset: string;
   onStarted?: (agentId: string) => void;
 }) {
@@ -682,6 +730,7 @@ export default function SkillDojoPanel(props: {
   const paused = status?.paused ?? false;
   const state = status?.state ?? "stopped";
   const hasAgent = !!(env?.agent_id ?? props.agentId);
+  const perceptionHealth = props.state?.perceptual.discovery_health;
 
   const refreshSkills = async (selectId?: string) => {
     const next = await fetchDojoSkills();
@@ -778,6 +827,11 @@ export default function SkillDojoPanel(props: {
       <DojoStatusHeader status={status ?? null} selected={selected} running={running} />
       <WorkflowSteps running={running} state={state} />
       {error && <Banner kind="error">{error}</Banner>}
+      {perceptionHealth && perceptionHealth.status !== "healthy" && (
+        <Banner kind={perceptionHealth.collapsed ? "error" : "warning"}>
+          Perception health: {perceptionHealth.reason}. Object-dependent skill results are not trustworthy until object files recover.
+        </Banner>
+      )}
       <div className="dojo-workspace">
         <main className="dojo-main-flow">
           {!running && (

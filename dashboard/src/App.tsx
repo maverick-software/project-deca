@@ -274,6 +274,7 @@ export default function App() {
             <SkillDojoPanel
               agentId={agentId}
               metrics={metrics}
+              state={state}
               creationPreset={creationPreset}
               onStarted={(id) => {
                 justCreated.current = { id, at: Date.now() };

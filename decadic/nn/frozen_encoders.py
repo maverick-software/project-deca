@@ -15,12 +15,19 @@ import torch
 import torch.nn as nn
 
 from decadic.config import encoder_autocast_dtype
+from decadic.state.body_map import (
+    BODY_MAP_VECTOR_DIM,
+    body_pain_vector,
+    effort_vector,
+    flatten_body_map,
+)
 
 logger = logging.getLogger(__name__)
 
 CLIP_POOL_DIM = 512
 WHISPER_POOL_DIM = 768
 PROPRIO_BASE_DIM = 10  # position(3) + orientation(3) + velocity(3) + action hash(1)
+PROPRIO_BODY_MAP_DIM = BODY_MAP_VECTOR_DIM
 # Spatial patch features for object-centric slot attention (CLIP ViT-B/32 @ 224
 # -> 7x7=49 patch tokens of width 768). Fixed here so a CLIP swap can't change
 # the slot module's input shape (tokens are fit to this grid/width, like _fit_dim).
@@ -54,7 +61,7 @@ def proprio_contact_cap() -> int:
 
 
 def proprio_input_dim() -> int:
-    return PROPRIO_BASE_DIM + proprio_joint_cap() + proprio_contact_cap()
+    return PROPRIO_BASE_DIM + proprio_joint_cap() + proprio_contact_cap() + PROPRIO_BODY_MAP_DIM
 
 
 def controllable_proprio_vector(obs: dict[str, Any] | None, dim: int) -> list[float]:
@@ -124,6 +131,24 @@ def controllable_tactile_vector(obs: dict[str, Any] | None, dim: int) -> list[fl
     if isinstance(raw, list):
         for v in raw:
             vec.append(_ffloat(v))
+    if len(vec) >= dim:
+        return vec[:dim]
+    return vec + [0.0] * (dim - len(vec))
+
+
+def controllable_effort_vector(obs: dict[str, Any] | None, dim: int) -> list[float]:
+    """Body-map effort/work/strain/fatigue/pain plus aggregate effort totals."""
+    prop = (obs or {}).get("proprioception") or {}
+    vec = effort_vector(prop.get("body_map"), prop.get("effort"))
+    if len(vec) >= dim:
+        return vec[:dim]
+    return vec + [0.0] * (dim - len(vec))
+
+
+def controllable_body_pain_vector(obs: dict[str, Any] | None, dim: int) -> list[float]:
+    """Localized body pain by deterministic body-map part order."""
+    prop = (obs or {}).get("proprioception") or {}
+    vec = body_pain_vector(prop.get("body_map"))
     if len(vec) >= dim:
         return vec[:dim]
     return vec + [0.0] * (dim - len(vec))
@@ -205,7 +230,9 @@ class FrozenSensoryEncoders(nn.Module):
         )
         self.joint_cap = proprio_joint_cap()
         self.contact_cap = proprio_contact_cap()
-        self.proprio_in_dim = PROPRIO_BASE_DIM + self.joint_cap + self.contact_cap
+        self.proprio_in_dim = (
+            PROPRIO_BASE_DIM + self.joint_cap + self.contact_cap + PROPRIO_BODY_MAP_DIM
+        )
         self.proprio_mlp = nn.Sequential(
             nn.Linear(self.proprio_in_dim, proprio_dim_out),
             nn.GELU(),
@@ -459,6 +486,7 @@ class FrozenSensoryEncoders(nn.Module):
         vec.append(ca_hash)
         vec += _capped_floats(prop.get("joints"), self.joint_cap)
         vec += _capped_floats(prop.get("contacts"), self.contact_cap)
+        vec += flatten_body_map(prop.get("body_map"))
         t = torch.tensor([vec], dtype=torch.float32, device=self.device)
         return self.proprio_mlp(t)
 

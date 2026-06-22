@@ -75,7 +75,8 @@ def test_developmental_locomotion_migrates_legacy_phase_shape():
     phases = DEVELOPMENTAL_LOCOMOTION.phases
     assert [p.index for p in phases] == [0, 1, 2, 3]
     assert phases[0].name == "Self-modeling"
-    assert phases[0].config["viability_mode"] == "immortal"
+    assert phases[0].config["viability_mode"] == "metabolic"
+    assert DEVELOPMENTAL_LOCOMOTION.caregiver_enabled is True
     assert phases[0].demote_on_death is False
     assert phases[-1].is_terminal is True
     assert {c.command for c in phases[2].periodic_body_commands} == {

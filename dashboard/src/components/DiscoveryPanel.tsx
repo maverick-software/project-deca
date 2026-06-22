@@ -17,6 +17,9 @@ export default function DiscoveryPanel(props: { state: AgentState }) {
   const slots = wm?.slots ?? [];
   const inView = slots.filter((s) => s.in_view);
   const parts = slots.filter((s) => s.kind === "self_part");
+  const health = p.discovery_health;
+  const ltm = p.ltm_consolidation;
+  const organ = p.perception_organ;
 
   if (mode !== "discovered") {
     return (
@@ -43,8 +46,32 @@ export default function DiscoveryPanel(props: { state: AgentState }) {
 
       <div className="strip-label">
         <span>{slots.length} objects · {inView.length} in view · {parts.length} body parts</span>
-        <span>image space</span>
+        <span>{health ? `${health.status} / LTM ${health.ltm_write}` : "image space"}</span>
       </div>
+
+      {health && (
+        <div className={`health-strip ${health.collapsed ? "bad" : health.status === "healthy" ? "ok" : "warn"}`}>
+          <span>{health.reason}</span>
+          <span>{health.object_files} object files</span>
+          <span>spread {health.centroid_spread.toFixed(3)}</span>
+          <span>
+            cosine {health.appearance_cosine_mean != null ? health.appearance_cosine_mean.toFixed(3) : "n/a"}
+          </span>
+          <span>flow {health.flow_confidence.toFixed(3)}</span>
+          <span>loom {health.looming_count}</span>
+          <span>stuff {health.stuff_count}</span>
+          <span>body {health.body_candidate_count}</span>
+          <span>{ltm?.status ?? health.ltm_write}</span>
+        </div>
+      )}
+      {organ && (
+        <div className={`health-strip ${organ.stale_frame ? "warn" : "ok"}`}>
+          <span>{organ.checkpoint_status}</span>
+          <span>global {organ.global_motion.toFixed(3)}</span>
+          <span>local {organ.local_motion_max.toFixed(3)}</span>
+          <span>foreground {organ.foreground_count}</span>
+        </div>
+      )}
 
       <svg
         className="discovery-svg"
@@ -90,6 +117,8 @@ export default function DiscoveryPanel(props: { state: AgentState }) {
             <th>kind</th>
             <th>seen</th>
             <th>salience</th>
+            <th>conf</th>
+            <th>motion</th>
             <th>agency</th>
           </tr>
         </thead>
@@ -100,6 +129,8 @@ export default function DiscoveryPanel(props: { state: AgentState }) {
               <td>{s.kind === "self_part" ? "mine ✋" : s.kind}</td>
               <td>{s.seen_count}{s.in_view ? " ●" : ""}</td>
               <td>{s.salience.toFixed(2)}</td>
+              <td>{s.confidence != null ? s.confidence.toFixed(2) : "n/a"}</td>
+              <td>{s.local_motion != null ? s.local_motion.toFixed(2) : "n/a"}</td>
               <td>{s.agency != null ? s.agency.toFixed(3) : "—"}</td>
             </tr>
           ))}

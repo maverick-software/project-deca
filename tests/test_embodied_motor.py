@@ -116,6 +116,11 @@ def test_motor_head_and_forward_model_shapes(monkeypatch):
     assert out["t_hat"].shape == (1, C.TACTILE_PRED_DIM)
     t_pred = stack.forward_predict_tactile(out["z5"], out["motor_u"], detach_params=True)
     assert t_pred.shape == (1, C.TACTILE_PRED_DIM)
+    assert stack.has_effort_model is True
+    assert stack.fwd_effort_l2.out_features == C.EFFORT_PRED_DIM
+    assert out["e_hat"].shape == (1, C.EFFORT_PRED_DIM)
+    e_pred = stack.forward_predict_effort(out["z5"], out["motor_u"], detach_params=True)
+    assert e_pred.shape == (1, C.EFFORT_PRED_DIM)
     assert cfg.forward_pred_dim == 28  # proprio forward head is untouched
 
 

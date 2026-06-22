@@ -1,6 +1,6 @@
 # Self-Determination Model — Decadic Cycle server
 
-Phase **2** cognitive architecture server: FastAPI + WebSocket, State Bus (A–F), **PyTorch** Decadic pipeline (multimodal fusion transformer, risk MLP, narrative encoder–decoder stack, GRU/LSTM, policy head), **predictive coding** losses, frozen **CLIP + Whisper** encoders when `DECADIC_ENCODER_MODE=hf`, a need-gated **curiosity** drive (`decadic/state/curiosity.py`), **dual-network memory consolidation** (`decadic/consolidation/`), plus Phase 1 perceptual boundary (`decadic/perception/`) and structured logging (`decadic/logging/`).
+Phase **2** cognitive architecture server: FastAPI + WebSocket, State Bus (A–F), **PyTorch** Decadic pipeline (multimodal fusion transformer, risk MLP, narrative encoder–decoder stack, GRU/LSTM, policy head), **predictive coding** losses, frozen **CLIP + Whisper** encoders when `DECADIC_ENCODER_MODE=hf`, a need-gated **curiosity** drive (`decadic/state/curiosity.py`), **dual-network memory consolidation** (`decadic/consolidation/`), a pre-cognitive **perception organ** with anonymous object files and LTM write gates (`decadic/perception/`), reusable **Skill Dojo / Perception Dojo** curricula (`decadic/training/`), and structured logging (`decadic/logging/`).
 
 ## The cognitive architecture
 
@@ -128,6 +128,49 @@ widths are padded/truncated to the fixed 512/768-d slots, so swaps are checkpoin
 Note: widening the proprio encoder changed its input shape — brain checkpoints
 (`agent_*_brain.pt`) saved before this change can no longer be loaded.
 
+### Perception organ and anonymous object files
+
+Discovered perception now runs through a pre-cognitive **perception organ**
+(`decadic/perception/`) before Working Memory and LTM. The purpose is to give the agent
+a fly/human-inspired sensory substrate without changing the Decadic Cycle itself:
+
+`egocentric camera -> CLIP patch tokens + retinotopic maps -> motion/contrast/body cues -> anonymous object files -> Working Memory -> gated LTM`
+
+The perception organ adds:
+
+- **Retinotopic feature maps** that preserve image-space location instead of collapsing
+  immediately into one global embedding.
+- **Contrast, edge, and local motion channels** from the live camera frame.
+- **Frame-difference flow diagnostics** that separate global camera motion from local
+  independently moving regions.
+- **Looming estimates** for expansion / near-collision perception.
+- **Foreground/stuff/body-candidate hints** so floor/walls/large uniform regions do not
+  poison object memory, and visually self-moving regions can become body-part candidates.
+- **Stable anonymous object files** with `object_id`, centroid, appearance, motion, flow,
+  contrast, looming, persistence, agency, confidence, and `kind_hint`.
+
+Runtime cognition remains label-free. Live object files may say `object`, `stuff`, or
+`body_part_candidate`, but they must not contain semantic labels such as food, water,
+hand, wall, or building. Offline bootstrap/evaluation may use MuJoCo truth, depth, flow,
+or segmentation-teacher masks to train the perception organ, but those labels are stripped
+before the Decadic stages, Working Memory, LTM, replay records, and dashboard object-file
+payloads. See `docs/perception_organ_contract.md` for the runtime contract.
+
+Perception health is computed every discovered cycle:
+
+- `healthy`
+- `low_confidence`
+- `collapsed`
+- `no_objects`
+- `teacher_only`
+- `stale_frame`
+
+Health metrics include centroid spread, appearance diversity, mask entropy/diversity,
+active proposal count, stable tracked object count, flow confidence, looming count,
+stuff count, body-candidate count, and the latest LTM write result. The system treats
+bad perception as a reason to skip permanent memory writes rather than storing corrupted
+object memories.
+
 ## Watch it live (body viewer + dashboard)
 
 **One click (Windows):** double-click the desktop shortcut **Decadic** (or run
@@ -226,6 +269,13 @@ The dashboard is organized into tabs: **Overview**, **Environment**, **Training*
 **Self-Indexed Graph**, **Discovery**, **Cognition / Why**, **Motor / Active Inference**,
 **Brain Map**, **Loss Landscape**, **Events + State Bus**, **Agent Settings**, **Deploy / GPU**,
 and **Saved Agents** — most are described in the sections below.
+
+The **Discovery**, **Self-Indexed Graph**, **Long-Term Memory**, and **Skill Dojo** panels
+surface perception health directly: object-file count, stable tracked count, centroid
+spread, appearance diversity, flow confidence, looming count, stuff count, body-candidate
+count, and the latest LTM accepted/skipped reason. If perception collapses, the dashboard
+shows that as a perception/memory failure instead of making it look like a motor or
+cognition failure.
 
 Each neural net has **Start / Stop / Reset** controls in the dashboard topbar, backed by
 `POST /agent/{id}/resume`, `POST /agent/{id}/pause`, and `POST /agent/{id}/reset`:
@@ -395,6 +445,10 @@ Each skill is a sequence of phases. Each phase now contains explicit **attempts*
   timed-out attempt. Exhausted retries end the dojo run as `failed`.
 - Manual braces or movement hold block phase graduation and are reported as
   `manual_scaffold_active`; they do not trigger retries by themselves.
+- Embodied built-in skills keep `viability_mode=metabolic` during training.
+  The Skill Dojo caregiver scaffold monitors hydration, energy, and integrity;
+  below threshold it requests the visible parent NPC to deliver food/water/care
+  through normal world objects instead of pinning reservoirs full.
 - The dashboard shows the live teacher-assist meter, assist reason, and whether current
   samples are `self`, `dagger`, or `demo`.
 
@@ -402,6 +456,10 @@ Built-in skills include:
 
 - `stand_and_recover` - adaptive teacher-guided standing, small perturbation recovery,
   reduced assistance, and autonomous balance evaluation.
+- `perception_object_files` - perception-first dojo for static separation, enter/exit and
+  reappearance, motion/parallax, looming/stuff rejection, body-candidate correlation, and
+  autonomous LTM growth. Object-dependent skills should not be considered valid if this
+  perception curriculum is failing.
 - `developmental_locomotion` and `affective_locomotion` - the legacy walking curriculum
   migrated into Skill Dojo phases.
 
@@ -410,7 +468,8 @@ Uploadable skills live as JSON files and can be added from the Skill Dojo tab or
 without touching built-in skills. The packaged example
 `docs/dojo_skills/stand_up_from_floor_balance.json` trains from upright kneeling through
 `kneel_to_stand`, then requires autonomous standing balance. See
-`docs/skill_dojo_methodology.md` for the full SOP, JSON schema, and WBS.
+`docs/skill_dojo_methodology.md` for the full SOP, JSON schema, caregiver scaffold,
+and WBS.
 
 ## Motivation & long-horizon learning
 
@@ -428,7 +487,8 @@ association from its own experience.
   (collisions, falls) are event-driven and hit element B on the **fast path**. The cycle's other
   phasic affect is the agent's genuine predictive-coding surprise; the legacy cycle-counter PE
   oscillation is removed by default (`DECADIC_PE_STUB_WEIGHT=0`). `DECADIC_VIABILITY_MODE=immortal`
-  pins reservoirs full for long uninterrupted learning runs.
+  remains an admin/debug mode, but embodied Skill Dojo runs use metabolic mode plus visible
+  caregiver delivery so survival pressure remains part of training.
 - **Need-gated curiosity.** See *Curiosity & memory consolidation* above — rewards learning
   progress (PE reduction), gated by survival urgency.
 
@@ -473,6 +533,34 @@ Two complementary stores (a Complementary-Learning-Systems framing; see `decadic
   byte-identical).
 
 Both persist per agent under `DECADIC_DATA_DIR` and are bundled when an agent is saved.
+
+Stage 10 now gates LTM writes on perception health. It accepts stable, confident,
+non-collapsed object files and records a write reason such as:
+
+- `accepted`
+- `skipped_no_objects`
+- `skipped_perception_collapsed`
+- `skipped_low_confidence`
+
+The graph also avoids merging simultaneous distinct object files into the same LTM node
+unless appearance plus spatial/temporal evidence says they are the same tracked entity.
+This is intentionally conservative: a skipped write is preferable to poisoning permanent
+memory with collapsed perception.
+
+## Discovery API and perception diagnostics
+
+`GET /agent/{id}/discovery` returns the live discovered-perception payload:
+
+- `object_files`
+- `discovery_health`
+- `ltm_consolidation`
+- `perception_organ`
+- `retinotopic_map`
+- `discovery`
+
+`GET /agent/{id}/state` also includes the current perception organ diagnostics and
+object-file snapshots. These payloads are diagnostic only; they expose what the sensory
+system produced without feeding semantic labels back into cognition.
 
 ## Environments & scenarios
 
@@ -628,8 +716,19 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu126  
 
 | Variable | Purpose |
 |----------|---------|
-| `DECADIC_PERCEPTION_MODE` | `discovered` (default; slot-attention object/self discovery from the camera) or `oracle` (entities handed in by the sim — eval scaffold) |
+| `DECADIC_PERCEPTION_MODE` | `discovered` (default; perception-organ + slot-attention object/self discovery from the camera) or `oracle` (entities handed in by the sim — eval scaffold) |
 | `DECADIC_PERCEPTION_FEEDBACK_ENABLED` | Top-down predictive perception (precision-gated blend of prediction + encode; default `1` on) |
+| `DECADIC_SLOTS_K` | Number of competing anonymous object slots in discovered perception (default `7`) |
+| `DECADIC_SLOT_PRESENCE_THRESHOLD` | Minimum slot presence before a proposal can become an object file (default `0.12`) |
+| `DECADIC_SLOT_RECON_WEIGHT` | Self-supervised slot feature-reconstruction loss weight (default `0.5`) |
+| `DECADIC_SLOT_DIVERSITY_WEIGHT` | Anti-collapse loss discouraging multiple slots from claiming one region (default `0.02`) |
+| `DECADIC_SLOT_ENTROPY_WEIGHT` | Encourages confident per-patch slot assignment (default `0.01`) |
+| `DECADIC_SLOT_SPATIAL_SEPARATION_WEIGHT` | Discourages center-collapsed object centroids (default `0.02`) |
+| `DECADIC_ASSOC_APPEARANCE_WEIGHT` | Appearance-vs-position share of working-memory object-file matching (default `0.6`) |
+| `DECADIC_ASSOC_MATCH_THRESHOLD` | Minimum association score to bind a proposal to an existing object file (default `0.35`) |
+| `DECADIC_LTM_MATCH_THRESHOLD` | Appearance threshold for LTM re-identification (default `0.6`) |
+| `DECADIC_LTM_MIN_SEEN` | Cycles an object file must persist before LTM consolidation can accept it (default `2`) |
+| `DECADIC_LTM_SNAPSHOT_LIMIT` | Max LTM nodes returned to dashboard snapshots; the graph itself remains unbounded (default `64`) |
 | `DECADIC_SELF_MODEL_FEEDBACK` | Self-state feedback spine (self-model program): the previous cycle's self-report (A state-of-mind ‖ C narrative ‖ E metacognition) is injected back into the stack so internal state shapes the next cycle. Default `1` on; zero-init projection ⇒ on is byte-identical until it learns. Rebuilds the brain on toggle. (Pinned `0` in tests.) |
 | `DECADIC_GWT_ENABLED` | Real global workspace (self-model program): replaces the working-memory EMA blend into A with a capacity-limited winner-take-all competition + ignition threshold + broadcast (to A, the self-model spine, the episodic salience, and the narrative). Default `1` on (set `0` for the legacy EMA blend). Live toggle (no rebuild). Tuned by `DECADIC_GWT_IGNITION_THRESHOLD` (default `0.5` share of salience mass), `DECADIC_GWT_CAPACITY` (coalition size, default `1`), `DECADIC_GWT_TEMPERATURE` (default `1.0`), `DECADIC_GWT_SALIENCE_BOOST` (episodic-salience lift, default `1.0`). (Pinned `0` in tests.) |
 | `DECADIC_INTEGRATION_WINDOW_MS` | Explicit temporal-integration window (self-model program): bind a span of bottom-up percepts into one committed "now". The agent acts on the last committed moment until the window (this many wall-clock ms, or `DECADIC_INTEGRATION_WINDOW_MAX_FRAMES` cycles, default `8`) closes and a new now is bound — so longer windows shift when perception updates. Default `200` ms (set `0` for the freshest percept always = now). Live setting (no rebuild). (Pinned `0` in tests.) |

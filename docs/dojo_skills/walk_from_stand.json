@@ -7,6 +7,8 @@
   "teacher": "stand_teacher",
   "required_sensors": ["proprioception", "contacts"],
   "checkpoint_on_graduate": true,
+  "caregiver_enabled": true,
+  "caregiver_threshold": 80.0,
   "phases": [
     {
       "index": 0,
@@ -40,7 +42,7 @@
         }
       },
       "config": {
-        "viability_mode": "immortal",
+        "viability_mode": "metabolic",
         "motor_babble_sigma": 0.1
       },
       "body_commands": ["set_stance:stand", "recenter"],
@@ -160,7 +162,7 @@
         }
       },
       "config": {
-        "viability_mode": "immortal",
+        "viability_mode": "metabolic",
         "motor_babble_sigma": 0.22,
         "drive_priority_gain": 2.0
       },

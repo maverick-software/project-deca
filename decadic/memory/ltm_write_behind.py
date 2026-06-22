@@ -64,6 +64,9 @@ class _SlotSnapshot:
     affective_weight: float
     seen_count: int
     appearance: list[float] | None
+    confidence: float
+    kind_hint: str
+    property_evidence: dict[str, Any]
 
 
 def _snapshot_slot(s: Any) -> _SlotSnapshot:
@@ -78,6 +81,9 @@ def _snapshot_slot(s: Any) -> _SlotSnapshot:
         # consolidate's ``if not app`` guard requires a list/None (never a raw
         # array), which MemorySlot.appearance already is; copy to decouple.
         appearance=list(app) if app else None,
+        confidence=float(getattr(s, "confidence", 1.0) or 0.0),
+        kind_hint=str(getattr(s, "kind_hint", "object")),
+        property_evidence=dict(getattr(s, "property_evidence", {}) or {}),
     )
 
 
@@ -138,6 +144,8 @@ class WriteBehindLongTermGraph(LongTermGraph):
         *,
         cycle: int = 0,
         min_seen: int = 2,
+        property_update: bool = True,
+        relationship_update: bool = True,
     ) -> list[str]:
         """Enqueue consolidation for the background worker when async; else inline.
 
@@ -146,12 +154,21 @@ class WriteBehindLongTermGraph(LongTermGraph):
         """
         q = self._queue if self._async_enabled else None
         if q is None:
-            return super().consolidate(slots, affect, cycle=cycle, min_seen=min_seen)
+            return super().consolidate(
+                slots,
+                affect,
+                cycle=cycle,
+                min_seen=min_seen,
+                property_update=property_update,
+                relationship_update=relationship_update,
+            )
         job = (
             [_snapshot_slot(s) for s in slots],
             dict(affect) if affect else None,
             int(cycle),
             int(min_seen),
+            bool(property_update),
+            bool(relationship_update),
         )
         try:
             q.put_nowait(job)
@@ -161,7 +178,14 @@ class WriteBehindLongTermGraph(LongTermGraph):
             # expected path.
             logger.warning("ltm write-behind queue full; consolidating synchronously")
             self.flush()
-            return super().consolidate(slots, affect, cycle=cycle, min_seen=min_seen)
+            return super().consolidate(
+                slots,
+                affect,
+                cycle=cycle,
+                min_seen=min_seen,
+                property_update=property_update,
+                relationship_update=relationship_update,
+            )
         return []
 
     def _drain_loop(self, q: queue.Queue) -> None:
@@ -170,9 +194,16 @@ class WriteBehindLongTermGraph(LongTermGraph):
             try:
                 if item is _SENTINEL:
                     return
-                snaps, affect, cycle, min_seen = item
+                snaps, affect, cycle, min_seen, property_update, relationship_update = item
                 try:
-                    super().consolidate(snaps, affect, cycle=cycle, min_seen=min_seen)
+                    super().consolidate(
+                        snaps,
+                        affect,
+                        cycle=cycle,
+                        min_seen=min_seen,
+                        property_update=property_update,
+                        relationship_update=relationship_update,
+                    )
                 except Exception:  # pragma: no cover - persistence must not kill worker
                     logger.exception("ltm write-behind consolidate failed")
             finally:

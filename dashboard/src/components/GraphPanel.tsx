@@ -93,6 +93,7 @@ export default function GraphPanel(props: { state: AgentState }) {
   const nodeCount = graph.nodes.length;
   const edgeCount = graph.edges.length;
   const affective = graph.edges.filter((e) => e.kind === "affective").length;
+  const health = p.discovery_health;
 
   return (
     <div className="panel span-7">
@@ -103,8 +104,17 @@ export default function GraphPanel(props: { state: AgentState }) {
 
       <div className="strip-label">
         <span>{nodeCount} nodes · {edgeCount} edges · {affective} affective</span>
-        <span>self-centered</span>
+        <span>{health ? health.status : "self-centered"}</span>
       </div>
+      {health && health.status !== "healthy" && (
+        <div className={`health-strip ${health.collapsed ? "bad" : "warn"}`}>
+          <span>{health.reason}</span>
+          <span>{health.object_files} object files</span>
+          <span>spread {health.centroid_spread.toFixed(3)}</span>
+          <span>flow {health.flow_confidence.toFixed(3)}</span>
+          <span>loom {health.looming_count}</span>
+        </div>
+      )}
 
       <svg className="graph-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
         {graph.edges.map((e, i) => {

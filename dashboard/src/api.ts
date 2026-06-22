@@ -149,6 +149,22 @@ export type LtmNode = {
   degree: number;
   // Deterministic 0-359 hue from the appearance embedding (node color).
   appearance_hash: number;
+  property_beliefs?: LtmPropertyBelief[];
+  unstable_property_count?: number;
+  avg_property_confidence?: number;
+};
+
+export type LtmPropertyBelief = {
+  property_key: string;
+  value?: number | number[] | null;
+  mean: number;
+  variance: number;
+  confidence: number;
+  evidence_count: number;
+  first_cycle: number;
+  last_cycle: number;
+  source: string;
+  unstable: boolean;
 };
 
 export type LtmEdge = {
@@ -164,6 +180,8 @@ export type LtmGraphSnapshot = {
   // Unbounded totals (the windowed nodes/edges above are a read-out cap only).
   total_nodes: number;
   total_edges: number;
+  total_property_beliefs?: number;
+  unstable_property_count?: number;
 };
 
 export type WorkingMemorySlot = {
@@ -183,6 +201,13 @@ export type WorkingMemorySlot = {
   uv?: number[] | null;
   bearing?: number[] | null;
   agency?: number | null;
+  confidence?: number | null;
+  kind_hint?: string | null;
+  motion?: number[] | null;
+  local_motion?: number | null;
+  retina_contrast?: number | null;
+  looming?: number | null;
+  property_evidence?: Record<string, number | number[]>;
 };
 
 export type WorkingMemorySnapshot = {
@@ -208,6 +233,84 @@ export type DiscoverySnapshot = {
   last_body_parts_truth: number;
 };
 
+export type ObjectFileSnapshot = {
+  object_id?: string | null;
+  idx: number;
+  centroid_uv?: number[] | null;
+  relative?: number[] | null;
+  bearing?: number[] | null;
+  appearance?: number[] | null;
+  motion?: number[] | null;
+  depth?: number | null;
+  persistence: number;
+  agency: number;
+  kind_hint: string;
+  confidence: number;
+  presence: number;
+  spread?: number | null;
+  mask_entropy?: number | null;
+  flow?: number[] | null;
+  local_motion?: number | null;
+  retina_contrast?: number | null;
+  looming?: number | null;
+  property_evidence?: Record<string, number | number[]>;
+};
+
+export type DiscoveryHealth = {
+  status: string;
+  collapsed: boolean;
+  reason: string;
+  active_proposals: number;
+  object_files: number;
+  stable_tracked_objects: number;
+  centroid_spread: number;
+  appearance_cosine_mean?: number | null;
+  appearance_cosine_max?: number | null;
+  mask_entropy_mean?: number | null;
+  stuff_count: number;
+  body_candidate_count: number;
+  looming_count: number;
+  flow_confidence: number;
+  low_confidence_count: number;
+  ltm_write: string;
+};
+
+export type PerceptionOrganSnapshot = {
+  frame_seen: boolean;
+  stale_frame: boolean;
+  grid_size: number;
+  flow_confidence: number;
+  global_motion: number;
+  local_motion_max: number;
+  local_motion_mean: number;
+  looming_count: number;
+  stuff_count: number;
+  body_candidate_count: number;
+  foreground_count: number;
+  checkpoint_status: string;
+};
+
+export type RetinotopicMapSnapshot = {
+  width: number;
+  height: number;
+  intensity: number[][];
+  contrast: number[][];
+  frame_delta: number[][];
+};
+
+export type LtmConsolidationStatus = {
+  status: string;
+  reason?: string;
+  accepted_ids?: string[];
+  identity_refresh?: boolean;
+  property_update?: boolean;
+  relationship_update?: boolean;
+  relationship_updates_skipped?: number;
+  total_property_beliefs?: number;
+  unstable_property_count?: number;
+  avg_property_confidence?: number;
+};
+
 export type PerceptualSnapshot = {
   last_timestamp_iso: string | null;
   vision_resolution: number[] | null;
@@ -225,6 +328,11 @@ export type PerceptualSnapshot = {
   egocentric_edges?: EgoEdge[];
   egocentric_graph?: EgoGraph;
   working_memory?: WorkingMemorySnapshot;
+  object_files?: ObjectFileSnapshot[];
+  discovery_health?: DiscoveryHealth | null;
+  perception_organ?: PerceptionOrganSnapshot | null;
+  retinotopic_map?: RetinotopicMapSnapshot | null;
+  ltm_consolidation?: LtmConsolidationStatus | null;
   // Persistent, unbounded long-term relational graph (the hippocampal index).
   // Present whenever the long-term graph is enabled (default on).
   ltm_graph?: LtmGraphSnapshot | null;
@@ -425,8 +533,50 @@ export type Metrics = {
   teacher_height_error_m?: number;
   teacher_vertical_velocity?: number;
   teacher_support_mode?: string;
+  caregiver_parent_present?: boolean;
+  caregiver_missing_parent?: boolean;
+  caregiver_status?: string;
+  caregiver_request_kind?: string;
+  caregiver_last_offer_item?: string;
+  caregiver_delivery_count?: number;
+  caregiver_pending_request?: boolean;
   // Full-body touch: per-part contact loads (short name -> force/body weight).
   part_loads?: Record<string, number>;
+  body_map?: {
+    parts?: string[];
+    contact_load?: number[];
+    effort?: number[];
+    work?: number[];
+    strain?: number[];
+    fatigue?: number[];
+    pain?: number[];
+  };
+  effort?: {
+    actuator_effort?: number[];
+    actuator_work?: number[];
+    joint_strain?: number[];
+    joint_fatigue?: number[];
+    effort_total?: number;
+    work_total?: number;
+    strain_total?: number;
+    fatigue_total?: number;
+    pain_total?: number;
+    support_effort?: number;
+  };
+  effort_total?: number;
+  work_total?: number;
+  strain_total?: number;
+  fatigue_total?: number;
+  pain_total?: number;
+  support_effort?: number;
+  effort_energy_delta?: number;
+  fatigue_pain?: number;
+  strain_pain?: number;
+  most_pained_part?: string;
+  most_pained_part_pain?: number;
+  net_energy_return?: number;
+  effort_pred_error?: number;
+  resource_relief_events?: number;
   // Locomotion / gait telemetry (eval-only; never read by cognition). Drives the
   // curriculum gates: cumulative path length, straight-line displacement from the
   // run origin, rolling fall-rate, foot-alternation regularity, consume count.
@@ -817,6 +967,11 @@ export type DiscoveryReport = {
   perception_mode: string;
   egocentric_graph: EgoGraph;
   working_memory: WorkingMemorySnapshot;
+  object_files?: ObjectFileSnapshot[];
+  discovery_health?: DiscoveryHealth | null;
+  perception_organ?: PerceptionOrganSnapshot | null;
+  retinotopic_map?: RetinotopicMapSnapshot | null;
+  ltm_consolidation?: LtmConsolidationStatus | null;
   discovery: DiscoverySnapshot | null;
   oracle_truth_count: number;
 };
@@ -1129,6 +1284,8 @@ export type DojoSkill = {
   builtin: boolean;
   required_sensors: string[];
   checkpoint_on_graduate: boolean;
+  caregiver_enabled: boolean;
+  caregiver_threshold: number;
   warnings?: string[];
   phases: DojoSkillPhase[];
 };
@@ -1173,6 +1330,21 @@ export type DojoStatus = {
   teacher_height_error_m: number;
   teacher_vertical_velocity: number;
   teacher_support_mode: string;
+  caregiver_enabled: boolean;
+  caregiver_status: string;
+  caregiver_need: string;
+  caregiver_threshold: number;
+  caregiver_trigger_reservoir: string | null;
+  caregiver_request_kind: string | null;
+  caregiver_last_offer_cycle: number | null;
+  caregiver_last_offer_item: string | null;
+  caregiver_missing_parent: boolean;
+  caregiver_refractory_s: number;
+  caregiver_delivery_count: number;
+  caregiver_pending: boolean;
+  hydration: number;
+  energy: number;
+  integrity: number;
   samples: number;
   gate: GateStatus | null;
   failure: CriterionStatus | null;

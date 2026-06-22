@@ -436,6 +436,23 @@ def create_app() -> FastAPI:
                     "edges": list(perc.egocentric_edges),
                 },
                 "working_memory": perc.working_memory.snapshot(),
+                "object_files": list(getattr(perc, "object_files", [])),
+                "discovery_health": (
+                    dict(perc.discovery_health)
+                    if getattr(perc, "discovery_health", None)
+                    else None
+                ),
+                "perception_organ": (
+                    dict(perc.perception_organ)
+                    if getattr(perc, "perception_organ", None)
+                    else None
+                ),
+                "retinotopic_map": (
+                    dict(perc.retinotopic_map)
+                    if getattr(perc, "retinotopic_map", None)
+                    else None
+                ),
+                "ltm_consolidation": dict(getattr(perc, "ltm_consolidation", {})),
                 "discovery": (
                     perc.discovery_eval.snapshot()
                     if perc.perception_mode == "discovered"

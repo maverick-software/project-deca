@@ -20,7 +20,17 @@ class StandTeacher:
         return [0.0] * max(1, int(n_actuators))
 
 
-TEACHERS = {"stand_teacher": StandTeacher()}
+@dataclass(frozen=True)
+class NoTeacher:
+    """Explicit no-op teacher for observation-only dojo curricula."""
+
+    name: str = "none"
+
+    def motor_target(self, *, n_actuators: int, metrics: dict[str, float]) -> list[float]:
+        return [0.0] * max(1, int(n_actuators))
+
+
+TEACHERS = {"stand_teacher": StandTeacher(), "none": NoTeacher()}
 
 
 def get_teacher(name: str):

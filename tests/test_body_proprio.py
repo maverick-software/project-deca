@@ -8,6 +8,7 @@ import torch
 
 from decadic.nn.frozen_encoders import (
     CLIP_POOL_DIM,
+    PROPRIO_BODY_MAP_DIM,
     PROPRIO_BASE_DIM,
     WHISPER_POOL_DIM,
     FrozenSensoryEncoders,
@@ -56,7 +57,7 @@ def test_encoder_forward_with_joints_and_contacts(monkeypatch):
     monkeypatch.setenv("DECADIC_PROPRIO_JOINT_CAP", "8")
     monkeypatch.setenv("DECADIC_PROPRIO_CONTACT_CAP", "4")
     enc = _encoders()
-    assert enc.proprio_in_dim == PROPRIO_BASE_DIM + 8 + 4
+    assert enc.proprio_in_dim == PROPRIO_BASE_DIM + 8 + 4 + PROPRIO_BODY_MAP_DIM
     obs = {
         "proprioception": {
             "position": [0, 0, 1.4],
@@ -78,12 +79,20 @@ def test_perceptual_state_stores_body_proprio():
                 "position": [0, 0, 1.4],
                 "joints": [0.1, -0.2],
                 "contacts": [110.0, 0.0],
+                "body_map": {
+                    "parts": ["left_hand"],
+                    "contact_load": {"left_hand": 0.5},
+                    "pain": {"left_hand": 0.2},
+                },
+                "effort": {"effort_total": 0.3, "fatigue_total": 0.1},
             },
         }
     )
     snap = ps.snapshot_dict()
     assert snap["proprio_joints"] == [0.1, -0.2]
     assert snap["proprio_contacts"] == [110.0, 0.0]
+    assert snap["proprio_body_map"]["pain"][4] == 0.2
+    assert snap["proprio_effort"]["effort_total"] == 0.3
 
 
 def test_body_events_impact_and_fall():
@@ -153,6 +162,8 @@ def test_build_body_observation_shape():
     assert prop["current_action"] == "mujoco_humanoid:root_assist"
     assert len(prop["joints"]) == 42
     assert len(prop["contacts"]) == 4
+    assert len(prop["body_map"]["parts"]) == 14
+    assert "effort_total" in prop["effort"]
     ws = obs["world_state"]
     assert ws["agent"]["id"] == "self"
     assert ws["body"]["id"] == "mujoco_humanoid"

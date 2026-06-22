@@ -25,9 +25,14 @@ logger = logging.getLogger(__name__)
 
 WINDOW_MAX = 240
 DEFAULT_POLL_S = 1.0
+DEFAULT_CAREGIVER_THRESHOLD = 80.0
+DEFAULT_CAREGIVER_REFRACTORY_S = 15.0
 
 SAMPLE_KEYS = (
     "viability",
+    "hydration",
+    "energy",
+    "integrity",
     "forward_model_error",
     "tactile_pred_error",
     "fall_rate",
@@ -56,6 +61,18 @@ SAMPLE_KEYS = (
     "distance_traveled",
     "net_displacement",
     "gait_regularity",
+    "object_files",
+    "centroid_spread",
+    "stable_tracked_objects",
+    "perception_collapsed",
+    "ltm_write_accepted",
+    "flow_confidence",
+    "looming_count",
+    "stuff_count",
+    "body_candidate_count",
+    "caregiver_parent_present",
+    "caregiver_missing_parent",
+    "caregiver_delivery_count",
 )
 
 
@@ -121,6 +138,27 @@ class SkillDojoSupervisor:
         self._objective_confidence = 0.0
         self._confidence_reason = "idle"
         self._confidence_dwell_s = 0.0
+        self._caregiver_enabled = False
+        self._caregiver_threshold = DEFAULT_CAREGIVER_THRESHOLD
+        self._caregiver_refractory_s = max(
+            0.0,
+            float(
+                os.environ.get(
+                    "DECADIC_DOJO_CAREGIVER_REFRACTORY_S",
+                    str(DEFAULT_CAREGIVER_REFRACTORY_S),
+                )
+            ),
+        )
+        self._caregiver_last_request_at = 0.0
+        self._caregiver_last_offer_cycle: int | None = None
+        self._caregiver_last_offer_item: str | None = None
+        self._caregiver_delivery_count = 0
+        self._caregiver_status = "disabled"
+        self._caregiver_need = "none"
+        self._caregiver_trigger_reservoir: str | None = None
+        self._caregiver_request_kind: str | None = None
+        self._caregiver_missing_parent = False
+        self._caregiver_pending = False
 
     async def start(
         self,
@@ -143,6 +181,14 @@ class SkillDojoSupervisor:
             self._reset()
             self._agent_id = agent_id
             self._skill = skill
+            self._caregiver_enabled = bool(getattr(skill, "caregiver_enabled", False))
+            self._caregiver_threshold = max(
+                1.0,
+                min(
+                    100.0,
+                    float(getattr(skill, "caregiver_threshold", DEFAULT_CAREGIVER_THRESHOLD) or DEFAULT_CAREGIVER_THRESHOLD),
+                ),
+            )
             self._state = "running"
             self._started_at = time.time()
             self._auto_retry_override = auto_retry
@@ -245,6 +291,21 @@ class SkillDojoSupervisor:
             "teacher_height_error_m": round(float(last.get("teacher_height_error_m", 0.0) or 0.0), 4),
             "teacher_vertical_velocity": round(float(last.get("teacher_vertical_velocity", 0.0) or 0.0), 4),
             "teacher_support_mode": str(last.get("teacher_support_mode", "off") or "off"),
+            "caregiver_enabled": bool(self._caregiver_enabled),
+            "caregiver_status": self._caregiver_status,
+            "caregiver_need": self._caregiver_need,
+            "caregiver_threshold": round(float(self._caregiver_threshold), 3),
+            "caregiver_trigger_reservoir": self._caregiver_trigger_reservoir,
+            "caregiver_request_kind": self._caregiver_request_kind,
+            "caregiver_last_offer_cycle": self._caregiver_last_offer_cycle,
+            "caregiver_last_offer_item": self._caregiver_last_offer_item,
+            "caregiver_missing_parent": bool(self._caregiver_missing_parent),
+            "caregiver_refractory_s": round(float(self._caregiver_refractory_s), 3),
+            "caregiver_delivery_count": int(self._caregiver_delivery_count),
+            "caregiver_pending": bool(self._caregiver_pending),
+            "hydration": round(float(last.get("hydration", 100.0) or 100.0), 4),
+            "energy": round(float(last.get("energy", 100.0) or 100.0), 4),
+            "integrity": round(float(last.get("integrity", 100.0) or 100.0), 4),
             "samples": len(self._window),
             "gate": self._last_gate.as_dict() if self._last_gate else None,
             "failure": self._last_failure.as_dict() if self._last_failure else None,
@@ -282,6 +343,7 @@ class SkillDojoSupervisor:
                 sample = await self._sample(agent)
                 self._window.append(sample)
                 self._manual_scaffold_active = self._sample_manual_scaffold_active(sample)
+                self._update_caregiver(agent, sample)
                 self._update_teacher_assist(agent, phase, sample)
                 self._record_sample(sample)
                 if await self._handle_death(agent, phase):
@@ -304,8 +366,17 @@ class SkillDojoSupervisor:
                 dwell_ok = (time.monotonic() - self._phase_started) >= phase.min_dwell_s
                 teacher_ok = self._teacher_allows_success(phase)
                 support_ok = float(sample.get("teacher_support_active", 0.0) or 0.0) < 0.5
+                caregiver_ok = self._caregiver_allows_success(phase)
                 confidence_ok = self._objective_confidence >= 1.0
-                if gate.satisfied and dwell_ok and confidence_ok and support_ok and not self._manual_scaffold_active and teacher_ok:
+                if (
+                    gate.satisfied
+                    and dwell_ok
+                    and confidence_ok
+                    and support_ok
+                    and caregiver_ok
+                    and not self._manual_scaffold_active
+                    and teacher_ok
+                ):
                     self._last_attempt_outcome = "success"
                     self._failure_reason = None
                     self._history.append(
@@ -482,6 +553,94 @@ class SkillDojoSupervisor:
                 if agent.queue_body_command(cmd.command):
                     self._last_body_cmd[cmd.command] = now
 
+    def _update_caregiver(self, agent: Any, sample: dict[str, Any]) -> None:
+        if not self._caregiver_enabled:
+            self._caregiver_status = "disabled"
+            self._caregiver_need = "none"
+            self._caregiver_trigger_reservoir = None
+            self._caregiver_request_kind = None
+            self._caregiver_missing_parent = False
+            self._caregiver_pending = False
+            return
+
+        delivery_count = int(float(sample.get("caregiver_delivery_count", self._caregiver_delivery_count) or 0.0))
+        if delivery_count > self._caregiver_delivery_count:
+            self._caregiver_delivery_count = delivery_count
+            self._caregiver_last_offer_cycle = _agent_cycle(agent)
+            item = str(sample.get("caregiver_last_offer_item", "") or "")
+            self._caregiver_last_offer_item = item or self._caregiver_last_offer_item
+            self._caregiver_pending = False
+            self._caregiver_status = "delivered"
+
+        parent_present = sample.get("caregiver_parent_present")
+        explicit_missing = sample.get("caregiver_missing_parent")
+        if parent_present is None and explicit_missing is not None and float(explicit_missing or 0.0) >= 0.5:
+            parent_present = 0.0
+        if parent_present is not None and float(parent_present or 0.0) < 0.5:
+            self._caregiver_missing_parent = True
+            self._caregiver_status = "caregiver_missing_parent"
+            self._caregiver_pending = False
+            return
+        if parent_present is not None:
+            self._caregiver_missing_parent = False
+
+        reservoirs = {
+            "hydration": float(sample.get("hydration", 100.0) or 100.0),
+            "energy": float(sample.get("energy", 100.0) or 100.0),
+            "integrity": float(sample.get("integrity", 100.0) or 100.0),
+        }
+        reservoir, value = min(reservoirs.items(), key=lambda kv: kv[1])
+        if value >= self._caregiver_threshold:
+            self._caregiver_need = "none"
+            self._caregiver_trigger_reservoir = None
+            self._caregiver_request_kind = None
+            self._caregiver_pending = False
+            if self._caregiver_status not in {"delivered", "caregiver_missing_parent"}:
+                self._caregiver_status = "monitoring"
+            return
+
+        kind = {"hydration": "water", "energy": "food", "integrity": "care"}[reservoir]
+        self._caregiver_need = reservoir
+        self._caregiver_trigger_reservoir = reservoir
+        self._caregiver_request_kind = kind
+        body_status = str(sample.get("caregiver_status", "") or "")
+        if self._caregiver_pending and body_status in {"requested", "delivering"}:
+            self._caregiver_status = body_status
+            return
+        now = time.monotonic()
+        if now - self._caregiver_last_request_at < self._caregiver_refractory_s:
+            self._caregiver_status = "refractory"
+            self._caregiver_pending = True
+            return
+        queued = bool(agent.queue_body_command("parent_enable"))
+        queued = bool(agent.queue_body_command(f"parent_request:{kind}")) or queued
+        if queued:
+            self._caregiver_last_request_at = now
+            self._caregiver_pending = True
+            self._caregiver_status = "requested"
+            self._history.append(
+                {
+                    "phase": self._phase_idx,
+                    "name": self._phase().name if self._phase() else "",
+                    "event": "caregiver_request",
+                    "need": reservoir,
+                    "request": kind,
+                    "value": round(value, 4),
+                    "at": _utc(),
+                }
+            )
+        else:
+            self._caregiver_status = "request_queue_failed"
+
+    def _caregiver_allows_success(self, phase: Any) -> bool:
+        if not self._caregiver_enabled:
+            return True
+        if self._caregiver_missing_parent:
+            return False
+        if not getattr(phase, "is_terminal", False):
+            return True
+        return not self._caregiver_pending and self._caregiver_need == "none"
+
     async def _handle_death(self, agent: Any, phase: Any) -> bool:
         if getattr(agent, "status", None) != "dead":
             return False
@@ -506,10 +665,13 @@ class SkillDojoSupervisor:
         await self._apply_phase(reason="death")
         return True
 
-    async def _sample(self, agent: Any) -> dict[str, float]:
+    async def _sample(self, agent: Any) -> dict[str, Any]:
         async with agent.lock:
             m = dict(agent.metrics)
             viability = float(getattr(agent.viability, "value", 0.0))
+            perc = getattr(agent, "perceptual", None)
+            health = getattr(perc, "discovery_health", None) if perc is not None else None
+            ltm = getattr(perc, "ltm_consolidation", None) if perc is not None else None
         sample = {"viability": viability}
         for key in SAMPLE_KEYS:
             if key == "viability":
@@ -520,9 +682,29 @@ class SkillDojoSupervisor:
             except (TypeError, ValueError):
                 sample[key] = 0.0
         sample["teacher_support_mode"] = str(m.get("teacher_support_mode", "off") or "off")
+        sample["caregiver_status"] = str(m.get("caregiver_status", "") or "")
+        sample["caregiver_last_offer_item"] = str(m.get("caregiver_last_offer_item", "") or "")
+        sample["caregiver_request_kind"] = str(m.get("caregiver_request_kind", "") or "")
+        if "caregiver_parent_present" not in m:
+            sample["caregiver_parent_present"] = None
+        if "caregiver_missing_parent" not in m:
+            sample["caregiver_missing_parent"] = None
+        if isinstance(health, dict):
+            sample["object_files"] = float(health.get("object_files", 0.0) or 0.0)
+            sample["centroid_spread"] = float(health.get("centroid_spread", 0.0) or 0.0)
+            sample["stable_tracked_objects"] = float(
+                health.get("stable_tracked_objects", 0.0) or 0.0
+            )
+            sample["perception_collapsed"] = 1.0 if health.get("collapsed") else 0.0
+            sample["flow_confidence"] = float(health.get("flow_confidence", 0.0) or 0.0)
+            sample["looming_count"] = float(health.get("looming_count", 0.0) or 0.0)
+            sample["stuff_count"] = float(health.get("stuff_count", 0.0) or 0.0)
+            sample["body_candidate_count"] = float(health.get("body_candidate_count", 0.0) or 0.0)
+        if isinstance(ltm, dict):
+            sample["ltm_write_accepted"] = 1.0 if ltm.get("status") == "accepted" else 0.0
         return sample
 
-    def _sample_manual_scaffold_active(self, sample: dict[str, float]) -> bool:
+    def _sample_manual_scaffold_active(self, sample: dict[str, Any]) -> bool:
         return bool(
             float(sample.get("braces_enabled", 0.0) or 0.0) >= 0.5
             or float(sample.get("movement_hold", 0.0) or 0.0) >= 0.5
@@ -569,7 +751,7 @@ class SkillDojoSupervisor:
         self._teacher_unstable_dwell_s = 0.0
         self._teacher_last_update = time.monotonic()
 
-    def _update_teacher_assist(self, agent: Any, phase: Any, sample: dict[str, float]) -> None:
+    def _update_teacher_assist(self, agent: Any, phase: Any, sample: dict[str, Any]) -> None:
         policy = self._phase_adaptation(phase)
         now = time.monotonic()
         dt = max(0.0, now - (self._teacher_last_update or now))
@@ -631,7 +813,7 @@ class SkillDojoSupervisor:
         self,
         policy: TeacherAdaptation,
         phase: Any,
-        sample: dict[str, float],
+        sample: dict[str, Any],
         demand: float,
         stable: bool,
     ) -> float:
@@ -668,7 +850,7 @@ class SkillDojoSupervisor:
             self._confidence_reason = "objective held"
         return _clamp01(confidence)
 
-    def _teacher_demand(self, policy: TeacherAdaptation, sample: dict[str, float]) -> tuple[float, str]:
+    def _teacher_demand(self, policy: TeacherAdaptation, sample: dict[str, Any]) -> tuple[float, str]:
         thresholds = policy.danger_thresholds
         demand = 0.0
         reason = ""
@@ -734,7 +916,7 @@ class SkillDojoSupervisor:
                 demand, reason = _max_reason(demand, reason, score, "feet unloading")
         return demand, reason or "stable"
 
-    def _teacher_stable(self, policy: TeacherAdaptation, sample: dict[str, float]) -> bool:
+    def _teacher_stable(self, policy: TeacherAdaptation, sample: dict[str, Any]) -> bool:
         thresholds = policy.stability_thresholds
         if not thresholds:
             return True
@@ -777,7 +959,7 @@ class SkillDojoSupervisor:
             return "demo"
         return "dagger"
 
-    def _write_teacher_training(self, agent: Any, phase: Any, metrics: dict[str, float]) -> None:
+    def _write_teacher_training(self, agent: Any, phase: Any, metrics: dict[str, Any]) -> None:
         if self._skill is None:
             return
         teacher = get_teacher(self._skill.teacher)
@@ -806,7 +988,7 @@ class SkillDojoSupervisor:
         except Exception:
             pass
 
-    def _record_sample(self, sample: dict[str, float]) -> None:
+    def _record_sample(self, sample: dict[str, Any]) -> None:
         skill = self._skill
         phase = self._phase()
         if skill is None or phase is None:
@@ -890,6 +1072,15 @@ class SkillDojoSupervisor:
 
 def _utc() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _agent_cycle(agent: Any) -> int | None:
+    bus = getattr(agent, "state_bus", None)
+    cycle = getattr(bus, "cycle_index", None)
+    try:
+        return int(cycle)
+    except (TypeError, ValueError):
+        return None
 
 
 def _clamp01(value: float) -> float:

@@ -80,6 +80,17 @@ def replay_batch_loss(stack: NeuralCognitiveStack, batch: list, device) -> torch
             )
             l_pref = (w_pref * (pred_pref - s_pref).pow(2)).mean()
             loss = loss + ai_intero_fwd_weight() * l_fwd_i + ai_intero_pref_weight() * l_pref
+        if getattr(stack, "has_effort_model", False) and t.effort_now is not None:
+            effort_target = (
+                t.effort_now.to(device=dev, dtype=prev_state.dtype)
+                if hasattr(t.effort_now, "to")
+                else torch.as_tensor(t.effort_now, device=dev, dtype=prev_state.dtype)
+            )
+            if effort_target.ndim == 1:
+                effort_target = effort_target.reshape(1, -1)
+            pred_effort = stack.forward_predict_effort(prev_state, prev_motor)
+            if pred_effort.shape[-1] == effort_target.shape[-1]:
+                loss = loss + C.ai_effort_fwd_weight() * F.mse_loss(pred_effort, effort_target)
         # Successor-features TD(lambda) regression: the SF head learns the discounted
         # future feature target (the episode's lambda-return of phi) for the realized
         # (state, action). This is the reward-free predictive structure that lets a

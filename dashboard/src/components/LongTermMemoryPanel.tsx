@@ -120,6 +120,10 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
   const edges = ltm?.edges ?? [];
   const totalNodes = ltm?.total_nodes ?? 0;
   const totalEdges = ltm?.total_edges ?? 0;
+  const health = props.state.perceptual.discovery_health;
+  const ltmStatus = props.state.perceptual.ltm_consolidation;
+  const totalBeliefs = ltm?.total_property_beliefs ?? 0;
+  const unstableBeliefs = ltm?.unstable_property_count ?? 0;
 
   // Recompute the force layout only when the graph structure actually changes,
   // not on every cycle tick (keeps the view stable and cheap).
@@ -139,11 +143,30 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
       <div className="strip-label">
         <span className="ltm-counter">
           {totalNodes.toLocaleString()} nodes · {totalEdges.toLocaleString()} edges
+          {" · "}
+          {totalBeliefs.toLocaleString()} beliefs
         </span>
         <span>
-          {nodes.length < totalNodes ? `showing ${nodes.length}` : "long-term index"}
+          {ltmStatus?.status ?? (nodes.length < totalNodes ? `showing ${nodes.length}` : "long-term index")}
         </span>
       </div>
+      {health && health.status !== "healthy" && (
+        <div className={`health-strip ${health.collapsed ? "bad" : "warn"}`}>
+          <span>{health.reason}</span>
+          <span>LTM {health.ltm_write}</span>
+          <span>{health.object_files} object files</span>
+          <span>spread {health.centroid_spread.toFixed(3)}</span>
+          <span>flow {health.flow_confidence.toFixed(3)}</span>
+        </div>
+      )}
+      {(ltmStatus?.property_update || totalBeliefs > 0) && (
+        <div className={`health-strip ${unstableBeliefs > 0 ? "warn" : "ok"}`}>
+          <span>beliefs {totalBeliefs}</span>
+          <span>avg conf {(ltmStatus?.avg_property_confidence ?? 0).toFixed(3)}</span>
+          <span>unstable {unstableBeliefs}</span>
+          <span>relations {ltmStatus?.relationship_update ? "updated" : "gated"}</span>
+        </div>
+      )}
 
       {nodes.length === 0 ? (
         <div className="ltm-empty">
@@ -195,6 +218,27 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
             );
           })}
         </svg>
+      )}
+
+      {nodes.length > 0 && (
+        <div className="belief-list">
+          {nodes.slice(0, 4).map((n) => {
+            const beliefs = n.property_beliefs ?? [];
+            if (beliefs.length === 0) return null;
+            return (
+              <div className="belief-row" key={`belief-${n.id}`}>
+                <span className="belief-node">{n.id}</span>
+                <span className="belief-items">
+                  {beliefs.slice(0, 4).map((b) => (
+                    <span className={b.unstable ? "belief-chip unstable" : "belief-chip"} key={`${n.id}-${b.property_key}`}>
+                      {b.property_key} {(b.confidence * 100).toFixed(0)}% · n={b.evidence_count.toFixed(0)}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       <div className="graph-legend">

@@ -45,6 +45,7 @@ from decadic.config import (
     resource_min_dist,
     resource_placement_mode,
 )
+from decadic.state.body_map import BODY_PARTS, normalize_body_map, normalize_effort
 from decadic.embodiment import stances as stance_lib
 from decadic.embodiment.habitats import (
     active_habitats,
@@ -333,6 +334,11 @@ DRINK_RADIUS = 1.0  # root within this distance of a glass drinks it (m)
 # seconds; tuned for watchable replenishment (not the metabolic survival clock).
 FOOD_RESPAWN_S = 30.0
 WATER_RESPAWN_S = 25.0
+EFFORT_FATIGUE_RISE_S = 2.5
+EFFORT_FATIGUE_RECOVERY_S = 8.0
+EFFORT_STRAIN_GAIN = 0.45
+EFFORT_FATIGUE_PAIN_GAIN = 0.35
+EFFORT_STRAIN_PAIN_GAIN = 0.25
 
 # Joint PD hold toward the brace reference (standing) pose. Soft on purpose: the
 # brain's equilibrium-point targets ride on top of the stiff joint braces below,
@@ -600,9 +606,17 @@ class BodySnapshot:
     teacher_height_error_m: float = 0.0
     teacher_vertical_velocity: float = 0.0
     teacher_support_mode: str = "off"
+    caregiver_parent_present: bool = False
+    caregiver_status: str = "missing_parent"
+    caregiver_request_kind: str = ""
+    caregiver_last_offer_item: str = ""
+    caregiver_delivery_count: int = 0
+    caregiver_pending_request: bool = False
     # Full-body touch: per-part contact load (sensor short-name -> force/body weight),
     # live in ALL modes. Feeds perception (the tactile sense) and the dashboard map.
     part_loads: dict[str, float] = field(default_factory=dict)
+    body_map: dict[str, Any] = field(default_factory=dict)
+    effort: dict[str, Any] = field(default_factory=dict)
     # Eval-only ground truth (never fed to cognition): world xpos of the limb
     # extremities, used solely to score discovered "self_part" / agency edges.
     body_parts: dict[str, list[float]] | None = None
@@ -702,6 +716,8 @@ def build_body_observation(
         "joints": [float(x) for x in snap.joints],
         "contacts": contact_values,
         "part_loads": part_load_values,
+        "body_map": normalize_body_map(snap.body_map),
+        "effort": normalize_effort(snap.effort),
     }
     # Efference copy: the motor command actually applied to the body this tick.
     if snap.motor is not None:
@@ -741,6 +757,12 @@ def build_body_observation(
                 "teacher_height_error_m": round(float(snap.teacher_height_error_m), 5),
                 "teacher_vertical_velocity": round(float(snap.teacher_vertical_velocity), 5),
                 "teacher_support_mode": str(snap.teacher_support_mode),
+                "caregiver_parent_present": bool(snap.caregiver_parent_present),
+                "caregiver_status": str(snap.caregiver_status),
+                "caregiver_request_kind": str(snap.caregiver_request_kind),
+                "caregiver_last_offer_item": str(snap.caregiver_last_offer_item),
+                "caregiver_delivery_count": int(snap.caregiver_delivery_count),
+                "caregiver_pending_request": bool(snap.caregiver_pending_request),
                 "part_loads": {
                     k: round(float(v), 5) for k, v in snap.part_loads.items()
                 },
@@ -769,6 +791,35 @@ def build_body_observation(
 def dry_snapshot(step: int) -> BodySnapshot:
     """Synthetic standing-walk snapshot for --dry-run."""
     t = step * 0.08
+    contact = {
+        "torso": 0.0,
+        "head": 0.0,
+        "left_upper_arm": 0.0,
+        "left_lower_arm": 0.0,
+        "left_hand": 0.0,
+        "right_upper_arm": 0.0,
+        "right_lower_arm": 0.0,
+        "right_hand": 0.8 if step and step % 25 == 0 else 0.0,
+        "left_thigh": 0.0,
+        "left_shin": 0.0,
+        "left_foot": 0.03 if step % 2 == 0 else 0.75,
+        "right_thigh": 0.0,
+        "right_shin": 0.0,
+        "right_foot": 0.75 if step % 2 == 0 else 0.03,
+    }
+    effort = {p: 0.05 + 0.03 * abs(math.sin(t)) for p in BODY_PARTS}
+    fatigue = {p: 0.02 * abs(math.sin(t)) for p in BODY_PARTS}
+    pain = {p: 0.0 for p in BODY_PARTS}
+    body_map = {
+        "parts": list(BODY_PARTS),
+        "contact_load": contact,
+        "effort": effort,
+        "work": {p: 0.01 for p in BODY_PARTS},
+        "strain": {p: max(contact[p] * 0.1, effort[p] * 0.2) for p in BODY_PARTS},
+        "fatigue": fatigue,
+        "pain": pain,
+    }
+    effort_total = sum(effort.values()) / max(1, len(effort))
     return BodySnapshot(
         position=[math.cos(t) * 0.5, math.sin(t) * 0.5, STAND_ROOT_HEIGHT],
         orientation=[0.0, 0.0, t % (2 * math.pi)],
@@ -782,6 +833,19 @@ def dry_snapshot(step: int) -> BodySnapshot:
         },
         props=[{"id": "prop_box_red", "kind": "box", "position": [1.5, 0.5, 0.25]}],
         moving=True,
+        body_map=body_map,
+        effort={
+            "actuator_effort": [0.05] * 21,
+            "actuator_work": [0.01] * 21,
+            "joint_strain": [0.02] * 21,
+            "joint_fatigue": [0.01] * 21,
+            "effort_total": effort_total,
+            "work_total": 0.01,
+            "strain_total": 0.02,
+            "fatigue_total": sum(fatigue.values()) / max(1, len(fatigue)),
+            "pain_total": 0.0,
+            "support_effort": 0.0,
+        },
         body_parts={
             "right_lower_arm": [0.25, -0.2, 1.2 + math.sin(t) * 0.1],
             "left_lower_arm": [0.25, 0.2, 1.2 - math.sin(t) * 0.1],
@@ -975,6 +1039,20 @@ class HumanoidSim:
             n[len("touch_") :] if n.startswith("touch_") else n: 0.0
             for n, _ in self.touch_sensors
         }
+        self._part_effort: dict[str, float] = {p: 0.0 for p in BODY_PARTS}
+        self._part_work: dict[str, float] = {p: 0.0 for p in BODY_PARTS}
+        self._part_strain: dict[str, float] = {p: 0.0 for p in BODY_PARTS}
+        self._part_fatigue: dict[str, float] = {p: 0.0 for p in BODY_PARTS}
+        self._part_pain: dict[str, float] = {p: 0.0 for p in BODY_PARTS}
+        self._actuator_effort: list[float] = [0.0] * int(self.model.nu)
+        self._actuator_work: list[float] = [0.0] * int(self.model.nu)
+        self._joint_strain: list[float] = [0.0] * int(self.model.nu)
+        self._joint_fatigue: list[float] = [0.0] * int(self.model.nu)
+        self._effort_total = 0.0
+        self._work_total = 0.0
+        self._strain_total = 0.0
+        self._fatigue_total = 0.0
+        self._pain_total = 0.0
 
         self.prop_bodies: list[tuple[str, int]] = []
         for b in range(self.model.nbody):
@@ -1041,6 +1119,10 @@ class HumanoidSim:
         self._npc_x = 0.0
         self._npc_y = 0.0
         self._npc_yaw = 0.0
+        self._npc_requested_item: str | None = None
+        self._npc_request_kind = ""
+        self._npc_last_offer_item = ""
+        self._npc_delivery_count = 0
         # Scripted crowd ("village") controller and the agent's latest reservoir
         # levels (piggybacked on the brain's action message). Reservoirs gate the
         # parent's need-threshold provisioning (legacy parent + crowd parent).
@@ -1376,6 +1458,7 @@ class HumanoidSim:
                 self._apply_teacher_spotter()
                 self._apply_motor()
             self._mj.mj_step(self.model, self.data)
+        self._update_effort_telemetry(sim_seconds)
         if self.viewer is not None:
             if self.viewer.is_running():
                 self.viewer.sync()
@@ -1531,6 +1614,43 @@ class HumanoidSim:
             return True
         return min(res.values()) <= _parent_effective_threshold(self._npc_offers)
 
+    def _request_parent(self, kind: str) -> bool:
+        """Explicit dojo caregiver request; uses visible gifts, never reservoir credit."""
+        if self.npc_torso is None or self.npc_root_qadr < 0:
+            return False
+        request = str(kind or "").strip().lower()
+        if request == "water":
+            item = "water"
+        elif request == "food":
+            item = "food"
+        elif request == "care":
+            res = self._agent_reservoirs or {}
+            # Integrity has no direct visible healing object in v1. The parent
+            # approaches and offers the most useful visible consumable.
+            item = "water" if float(res.get("hydration", 100.0)) < float(res.get("energy", 100.0)) else "food"
+        else:
+            return False
+        if self._gift_addr.get(item, (-1, -1))[0] < 0:
+            return False
+        self._npc_frozen = False
+        self._npc_item = item
+        self._npc_requested_item = item
+        self._npc_request_kind = request
+        self._npc_next_deliver = 0.0
+        self._npc_begin_delivery()
+        return True
+
+    def _caregiver_status(self) -> str:
+        if self.npc_torso is None:
+            return "missing_parent"
+        if self._npc_frozen:
+            return "paused"
+        if self._npc_requested_item is not None:
+            return "requested" if self._npc_phase == "pickup" else "delivering"
+        if self._npc_phase in {"pickup", "deliver"}:
+            return "delivering"
+        return "idle"
+
     def _npc_target_xy(self) -> tuple[float, float] | None:
         """Target point for the current parental phase (read-only on phase).
 
@@ -1664,6 +1784,8 @@ class HumanoidSim:
         self._npc_gait_phase = 0.0
         self._npc_phase = "seek_food"
         self._npc_item = "food"
+        self._npc_requested_item = None
+        self._npc_request_kind = ""
         self._npc_carry = False
         self._npc_next_deliver = float(self.data.time) + NPC_DELIVER_PERIOD_S
         qa, da = self.npc_root_qadr, self.npc_root_dadr
@@ -1868,24 +1990,29 @@ class HumanoidSim:
             else:  # deliver
                 d = math.hypot(float(npos[0]) - root[0], float(npos[1]) - root[1])
                 if d <= NPC_DROP_DISTANCE:
+                    offered_item = self._npc_item
                     # Drop the gift where the parent stands (~NPC_DROP_DISTANCE
                     # from the agent) so the agent must move to reach it.
                     self._npc_drop_gift(
-                        self._npc_item, float(npos[0]), float(npos[1])
+                        offered_item, float(npos[0]), float(npos[1])
                     )
                     self._npc_carry = False
                     events.append(
                         {
                             "type": "offer",
-                            "item": self._npc_item,
+                            "item": offered_item,
                             "intensity": 1.0,
                             "source": "npc",
                         }
                     )
+                    self._npc_last_offer_item = offered_item
+                    self._npc_delivery_count += 1
+                    self._npc_requested_item = None
+                    self._npc_request_kind = ""
                     self._npc_next_deliver = now + NPC_DELIVER_PERIOD_S
                     self._npc_offers += 1  # fades the need threshold over time
                     # Alternate so food and water are both provided over time.
-                    self._npc_item = "water" if self._npc_item == "food" else "food"
+                    self._npc_item = "water" if offered_item == "food" else "food"
                     self._npc_phase = "seek_food"
 
         # Scripted crowd: per-zone foraging + the crowd parent's threshold-gated
@@ -2021,6 +2148,110 @@ class HumanoidSim:
         self._foot_load_r = self._part_loads.get("right_foot", 0.0)
         self._hand_load_l = self._part_loads.get("left_hand", 0.0)
         self._hand_load_r = self._part_loads.get("right_hand", 0.0)
+
+    @staticmethod
+    def _body_part_for_joint(name: str) -> str:
+        low = str(name).lower()
+        side = "left" if low.startswith("left_") or low.startswith("l_") else "right" if low.startswith("right_") or low.startswith("r_") else ""
+        if "abdomen" in low or "waist" in low or "pelvis" in low or "torso" in low:
+            return "torso"
+        if "neck" in low or "head" in low:
+            return "head"
+        if "shoulder" in low:
+            return f"{side}_upper_arm" if side else "torso"
+        if "elbow" in low:
+            return f"{side}_lower_arm" if side else "torso"
+        if "wrist" in low or "hand" in low:
+            return f"{side}_hand" if side else "torso"
+        if "hip" in low:
+            return f"{side}_thigh" if side else "torso"
+        if "knee" in low:
+            return f"{side}_shin" if side else "torso"
+        if "ankle" in low or "foot" in low:
+            return f"{side}_foot" if side else "torso"
+        return "torso"
+
+    def _effort_force(self, actuator_idx: int) -> float:
+        try:
+            af = getattr(self.data, "actuator_force", None)
+            if af is not None and actuator_idx < len(af):
+                val = float(af[actuator_idx])
+                if math.isfinite(val):
+                    return val
+        except Exception:
+            pass
+        try:
+            val = float(self.data.ctrl[actuator_idx])
+        except Exception:
+            val = 0.0
+        return val if math.isfinite(val) else 0.0
+
+    def _update_effort_telemetry(self, dt: float) -> None:
+        n = int(self.model.nu)
+        efforts = [0.0] * n
+        works = [0.0] * n
+        strains = [0.0] * n
+        by_part_effort = {p: 0.0 for p in BODY_PARTS}
+        by_part_work = {p: 0.0 for p in BODY_PARTS}
+        by_part_strain = {p: 0.0 for p in BODY_PARTS}
+        by_part_count = {p: 0 for p in BODY_PARTS}
+        for a in range(n):
+            h = self.act_joint[a] if a < len(self.act_joint) else a
+            qd = float(self.data.qvel[self.hinge_qvel_adr[h]]) if h < len(self.hinge_qvel_adr) else 0.0
+            force = self._effort_force(a)
+            lo_c, hi_c = self.model.actuator_ctrlrange[a]
+            ctrl_span = max(1e-6, max(abs(float(lo_c)), abs(float(hi_c))))
+            effort = min(1.0, abs(force) / ctrl_span)
+            work = min(1.0, abs(force * qd * max(0.0, dt)) / max(1e-6, ctrl_span))
+            range_pressure = 0.0
+            if h < len(self._hinge_ranges):
+                lo, hi = self._hinge_ranges[h]
+                if math.isfinite(lo) and math.isfinite(hi) and hi > lo:
+                    q = float(self.data.qpos[self.hinge_qpos_adr[h]])
+                    margin = min(max(0.0, q - lo), max(0.0, hi - q)) / max(1e-6, hi - lo)
+                    range_pressure = max(0.0, min(1.0, 0.15 - margin) / 0.15)
+            strain = min(1.0, EFFORT_STRAIN_GAIN * effort + 0.25 * min(1.0, abs(qd)) + 0.3 * range_pressure)
+            efforts[a] = effort
+            works[a] = work
+            strains[a] = strain
+            part = self._body_part_for_joint(self.hinge_names[h] if h < len(self.hinge_names) else "")
+            by_part_effort[part] += effort
+            by_part_work[part] += work
+            by_part_strain[part] += strain
+            by_part_count[part] += 1
+        for part in BODY_PARTS:
+            c = max(1, by_part_count[part])
+            by_part_effort[part] /= c
+            by_part_work[part] /= c
+            by_part_strain[part] = max(by_part_strain[part] / c, min(1.0, float(self._part_loads.get(part, 0.0)) * 0.15))
+            load = max(0.0, float(self._part_loads.get(part, 0.0)))
+            stimulus = min(1.0, max(by_part_effort[part], by_part_strain[part], load * 0.2))
+            prev = float(self._part_fatigue.get(part, 0.0))
+            if stimulus > prev:
+                alpha = min(1.0, max(0.0, dt) / max(1e-6, EFFORT_FATIGUE_RISE_S))
+            else:
+                alpha = min(1.0, max(0.0, dt) / max(1e-6, EFFORT_FATIGUE_RECOVERY_S))
+            fatigue = (1.0 - alpha) * prev + alpha * stimulus
+            pain = min(1.0, EFFORT_FATIGUE_PAIN_GAIN * fatigue + EFFORT_STRAIN_PAIN_GAIN * by_part_strain[part])
+            self._part_effort[part] = by_part_effort[part]
+            self._part_work[part] = by_part_work[part]
+            self._part_strain[part] = by_part_strain[part]
+            self._part_fatigue[part] = fatigue
+            self._part_pain[part] = pain
+        self._actuator_effort = efforts
+        self._actuator_work = works
+        self._joint_strain = strains
+        self._joint_fatigue = [
+            float(self._part_fatigue.get(self._body_part_for_joint(self.hinge_names[self.act_joint[a]]), 0.0))
+            if a < len(self.act_joint) and self.act_joint[a] < len(self.hinge_names)
+            else 0.0
+            for a in range(n)
+        ]
+        self._effort_total = sum(efforts) / max(1, len(efforts))
+        self._work_total = sum(works) / max(1, len(works))
+        self._strain_total = max(self._part_strain.values()) if self._part_strain else 0.0
+        self._fatigue_total = max(self._part_fatigue.values()) if self._part_fatigue else 0.0
+        self._pain_total = max(self._part_pain.values()) if self._part_pain else 0.0
 
     def _apply_motor(self) -> None:
         """Fast PD tracking of the brain's postural targets (physics-rate inner loop).
@@ -2225,7 +2456,34 @@ class HumanoidSim:
             teacher_height_error_m=float(self._teacher_height_error_m),
             teacher_vertical_velocity=float(self._teacher_vertical_velocity),
             teacher_support_mode=str(self._teacher_support_mode),
+            caregiver_parent_present=bool(self.npc_torso is not None),
+            caregiver_status=self._caregiver_status(),
+            caregiver_request_kind=str(self._npc_request_kind),
+            caregiver_last_offer_item=str(self._npc_last_offer_item),
+            caregiver_delivery_count=int(self._npc_delivery_count),
+            caregiver_pending_request=bool(self._npc_requested_item is not None),
             part_loads={k: float(v) for k, v in self._part_loads.items()},
+            body_map={
+                "parts": list(BODY_PARTS),
+                "contact_load": {p: float(self._part_loads.get(p, 0.0)) for p in BODY_PARTS},
+                "effort": {p: float(self._part_effort.get(p, 0.0)) for p in BODY_PARTS},
+                "work": {p: float(self._part_work.get(p, 0.0)) for p in BODY_PARTS},
+                "strain": {p: float(self._part_strain.get(p, 0.0)) for p in BODY_PARTS},
+                "fatigue": {p: float(self._part_fatigue.get(p, 0.0)) for p in BODY_PARTS},
+                "pain": {p: float(self._part_pain.get(p, 0.0)) for p in BODY_PARTS},
+            },
+            effort={
+                "actuator_effort": [float(x) for x in self._actuator_effort],
+                "actuator_work": [float(x) for x in self._actuator_work],
+                "joint_strain": [float(x) for x in self._joint_strain],
+                "joint_fatigue": [float(x) for x in self._joint_fatigue],
+                "effort_total": float(self._effort_total),
+                "work_total": float(self._work_total),
+                "strain_total": float(self._strain_total),
+                "fatigue_total": float(self._fatigue_total),
+                "pain_total": float(self._pain_total),
+                "support_effort": float(self._teacher_support_force + self._teacher_support_torque),
+            },
             body_parts=body_parts,
         )
 
@@ -2461,16 +2719,24 @@ async def _run(
                                 seed = None
                         used = sim._randomize_resources(seed)
                         print(f"[body] resources randomized (seed={used})", flush=True)
-                    elif cmd == "npc_pause":
+                    elif cmd in ("npc_pause", "parent_pause"):
                         sim._npc_frozen = True
                         if sim.crowd is not None:
                             sim.crowd.set_frozen(True)
                         print("[body] parent/crowd paused (hold position)", flush=True)
-                    elif cmd == "npc_resume":
+                    elif cmd in ("npc_resume", "parent_resume", "parent_enable"):
                         sim._npc_frozen = False
                         if sim.crowd is not None:
                             sim.crowd.set_frozen(False)
                         print("[body] parent/crowd resumed", flush=True)
+                    elif cmd.startswith("parent_request:"):
+                        kind = cmd.split(":", 1)[1]
+                        if sim._request_parent(kind):
+                            print(f"[body] parent caregiver request queued ({kind})", flush=True)
+                        else:
+                            print(f"[body] parent caregiver request failed ({kind})", flush=True)
+                    elif cmd == "parent_status":
+                        print(f"[body] parent status: {sim._caregiver_status()}", flush=True)
 
                 if env_paused:
                     # Frozen world: hold pose, integrate no physics, emit no

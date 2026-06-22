@@ -7,6 +7,7 @@ import os
 import time
 from dataclasses import asdict
 from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 import torch
@@ -21,6 +22,11 @@ from decadic.config import (
 from decadic.memory.embeddings import perceptual_key, query_vector_from_state_bus
 from decadic.metrics.integration import self_state_vector
 from decadic.nn.workspace import GlobalWorkspace
+from decadic.perception.object_files import (
+    evaluate_discovery_health,
+    object_files_from_proposals,
+)
+from decadic.perception.organ import PerceptionOrgan
 from decadic.cycle.integration_window import IntegrationWindow
 from decadic.cycle import cognition_trace, narrative as cognition_narrative
 from decadic.cycle.stages import stage_10
@@ -29,6 +35,7 @@ from decadic.cycle.types import CycleContext, StageTrace
 from decadic.nn.bundle import NeuralBundle
 from decadic.nn.config import viability_pe_scale
 from decadic.nn.frozen_encoders import (
+    controllable_effort_vector,
     controllable_intero_vector,
     controllable_proprio_vector,
     controllable_tactile_vector,
@@ -56,6 +63,65 @@ def _np_assign(dest: np.ndarray, src: np.ndarray) -> None:
     n = min(dest.shape[0], flat.shape[0])
     dest[:] = 0
     dest[:n] = flat[:n]
+
+
+def _slot_object_losses(attn: torch.Tensor, centroids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Label-free regularizers that discourage slot collapse."""
+    eps = 1e-8
+    b, k, n = attn.shape
+    flat = attn.reshape(b, k, n)
+    norm = flat / (flat.norm(dim=-1, keepdim=True) + eps)
+    pair = torch.bmm(norm, norm.transpose(1, 2))
+    eye = torch.eye(k, device=attn.device, dtype=attn.dtype).unsqueeze(0)
+    diversity = (pair * (1.0 - eye)).sum() / max(1, b * k * (k - 1))
+
+    per_patch = attn / (attn.sum(dim=1, keepdim=True) + eps)
+    entropy = -(per_patch * (per_patch + eps).log()).sum(dim=1).mean()
+
+    uv = centroids[..., :2]
+    d = torch.cdist(uv, uv, p=2)
+    close = torch.exp(-(d * d) / 0.01) * (1.0 - eye)
+    spatial = close.sum() / max(1, b * k * (k - 1))
+    return diversity, entropy, spatial
+
+
+def _slot_mask_entropies(attn: torch.Tensor) -> list[float]:
+    eps = 1e-8
+    w = attn[0] / (attn[0].sum(dim=-1, keepdim=True) + eps)
+    ent = -(w * (w + eps).log()).sum(dim=-1)
+    if w.shape[-1] > 1:
+        ent = ent / math.log(float(w.shape[-1]))
+    return [float(x) for x in ent.detach().float().cpu().tolist()]
+
+
+def _stable_object_file_snapshots(wm: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for s in getattr(wm, "active_slots", lambda: [])():
+        out.append(
+            {
+                "object_id": str(getattr(s, "entity_id", "")),
+                "idx": -1,
+                "centroid_uv": list(getattr(s, "uv", None) or []) or None,
+                "relative": list(getattr(s, "relative", None) or []) or None,
+                "bearing": list(getattr(s, "bearing", None) or []) or None,
+                "appearance": list(getattr(s, "appearance", None) or []) or None,
+                "motion": list(getattr(s, "motion", None) or []) or None,
+                "depth": None,
+                "persistence": float(getattr(s, "salience", 0.0) or 0.0),
+                "agency": float(getattr(s, "agency", 0.0) or 0.0),
+                "kind_hint": str(getattr(s, "kind_hint", "object")),
+                "confidence": float(getattr(s, "confidence", 0.0) or 0.0),
+                "presence": float(getattr(s, "salience", 0.0) or 0.0),
+                "spread": None,
+                "mask_entropy": None,
+                "flow": list(getattr(s, "motion", None) or []) or None,
+                "local_motion": float(getattr(s, "local_motion", 0.0) or 0.0),
+                "retina_contrast": float(getattr(s, "retina_contrast", 0.0) or 0.0),
+                "looming": float(getattr(s, "looming", 0.0) or 0.0),
+                "property_evidence": dict(getattr(s, "property_evidence", {}) or {}),
+            }
+        )
+    return out
 
 
 def encode_observations(bundle: NeuralBundle, observations: list[dict]) -> torch.Tensor | None:
@@ -447,6 +513,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     z5_t = out["z5"]
     l_fwd = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_fwd_tactile = torch.zeros((), device=z0.device, dtype=z0.dtype)
+    l_fwd_effort = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_fwd_intero = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_pref_intero = torch.zeros((), device=z0.device, dtype=z0.dtype)
     # Successor-features value shaping (Layer-2). sf_value_last: scalar value of the
@@ -499,6 +566,30 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                     pred_prev_t, t_target.detach()
                 )
             loss = loss + C.ai_tactile_fwd_weight() * l_fwd_tactile
+
+        # Effort/body-map active inference: predict localized effort, strain,
+        # fatigue and pain caused by the previous action. A small detached cost
+        # term gives the policy pressure toward efficient movement without making
+        # stillness the dominant objective.
+        if getattr(bundle.stack, "has_effort_model", False):
+            effort_dim = int(C.EFFORT_PRED_DIM)
+            e_target = torch.as_tensor(
+                [controllable_effort_vector(latest, effort_dim)],
+                device=z0.device,
+                dtype=z0.dtype,
+            )
+            if bundle.prev_state is not None and bundle.prev_motor is not None:
+                pred_prev_e = bundle.stack.forward_predict_effort(
+                    bundle.prev_state, bundle.prev_motor, detach_params=False
+                )
+                l_fwd_effort = torch.nn.functional.mse_loss(
+                    pred_prev_e, e_target.detach()
+                )
+            loss = loss + C.ai_effort_fwd_weight() * l_fwd_effort
+            pred_effort_pref = bundle.stack.forward_predict_effort(
+                z5_t, motor_u, detach_params=True
+            )
+            loss = loss + C.ai_effort_cost_weight() * pred_effort_pref.pow(2).mean()
 
         # Interoceptive active inference: the root survival drive. The world model
         # learns reservoir dynamics from realized transitions; the policy is pulled
@@ -627,17 +718,39 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         with torch.no_grad():
             slots_np = slot_out["slots"][0].detach().float().cpu().numpy()
             presence_np = slot_out["presence"][0].detach().float().cpu().numpy()
-            centroids = bundle.stack.slots_module.centroids(slot_out["masks"])
+            # Use slot-attention routing for object localization. Decoder alpha
+            # masks can start uniform, which collapses every centroid to frame
+            # center and poisons object memory.
+            centroids = bundle.stack.slots_module.centroids(slot_out["attn"])
             centroids_np = centroids[0].detach().float().cpu().numpy()
+            mask_entropies = _slot_mask_entropies(slot_out["attn"])
+        div_loss, ent_loss, sep_loss = _slot_object_losses(slot_out["attn"], centroids)
+        loss = loss + C.slot_diversity_weight() * div_loss
+        loss = loss + C.slot_entropy_weight() * ent_loss
+        loss = loss + C.slot_spatial_separation_weight() * sep_loss
         proposals = extract_proposals(
             slots_np, presence_np, centroids_np, threshold=C.slot_presence_threshold()
         )
+        for p in proposals:
+            idx = int(p.get("idx", -1))
+            if 0 <= idx < len(mask_entropies):
+                p["mask_entropy"] = mask_entropies[idx]
+        organ = getattr(bundle, "_perception_organ", None)
+        if organ is None:
+            organ = PerceptionOrgan()
+            bundle._perception_organ = organ
+        proposals, organ_diag, ret_map = organ.process(
+            latest,
+            proposals,
+            prev_motor=bundle.prev_motor,
+        )
+        object_files = object_files_from_proposals(proposals)
         wm_disc = getattr(ctx.perceptual, "working_memory", None)
         events = (latest or {}).get("events") if isinstance(latest, dict) else None
         matched = []
         if wm_disc is not None:
             matched = wm_disc.integrate_discovered(
-                proposals,
+                [f.to_working_memory_proposal() for f in object_files],
                 events=events if isinstance(events, list) else [],
                 appearance_weight=C.assoc_appearance_weight(),
                 match_threshold=C.assoc_match_threshold(),
@@ -646,6 +759,33 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                     ctx.ltm_graph.match if getattr(ctx, "ltm_graph", None) is not None else None
                 ),
             )
+        stable_count = sum(
+            1
+            for s in getattr(wm_disc, "slots", {}).values()
+            if int(getattr(s, "seen_count", 0)) >= C.ltm_consolidate_min_seen()
+        ) if wm_disc is not None else 0
+        health = evaluate_discovery_health(
+            object_files,
+            tracked_count=len(getattr(wm_disc, "slots", {}) or {}) if wm_disc is not None else 0,
+            stable_tracked_objects=stable_count,
+        )
+        if hasattr(ctx.perceptual, "object_files"):
+            ctx.perceptual.object_files = (
+                _stable_object_file_snapshots(wm_disc)
+                if wm_disc is not None
+                else [f.to_dict() for f in object_files]
+            )
+        if hasattr(ctx.perceptual, "discovery_health"):
+            ctx.perceptual.discovery_health = health.to_dict()
+        if hasattr(ctx.perceptual, "ltm_consolidation"):
+            ctx.perceptual.ltm_consolidation = {
+                "status": "not_evaluated",
+                "reason": health.reason,
+            }
+        if hasattr(ctx.perceptual, "perception_organ"):
+            ctx.perceptual.perception_organ = organ_diag
+        if hasattr(ctx.perceptual, "retinotopic_map"):
+            ctx.perceptual.retinotopic_map = ret_map
         # Agency (comparator model): predict each tracked slot's realized image
         # motion from the efference copy vs an efference-blind baseline; the error
         # reduction is the per-slot "this is mine" signal.
@@ -680,7 +820,61 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         discovery_diag = {
             "slots_present": len(proposals),
             "slot_recon_error": round(float(l_slot.detach().cpu().item()), 6),
+            "slot_diversity_loss": round(float(div_loss.detach().cpu().item()), 6),
+            "slot_entropy_loss": round(float(ent_loss.detach().cpu().item()), 6),
+            "slot_spatial_loss": round(float(sep_loss.detach().cpu().item()), 6),
             "discovered_objects": len(getattr(wm_disc, "slots", {}) or {}),
+            "object_files": health.object_files,
+            "stable_tracked_objects": health.stable_tracked_objects,
+            "perception_collapsed": 1.0 if health.collapsed else 0.0,
+            "perception_health": health.status,
+            "perception_health_reason": health.reason,
+            "centroid_spread": health.centroid_spread,
+            "appearance_cosine_mean": health.appearance_cosine_mean,
+            "flow_confidence": health.flow_confidence,
+            "looming_count": health.looming_count,
+            "stuff_count": health.stuff_count,
+            "body_candidate_count": health.body_candidate_count,
+        }
+    elif discovered:
+        health = evaluate_discovery_health([], tracked_count=0, stable_tracked_objects=0)
+        if hasattr(ctx.perceptual, "object_files"):
+            ctx.perceptual.object_files = []
+        if hasattr(ctx.perceptual, "discovery_health"):
+            ctx.perceptual.discovery_health = health.to_dict()
+        if hasattr(ctx.perceptual, "ltm_consolidation"):
+            ctx.perceptual.ltm_consolidation = {
+                "status": "not_evaluated",
+                "reason": health.reason,
+            }
+        if hasattr(ctx.perceptual, "perception_organ"):
+            ctx.perceptual.perception_organ = {
+                "frame_seen": False,
+                "stale_frame": False,
+                "grid_size": 0,
+                "flow_confidence": 0.0,
+                "global_motion": 0.0,
+                "local_motion_max": 0.0,
+                "local_motion_mean": 0.0,
+                "looming_count": 0,
+                "stuff_count": 0,
+                "body_candidate_count": 0,
+                "foreground_count": 0,
+                "checkpoint_status": "no_frame",
+            }
+        discovery_diag = {
+            "slots_present": 0,
+            "discovered_objects": 0,
+            "object_files": 0,
+            "stable_tracked_objects": 0,
+            "perception_collapsed": 0.0,
+            "perception_health": health.status,
+            "perception_health_reason": health.reason,
+            "centroid_spread": 0.0,
+            "flow_confidence": 0.0,
+            "looming_count": 0,
+            "stuff_count": 0,
+            "body_candidate_count": 0,
         }
 
     tb0 = time.perf_counter()
@@ -717,6 +911,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     pc_val = _finite(float(out["pc_loss"].detach().cpu().item()))
     l_fwd_val = _finite(float(l_fwd.detach().cpu().item()))
     tactile_pe_val = _finite(float(l_fwd_tactile.detach().cpu().item()))
+    effort_pe_val = _finite(float(l_fwd_effort.detach().cpu().item()))
     intero_pe_val = _finite(float(l_fwd_intero.detach().cpu().item()))
 
     # Dual-network consolidation: capture the realized transition the live cycle
@@ -739,8 +934,13 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             "prev_motor": bundle.prev_motor.detach().to("cpu"),
             "proprio_target": s_target.detach().to("cpu"),
             "drive_on": bool(drive_on),
-            "salience": float(pc_val + l_fwd_val + intero_pe_val),
+            "salience": float(pc_val + l_fwd_val + tactile_pe_val + effort_pe_val + intero_pe_val),
         }
+        if has_body:
+            transition_payload["effort_now"] = torch.as_tensor(
+                [controllable_effort_vector(latest, int(C.EFFORT_PRED_DIM))],
+                dtype=torch.float32,
+            )
         if drive_on and bundle.prev_intero is not None:
             prev_i_cpu = bundle.prev_intero.detach().to("cpu")
             now_i_cpu = intero_now.detach().to("cpu")
@@ -1247,6 +1447,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         "forward_model_error": round(l_fwd_val, 6),
         "joint_pred_error": ([round(float(x), 6) for x in joint_pred_error] if has_body else None),
         "tactile_pred_error": (round(tactile_pe_val, 6) if has_body else None),
+        "effort_pred_error": (round(effort_pe_val, 6) if has_body else None),
         "assist_gain": round(float(assist_gain), 5),
         "motor_babble_sigma": round(float(babble_sigma), 5),
         "motor_activity_rms": round(motor_rms, 5),

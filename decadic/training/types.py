@@ -96,6 +96,8 @@ class SkillSpec:
     phases: tuple[SkillPhase, ...]
     required_sensors: tuple[str, ...] = ("proprioception", "contacts")
     checkpoint_on_graduate: bool = True
+    caregiver_enabled: bool = False
+    caregiver_threshold: float = 80.0
     warnings: tuple[str, ...] = ()
 
     def as_dict(self, *, source: str = "builtin") -> dict[str, Any]:
@@ -110,6 +112,8 @@ class SkillSpec:
             "builtin": source == "builtin",
             "required_sensors": list(self.required_sensors),
             "checkpoint_on_graduate": self.checkpoint_on_graduate,
+            "caregiver_enabled": self.caregiver_enabled,
+            "caregiver_threshold": self.caregiver_threshold,
             "warnings": list(self.warnings),
             "phases": [
                 {

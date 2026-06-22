@@ -101,7 +101,7 @@ def sample_uploaded_skill(skill_id="mini_recover"):
                 "name": "Assisted Upright",
                 "description": "Collect stable upright samples without manual braces.",
                 "teacher_weight": 0.75,
-                "config": {"viability_mode": "immortal", "motor_babble_sigma": 0.0},
+                "config": {"viability_mode": "metabolic", "motor_babble_sigma": 0.0},
                 "body_commands": ["set_stance:stand", "recenter"],
                 "reset_commands": ["set_stance:stand", "recenter"],
                 "timeout_s": 30.0,
@@ -676,7 +676,8 @@ def test_supervisor_start_applies_phase_and_teacher_metadata(tmp_path, monkeypat
         st = await sup.start("A", "stand_and_recover")
         assert st["state"] == "running"
         assert st["phase_index"] == 0
-        assert agent.configure_calls[0]["viability_mode"] == "immortal"
+        assert agent.configure_calls[0]["viability_mode"] == "metabolic"
+        assert st["caregiver_enabled"] is True
         assert "set_stance:stand" in agent.body_commands
         assert agent.dojo_training["skill_id"] == "stand_and_recover"
         assert agent.dojo_training["demo_weight"] == 1.0
@@ -686,6 +687,129 @@ def test_supervisor_start_applies_phase_and_teacher_metadata(tmp_path, monkeypat
         stopped = await sup.stop()
         assert stopped["state"] == "stopped"
         assert agent.dojo_training is None
+
+    asyncio.run(go())
+
+
+def caregiver_skill() -> SkillSpec:
+    return SkillSpec(
+        skill_id="caregiver_skill",
+        version="1.0",
+        name="Caregiver Skill",
+        description="Exercises caregiver monitor.",
+        target_behavior="Stay alive while training.",
+        teacher="stand_teacher",
+        caregiver_enabled=True,
+        caregiver_threshold=80.0,
+        checkpoint_on_graduate=False,
+        phases=(
+            SkillPhase(
+                index=0,
+                name="Care",
+                description="Needs visible support.",
+                teacher_weight=0.0,
+                gate=SkillGate((Criterion("root_height", ">=", 1.0, "root high", "m"),), min_samples=1),
+                min_dwell_s=0.0,
+                is_terminal=True,
+            ),
+        ),
+    )
+
+
+def test_caregiver_monitor_requests_lowest_reservoir(tmp_path, monkeypatch):
+    monkeypatch.setenv("DECADIC_DOJO_POLL_S", "0.01")
+    agent = FakeAgent()
+    agent.metrics.update(
+        {
+            "hydration": 79.0,
+            "energy": 90.0,
+            "integrity": 95.0,
+            "caregiver_parent_present": True,
+        }
+    )
+    sup = SkillDojoSupervisor(
+        FakeRegistry(agent),
+        backups_dir=tmp_path / "backups",
+        skill_loader=lambda sid: caregiver_skill(),
+    )
+
+    async def go():
+        await sup.start("A", "caregiver_skill")
+        await asyncio.sleep(0.03)
+        st = sup.status()
+        assert "parent_enable" in agent.body_commands
+        assert "parent_request:water" in agent.body_commands
+        assert not any(cmd.startswith("give_") for cmd in agent.body_commands)
+        assert st["caregiver_status"] in {"requested", "refractory"}
+        assert st["caregiver_need"] == "hydration"
+        assert st["state"] == "running"
+        await sup.stop()
+
+    asyncio.run(go())
+
+
+@pytest.mark.parametrize(
+    ("reservoir", "command"),
+    [
+        ("hydration", "parent_request:water"),
+        ("energy", "parent_request:food"),
+        ("integrity", "parent_request:care"),
+    ],
+)
+def test_caregiver_monitor_maps_reservoir_to_parent_request(tmp_path, reservoir, command):
+    agent = FakeAgent()
+    sup = SkillDojoSupervisor(
+        FakeRegistry(agent),
+        backups_dir=tmp_path / "backups",
+        skill_loader=lambda sid: caregiver_skill(),
+    )
+    sup._skill = caregiver_skill()
+    sup._caregiver_enabled = True
+    sup._caregiver_threshold = 80.0
+    sample = {
+        "hydration": 95.0,
+        "energy": 95.0,
+        "integrity": 95.0,
+        "caregiver_parent_present": 1.0,
+        "caregiver_delivery_count": 0.0,
+        "caregiver_status": "",
+    }
+    sample[reservoir] = 79.0
+
+    sup._update_caregiver(agent, sample)
+
+    assert command in agent.body_commands
+    assert "parent_enable" in agent.body_commands
+    assert not any(cmd.startswith("give_") for cmd in agent.body_commands)
+
+
+def test_caregiver_monitor_reports_missing_parent_and_blocks_graduation(tmp_path, monkeypatch):
+    monkeypatch.setenv("DECADIC_DOJO_POLL_S", "0.01")
+    agent = FakeAgent()
+    agent.metrics.update(
+        {
+            "hydration": 79.0,
+            "energy": 90.0,
+            "integrity": 95.0,
+            "caregiver_parent_present": False,
+            "caregiver_missing_parent": True,
+        }
+    )
+    sup = SkillDojoSupervisor(
+        FakeRegistry(agent),
+        backups_dir=tmp_path / "backups",
+        skill_loader=lambda sid: caregiver_skill(),
+    )
+
+    async def go():
+        await sup.start("A", "caregiver_skill")
+        await asyncio.sleep(0.03)
+        st = sup.status()
+        assert st["caregiver_missing_parent"] is True
+        assert st["caregiver_status"] == "caregiver_missing_parent"
+        assert st["state"] == "running"
+        assert "parent_request:water" not in agent.body_commands
+        await sup.stop()
 
     asyncio.run(go())
 

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from decadic.state.body_map import normalize_body_map, normalize_effort
 from decadic.state.working_memory import WorkingMemory
 from decadic.state.world_graph import (
     edges_from_nodes,
@@ -64,6 +65,8 @@ class PerceptualState:
     proprio_velocity: list[float] | None = None
     proprio_joints: list[float] | None = None
     proprio_contacts: list[float] | None = None
+    proprio_body_map: dict[str, Any] | None = None
+    proprio_effort: dict[str, Any] | None = None
     current_action_observed: str | None = None
     recent_events: list[dict[str, Any]] = field(default_factory=list)
     recent_events_cap: int = 32
@@ -84,6 +87,13 @@ class PerceptualState:
     # (never fed to cognition) + a running discovery-quality evaluator.
     oracle_truth: list[dict[str, Any]] = field(default_factory=list)
     discovery_eval: "DiscoveryEvaluator" = field(default_factory=_new_discovery_evaluator)
+    object_files: list[dict[str, Any]] = field(default_factory=list)
+    discovery_health: dict[str, Any] | None = None
+    perception_organ: dict[str, Any] | None = None
+    retinotopic_map: dict[str, Any] | None = None
+    ltm_consolidation: dict[str, Any] = field(
+        default_factory=lambda: {"status": "not_evaluated", "reason": "not_evaluated"}
+    )
 
     def integrate_observation(self, obs: dict[str, Any]) -> None:
         """Incorporate one validated observation dict (JSON-shaped)."""
@@ -108,6 +118,10 @@ class PerceptualState:
             self.proprio_joints = [float(x) for x in prop["joints"]]
         if isinstance(prop.get("contacts"), list):
             self.proprio_contacts = [float(x) for x in prop["contacts"]]
+        if "body_map" in prop:
+            self.proprio_body_map = normalize_body_map(prop.get("body_map"))
+        if "effort" in prop:
+            self.proprio_effort = normalize_effort(prop.get("effort"))
         if "current_action" in prop:
             self.current_action_observed = str(prop["current_action"])
         events = obs.get("events") or []
@@ -215,6 +229,8 @@ class PerceptualState:
             "proprio_velocity": self.proprio_velocity,
             "proprio_joints": self.proprio_joints,
             "proprio_contacts": self.proprio_contacts,
+            "proprio_body_map": dict(self.proprio_body_map) if self.proprio_body_map else None,
+            "proprio_effort": dict(self.proprio_effort) if self.proprio_effort else None,
             "current_action_observed": self.current_action_observed,
             "recent_events": list(self.recent_events),
             "fused_stub_emb": self.fused_stub_emb.tolist(),
@@ -226,6 +242,11 @@ class PerceptualState:
                 "edges": list(self.egocentric_edges),
             },
             "working_memory": self.working_memory.snapshot(),
+            "object_files": list(self.object_files),
+            "discovery_health": dict(self.discovery_health) if self.discovery_health else None,
+            "perception_organ": dict(self.perception_organ) if self.perception_organ else None,
+            "retinotopic_map": dict(self.retinotopic_map) if self.retinotopic_map else None,
+            "ltm_consolidation": dict(self.ltm_consolidation),
             "perception_mode": self.perception_mode,
             "discovery": (
                 self.discovery_eval.snapshot()

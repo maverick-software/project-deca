@@ -2,6 +2,8 @@
 
 import os
 
+from decadic.state.body_map import EFFORT_VECTOR_DIM
+
 STATE_OF_MIND_DIM = 64
 EMOTION_DIM = 32
 NARRATIVE_EMB_DIM = 48
@@ -468,6 +470,17 @@ DEFAULT_DRIVE_PRIORITY_GAIN = 2.0  # how strongly deprivation severity up-weight
 # push off. Touch has no innate setpoint, so this is PE-only (no preference term).
 TACTILE_PRED_DIM = 16  # per-part loads the tactile world model predicts (= touch sensor count)
 DEFAULT_AI_TACTILE_FWD_WEIGHT = 1.0  # weight of the tactile forward-model PE loss
+EFFORT_PRED_DIM = EFFORT_VECTOR_DIM  # body-map effort/work/strain/fatigue/pain + aggregate totals
+DEFAULT_AI_EFFORT_FWD_WEIGHT = 0.5
+DEFAULT_AI_EFFORT_COST_WEIGHT = 0.02
+DEFAULT_EFFORT_DRAIN_ENABLED = True
+DEFAULT_EFFORT_ENERGY_SCALE = 0.01
+DEFAULT_WORK_ENERGY_SCALE = 0.02
+DEFAULT_FATIGUE_RECOVERY_S = 8.0
+DEFAULT_FATIGUE_PAIN_GAIN = 0.35
+DEFAULT_STRAIN_PAIN_GAIN = 0.25
+DEFAULT_EFFORT_MAX_ENERGY_DRAIN_PER_OBS = 0.08
+DEFAULT_EFFORT_DRAIN_GRACE_MODE = "dojo_or_braced"
 
 
 def drive_comfort_setpoint() -> float:
@@ -496,6 +509,14 @@ def ai_tactile_fwd_weight() -> float:
     return max(0.0, float(os.environ.get("DECADIC_AI_TACTILE_FWD_WEIGHT", str(DEFAULT_AI_TACTILE_FWD_WEIGHT))))
 
 
+def ai_effort_fwd_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_AI_EFFORT_FWD_WEIGHT", str(DEFAULT_AI_EFFORT_FWD_WEIGHT))))
+
+
+def ai_effort_cost_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_AI_EFFORT_COST_WEIGHT", str(DEFAULT_AI_EFFORT_COST_WEIGHT))))
+
+
 def ai_intero_pref_weight() -> float:
     return max(0.0, float(os.environ.get("DECADIC_AI_INTERO_PREF_WEIGHT", str(DEFAULT_AI_INTERO_PREF_WEIGHT))))
 
@@ -505,6 +526,47 @@ def drive_priority_gain() -> float:
     return max(
         0.0, float(os.environ.get("DECADIC_DRIVE_PRIORITY_GAIN", str(DEFAULT_DRIVE_PRIORITY_GAIN)))
     )
+
+
+def effort_drain_enabled() -> bool:
+    return _env_bool("DECADIC_EFFORT_DRAIN_ENABLED", DEFAULT_EFFORT_DRAIN_ENABLED)
+
+
+def effort_energy_scale() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_EFFORT_ENERGY_SCALE", str(DEFAULT_EFFORT_ENERGY_SCALE))))
+
+
+def work_energy_scale() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_WORK_ENERGY_SCALE", str(DEFAULT_WORK_ENERGY_SCALE))))
+
+
+def fatigue_recovery_s() -> float:
+    return max(1e-6, float(os.environ.get("DECADIC_FATIGUE_RECOVERY_S", str(DEFAULT_FATIGUE_RECOVERY_S))))
+
+
+def fatigue_pain_gain() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_FATIGUE_PAIN_GAIN", str(DEFAULT_FATIGUE_PAIN_GAIN))))
+
+
+def strain_pain_gain() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_STRAIN_PAIN_GAIN", str(DEFAULT_STRAIN_PAIN_GAIN))))
+
+
+def effort_max_energy_drain_per_obs() -> float:
+    return max(
+        0.0,
+        float(
+            os.environ.get(
+                "DECADIC_EFFORT_MAX_ENERGY_DRAIN_PER_OBS",
+                str(DEFAULT_EFFORT_MAX_ENERGY_DRAIN_PER_OBS),
+            )
+        ),
+    )
+
+
+def effort_drain_grace_mode() -> str:
+    mode = os.environ.get("DECADIC_EFFORT_DRAIN_GRACE_MODE", DEFAULT_EFFORT_DRAIN_GRACE_MODE).strip().lower()
+    return mode if mode in {"none", "dojo_or_braced"} else DEFAULT_EFFORT_DRAIN_GRACE_MODE
 
 
 # --- Cycle affect: real predictive-coding surprise + homeostatic relief ------
@@ -816,6 +878,9 @@ DEFAULT_SLOT_DIM = 64  # per-slot latent width
 DEFAULT_SLOT_ITERS = 3  # slot-attention refinement iterations per frame
 DEFAULT_SLOT_PRESENCE_THRESHOLD = 0.12  # min presence for a slot to become a proposal
 DEFAULT_SLOT_RECON_WEIGHT = 0.5  # weight of the self-supervised feature-reconstruction loss
+DEFAULT_SLOT_DIVERSITY_WEIGHT = 0.02  # discourages multiple slots from claiming one region
+DEFAULT_SLOT_ENTROPY_WEIGHT = 0.01  # encourages confident per-patch slot assignment
+DEFAULT_SLOT_SPATIAL_SEPARATION_WEIGHT = 0.02  # discourages center-collapsed centroids
 
 # Data association of discovered proposals into working-memory object files.
 DEFAULT_ASSOC_APPEARANCE_WEIGHT = 0.6  # appearance-cosine share of the match score (vs position)
@@ -883,6 +948,26 @@ def slot_presence_threshold() -> float:
     return min(
         1.0,
         max(0.0, float(os.environ.get("DECADIC_SLOT_PRESENCE_THRESHOLD", str(DEFAULT_SLOT_PRESENCE_THRESHOLD)))),
+    )
+
+
+def slot_diversity_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_SLOT_DIVERSITY_WEIGHT", str(DEFAULT_SLOT_DIVERSITY_WEIGHT))))
+
+
+def slot_entropy_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_SLOT_ENTROPY_WEIGHT", str(DEFAULT_SLOT_ENTROPY_WEIGHT))))
+
+
+def slot_spatial_separation_weight() -> float:
+    return max(
+        0.0,
+        float(
+            os.environ.get(
+                "DECADIC_SLOT_SPATIAL_SEPARATION_WEIGHT",
+                str(DEFAULT_SLOT_SPATIAL_SEPARATION_WEIGHT),
+            )
+        ),
     )
 
 

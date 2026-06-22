@@ -216,6 +216,8 @@ def parse_skill(raw: dict[str, Any]) -> SkillSpec:
         teacher=teacher,
         required_sensors=tuple(str(x) for x in raw.get("required_sensors", ["proprioception", "contacts"])),
         checkpoint_on_graduate=bool(raw.get("checkpoint_on_graduate", True)),
+        caregiver_enabled=bool(raw.get("caregiver_enabled", False)),
+        caregiver_threshold=max(1.0, min(100.0, float(raw.get("caregiver_threshold", 80.0)))),
         warnings=tuple(str(x) for x in warnings if str(x).strip()),
         phases=tuple(phases),
     )

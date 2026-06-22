@@ -69,6 +69,12 @@ class Transition:
     drive_on: bool = False
     prev_intero: Any | None = None
     intero_now: Any | None = None
+    prev_effort: Any | None = None
+    effort_now: Any | None = None
+    prev_body_pain: Any | None = None
+    body_pain_now: Any | None = None
+    effort_cost: float = 0.0
+    fatigue_pain: float = 0.0
     salience: float = 0.0
     # --- episodic credit assignment (additive; defaults keep old behavior) ---
     feat: Any | None = None

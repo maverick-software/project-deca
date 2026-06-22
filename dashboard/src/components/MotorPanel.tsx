@@ -42,6 +42,39 @@ function metric(value: number | undefined | null, digits = 3): string {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "-";
 }
 
+function BodyMapMini(props: { metrics: Metrics | null }) {
+  const bm = props.metrics?.body_map;
+  const parts = bm?.parts ?? [];
+  const contact = bm?.contact_load ?? [];
+  const pain = bm?.pain ?? [];
+  const fatigue = bm?.fatigue ?? [];
+  const rows = parts
+    .map((part, i) => ({
+      part,
+      contact: contact[i] ?? 0,
+      pain: pain[i] ?? 0,
+      fatigue: fatigue[i] ?? 0,
+    }))
+    .sort((a, b) => Math.max(b.contact, b.pain, b.fatigue) - Math.max(a.contact, a.pain, a.fatigue))
+    .slice(0, 6);
+  if (!rows.length) return null;
+  return (
+    <div className="body-map-mini">
+      {rows.map((r) => {
+        const mag = Math.max(r.contact, r.pain, r.fatigue);
+        return (
+          <div className="body-map-row" key={r.part} title={`${r.part}: contact ${metric(r.contact, 2)}, fatigue ${metric(r.fatigue, 2)}, pain ${metric(r.pain, 2)}`}>
+            <span>{r.part.replaceAll("_", " ")}</span>
+            <div className="body-map-track">
+              <div className="body-map-fill" style={{ width: `${Math.min(1, mag) * 100}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MotorPanel(props: {
   metrics: Metrics | null;
   history: HistorySample[];
@@ -126,6 +159,24 @@ export default function MotorPanel(props: {
           <span className="v">{metric(m?.motor_activity_rms, 3)}</span>
         </div>
       </div>
+
+      <div className="strip-label" style={{ marginTop: 6 }}>
+        <span>
+          Effort / body map
+          <Info tip="Body-localized effort, fatigue, and pain from actuator work and contact. Body part names are sensor addresses; external objects remain anonymous." />
+        </span>
+        <span>{m?.most_pained_part ? `${m.most_pained_part.replaceAll("_", " ")} ${metric(m?.most_pained_part_pain, 2)}` : "no localized pain"}</span>
+      </div>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", margin: "6px 0 4px" }}>
+        <div className="statrow" style={{ gap: 8 }}><span className="k">Effort</span><span className="v">{metric(m?.effort_total, 3)}</span></div>
+        <div className="statrow" style={{ gap: 8 }}><span className="k">Work</span><span className="v">{metric(m?.work_total, 3)}</span></div>
+        <div className="statrow" style={{ gap: 8 }}><span className="k">Fatigue</span><span className="v">{metric(m?.fatigue_total, 3)}</span></div>
+        <div className="statrow" style={{ gap: 8 }}><span className="k">Pain</span><span className="v">{metric(m?.pain_total, 3)}</span></div>
+        <div className="statrow" style={{ gap: 8 }}><span className="k">Energy drain</span><span className="v">{metric(m?.effort_energy_delta, 4)}</span></div>
+        <div className="statrow" style={{ gap: 8 }}><span className="k">Net energy</span><span className="v">{metric(m?.net_energy_return, 4)}</span></div>
+        <div className="statrow" style={{ gap: 8 }}><span className="k">Effort PE</span><span className="v">{metric(m?.effort_pred_error, 4)}</span></div>
+      </div>
+      <BodyMapMini metrics={m} />
 
       <div className="strip-label" style={{ marginTop: 6 }}>
         <span>

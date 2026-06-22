@@ -28,7 +28,11 @@ from decadic.config import (
     consolidation_prune_min_salience,
     damage_grace_floor,
     energy_empty_s,
+    effort_drain_enabled,
+    effort_energy_scale,
+    effort_max_energy_drain_per_obs,
     food_credit,
+    fatigue_pain_gain,
     goal_abandon_cycles,
     goal_max_cycles,
     goal_onset_deficit,
@@ -60,9 +64,11 @@ from decadic.config import (
     sf_gamma,
     sf_lambda,
     stress_gain,
+    strain_pain_gain,
     tombstone_keep,
     viability_mode_default,
     water_credit,
+    work_energy_scale,
 )
 from decadic.consolidation.consolidator import ConsolidationManager
 from decadic.consolidation.landscape import LossLandscapeProbe
@@ -88,6 +94,7 @@ from decadic.perception.integration import PerceptualIntegrator
 from decadic.state.goal_lifecycle import GoalState
 from decadic.state.perceptual_state import PerceptualState
 from decadic.state.state_bus import StateBus
+from decadic.state.body_map import most_pained_part, normalize_body_map, normalize_effort
 from decadic.state.viability import (
     Homeostasis,
     ViabilityState,
@@ -375,6 +382,23 @@ class AgentRuntime:
             # Full-body touch: per-part contact loads (short name -> force/weight),
             # live in all modes for the dashboard contact map.
             "part_loads": {},
+            "body_map": {},
+            "effort": {},
+            "effort_total": 0.0,
+            "work_total": 0.0,
+            "strain_total": 0.0,
+            "fatigue_total": 0.0,
+            "pain_total": 0.0,
+            "support_effort": 0.0,
+            "effort_energy_delta": 0.0,
+            "fatigue_pain": 0.0,
+            "strain_pain": 0.0,
+            "most_pained_part": "",
+            "net_energy_return": 0.0,
+            "effort_pred_error": 0.0,
+            "resource_relief_events": 0,
+            "ltm_property_beliefs": 0,
+            "ltm_avg_property_confidence": 0.0,
             "motor_babble_sigma": 0.0,
             "motor_activity_rms": 0.0,
             "motor_command": [],
@@ -705,6 +729,17 @@ class AgentRuntime:
         self.metrics["stress"] = round(float(self.stress), 4)
         self.metrics["viability_mode"] = self.viability_mode
         self.metrics["time_to_death_s"] = self._time_to_death_s()
+        if self.ltm_graph is not None:
+            try:
+                stats = self.ltm_graph.belief_stats()
+                self.metrics["ltm_property_beliefs"] = int(
+                    stats.get("total_property_beliefs", 0)
+                )
+                self.metrics["ltm_avg_property_confidence"] = float(
+                    stats.get("avg_property_confidence", 0.0)
+                )
+            except Exception:
+                pass
 
     def _capture_locomotion_telemetry(self, obs: dict[str, Any]) -> None:
         """Mirror the body's joint-brace signals into agent metrics.
@@ -731,6 +766,7 @@ class AgentRuntime:
             "teacher_target_drop_m",
             "teacher_height_error_m",
             "teacher_vertical_velocity",
+            "caregiver_delivery_count",
         ):
             value = body.get(key)
             if value is not None:
@@ -741,6 +777,22 @@ class AgentRuntime:
         teacher_support_mode = body.get("teacher_support_mode")
         if teacher_support_mode is not None:
             self.metrics["teacher_support_mode"] = str(teacher_support_mode)
+        for key in (
+            "caregiver_status",
+            "caregiver_request_kind",
+            "caregiver_last_offer_item",
+        ):
+            value = body.get(key)
+            if value is not None:
+                self.metrics[key] = str(value)
+        for key in ("caregiver_parent_present", "caregiver_pending_request"):
+            value = body.get(key)
+            if value is not None:
+                self.metrics[key] = bool(value)
+        if "caregiver_parent_present" in body:
+            self.metrics["caregiver_missing_parent"] = not bool(
+                body.get("caregiver_parent_present")
+            )
         rom_frac = body.get("rom_frac")
         if isinstance(rom_frac, list):
             self.metrics["joint_rom"] = [float(v) for v in rom_frac]
@@ -763,6 +815,24 @@ class AgentRuntime:
             self.metrics["part_loads"] = {
                 str(k): float(v) for k, v in part_loads.items()
             }
+        prop = obs.get("proprioception") if isinstance(obs, dict) else None
+        if isinstance(prop, dict):
+            body_map = normalize_body_map(prop.get("body_map"))
+            effort = normalize_effort(prop.get("effort"))
+            self.metrics["body_map"] = body_map
+            self.metrics["effort"] = effort
+            for key in (
+                "effort_total",
+                "work_total",
+                "strain_total",
+                "fatigue_total",
+                "pain_total",
+                "support_effort",
+            ):
+                self.metrics[key] = float(effort.get(key, 0.0) or 0.0)
+            part, pain = most_pained_part(body_map)
+            self.metrics["most_pained_part"] = part
+            self.metrics["most_pained_part_pain"] = round(float(pain), 5)
         self._capture_gait_and_motion(obs, part_loads)
 
     def _capture_gait_and_motion(
@@ -1440,6 +1510,7 @@ class AgentRuntime:
         for key in (
             "forward_model_error",
             "tactile_pred_error",
+            "effort_pred_error",
             "assist_gain",
             "motor_babble_sigma",
             "motor_activity_rms",
@@ -1845,6 +1916,24 @@ class AgentRuntime:
         energy_gain = effects["energy_gain"]
         hydration_gain = effects["hydration_gain"]
         threat = effects["stress"]
+        prop = obs.get("proprioception") if isinstance(obs, dict) else None
+        effort = normalize_effort(prop.get("effort") if isinstance(prop, dict) else None)
+        body_map = normalize_body_map(prop.get("body_map") if isinstance(prop, dict) else None)
+        effort_cost = 0.0
+        fatigue_pain = 0.0
+        strain_pain = 0.0
+        if effort_drain_enabled():
+            effort_cost = (
+                float(effort.get("effort_total", 0.0) or 0.0) * effort_energy_scale()
+                + float(effort.get("work_total", 0.0) or 0.0) * work_energy_scale()
+            )
+            effort_cost = min(effort_cost, effort_max_energy_drain_per_obs())
+            fatigue_pain = min(
+                1.0, float(effort.get("fatigue_total", 0.0) or 0.0) * fatigue_pain_gain()
+            )
+            strain_pain = min(
+                1.0, float(effort.get("strain_total", 0.0) or 0.0) * strain_pain_gain()
+            )
 
         # Decode the camera frame + audio into encoder-ready tensors ONCE here, OFF
         # the cognitive lock. run_neural_cycle then reuses the stashed tensors instead
@@ -1932,6 +2021,25 @@ class AgentRuntime:
                     )
             if metabolic:
                 self.viability.value = self.homeostasis.viability
+            if metabolic and effort_cost > 0.0:
+                self.homeostasis.apply_reservoir_deltas(energy=-effort_cost)
+                pain, pleasure = viability_delta_to_signals(-effort_cost)
+                localized = min(1.0, pain + fatigue_pain + strain_pain)
+                self.state_bus.emotion_physio = apply_pain_pleasure_to_B(
+                    self.state_bus.emotion_physio, localized, pleasure
+                )
+                self.state_bus.pain_scalar = ema_affect(
+                    self.state_bus.pain_scalar, localized, retain=0.95
+                )
+                self.viability.value = self.homeostasis.viability
+            self.metrics["effort_energy_delta"] = round(-effort_cost if metabolic else 0.0, 6)
+            self.metrics["fatigue_pain"] = round(float(fatigue_pain), 6)
+            self.metrics["strain_pain"] = round(float(strain_pain), 6)
+            self.metrics["net_energy_return"] = round(float(energy_gain - (effort_cost if metabolic else 0.0)), 6)
+            if energy_gain > 0.0 or hydration_gain > 0.0:
+                self.metrics["resource_relief_events"] = int(
+                    self.metrics.get("resource_relief_events", 0)
+                ) + 1
             self._refresh_homeostasis_metrics()
             self._last_observation = dict(obs)
             self._obs_buffer.append(dict(obs))

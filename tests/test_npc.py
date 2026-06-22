@@ -194,6 +194,26 @@ def test_parent_delivery_is_need_threshold_gated():
         sim.close()
 
 
+def test_parent_explicit_request_selects_visible_gift():
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, elements=["food", "water", "npc"])
+    try:
+        assert sim._request_parent("water") is True
+        assert sim._npc_item == "water"
+        assert sim._npc_requested_item == "water"
+        assert sim._npc_phase == "pickup"
+        assert sim._caregiver_status() == "requested"
+
+        sim._agent_reservoirs = {"hydration": 0.95, "energy": 0.4, "integrity": 0.3}
+        assert sim._request_parent("care") is True
+        assert sim._npc_item == "food"
+        assert sim._npc_requested_item == "food"
+        assert sim._npc_request_kind == "care"
+    finally:
+        sim.close()
+
+
 def test_npc_walks_and_stays_upright():
     """The parent walks (alternating legs) toward its target and stays upright."""
     import numpy as np

@@ -21,6 +21,12 @@ gates, attempt resets, and checkpoints.
   value as replay `demo_weight`.
 - Failed attempts reset the body/scaffold only. They do not wipe neural weights,
   memory, replay, or the agent's learned skill state.
+- Embodied skill training keeps survival drive active. Dojo phases should use
+  `viability_mode="metabolic"` unless a non-embodied diagnostic explicitly
+  documents otherwise.
+- Caregiver support is environmental, not reward shaping. When enabled, the dojo
+  may request the visible parent NPC to deliver food/water/care objects, but it
+  must not directly credit reservoirs or inject semantic labels into cognition.
 - Final graduation must be autonomous: adaptive teacher assist must be `0`, and
   gates must pass without teacher override.
 
@@ -74,6 +80,8 @@ Use this sequence for every new skill.
 7. **Evaluation**
    - Run final gates with teacher weight `0`.
    - Require enough samples plus minimum dwell.
+   - For embodied skills with caregiver enabled, require no acute caregiver
+     request pending and no missing-parent condition before graduation.
    - Checkpoint and write a skill report on graduation.
 
 8. **Library Maintenance**
@@ -144,6 +152,31 @@ V1 keeps this consolidation-only. The teacher does not directly override live
 actions. A future live-blending option would need explicit intervention logging
 and must not count as autonomous graduation.
 
+## Caregiver Survival Scaffold
+
+Embodied dojo skills may set `caregiver_enabled=true` and
+`caregiver_threshold=80.0`. The supervisor then runs an always-on monitor
+alongside phase progression:
+
+- It samples `hydration`, `energy`, and `integrity`.
+- If any reservoir drops below threshold, the lowest reservoir determines the
+  request: hydration -> `parent_request:water`, energy -> `parent_request:food`,
+  integrity -> `parent_request:care`.
+- The request is queued as a body/environment command only. It does not change
+  cognition, reward terms, replay labels, teacher targets, or object semantics.
+- The MuJoCo parent must visibly approach, carry, and drop the existing gift
+  object. Relief happens only when the agent perceives/contacts/consumes the
+  object and the normal homeostasis path fires.
+- A refractory prevents request spam.
+- If the active environment lacks the parent NPC, status reports
+  `caregiver_missing_parent` and embodied graduation is blocked.
+
+Status fields are exposed through `/dojo/status`: `caregiver_enabled`,
+`caregiver_status`, `caregiver_need`, `caregiver_trigger_reservoir`,
+`caregiver_request_kind`, `caregiver_last_offer_cycle`,
+`caregiver_last_offer_item`, `caregiver_missing_parent`,
+`caregiver_refractory_s`, and `caregiver_delivery_count`.
+
 ## Uploadable Skill JSON
 
 Uploaded skills may use existing teachers and a restricted set of safe scenario
@@ -160,6 +193,8 @@ first, then referenced from uploaded JSON.
   "teacher": "stand_teacher",
   "required_sensors": ["proprioception", "contacts"],
   "checkpoint_on_graduate": true,
+  "caregiver_enabled": true,
+  "caregiver_threshold": 80.0,
   "phases": [
     {
       "index": 0,
@@ -186,7 +221,7 @@ first, then referenced from uploaded JSON.
         },
         "zero_required_for_graduation": false
       },
-      "config": { "viability_mode": "immortal", "motor_babble_sigma": 0.0 },
+      "config": { "viability_mode": "metabolic", "motor_babble_sigma": 0.0 },
       "body_commands": ["set_stance:stand", "recenter"],
       "reset_commands": ["set_stance:stand", "recenter"],
       "timeout_s": 90,
@@ -241,7 +276,8 @@ API endpoints live under `/dojo/*`.
   `auto_retry`, `max_attempts`, and `timeout_multiplier` overrides.
 - `GET /dojo/status`: current run state, phase, gate, failure marker, attempt
   count, timeout, retry policy, adaptive teacher assist/range/rates/reason,
-  teacher origin, manual scaffold flag, report path, and history.
+  teacher origin, caregiver status, reservoir levels, manual scaffold flag,
+  report path, and history.
 - `POST /dojo/pause`, `/dojo/resume`, `/dojo/stop`: lifecycle controls.
 - `POST /dojo/phase`: manual phase jump for experiments.
 
@@ -249,7 +285,7 @@ The dashboard Skill Dojo panel supports built-in selection, JSON upload/delete,
 auto-retry controls, max-attempt and timeout overrides, start/pause/resume/stop,
 manual phase jumps, live gates, failure reason, attempt countdown, and report-path
 visibility. During a run it shows a live teacher-assist meter and the reason help
-is rising, fading, or staying idle.
+is rising, fading, or staying idle, plus caregiver need/request/delivery state.
 
 ## Stand and Recover V1 Skill Card
 
