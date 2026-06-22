@@ -21,8 +21,14 @@ FAST_PATH_COLLISION_THRESHOLD = 0.35
 DEFAULT_WORKING_MEMORY_SLOTS = 12  # bounded entity slots (Baddeley-style capacity)
 DEFAULT_WM_DECAY = 0.9  # per-integration salience decay → object permanence then fade
 DEFAULT_WM_MIN_SALIENCE = 0.05  # slots below this are dropped from the live graph
-DEFAULT_PARALLEL_SESSIONS = 5  # K: observations encoded per cycle (batched forward)
+DEFAULT_PARALLEL_SESSIONS = 10  # K: perceptual pipeline capacity / batched fallback frames
 MAX_PARALLEL_SESSIONS = 16
+PERCEPTUAL_PROCESSING_PERSISTENT = "persistent_parallel"
+PERCEPTUAL_PROCESSING_BATCHING = "batching_observations"
+PERCEPTUAL_PROCESSING_MODES = {
+    PERCEPTUAL_PROCESSING_PERSISTENT,
+    PERCEPTUAL_PROCESSING_BATCHING,
+}
 DEFAULT_REVIVE_VIABILITY = 100.0  # viability restored by an admin revive
 
 # Pooling of parallel-session encodes into the deliberative pass, and the
@@ -31,6 +37,30 @@ DEFAULT_REVIVE_VIABILITY = 100.0  # viability restored by an admin revive
 DEFAULT_SESSION_RECENCY = 0.7  # gamma: weight decay per frame of age in the pooled percept
 DEFAULT_WM_SCENE_ALPHA = 0.3  # EMA rate of the persisting scene latent (new evidence share)
 DEFAULT_WM_SCENE_BLEND = 0.5  # scene-latent share of the attention vector vs entity hashes
+
+
+def perceptual_processing_mode() -> str:
+    """Runtime scheduling mode for incoming perceptual observations."""
+    explicit = os.environ.get("DECADIC_PERCEPTUAL_PROCESSING_MODE")
+    if explicit:
+        mode = explicit.strip().lower()
+        if mode in PERCEPTUAL_PROCESSING_MODES:
+            return mode
+    flag = os.environ.get("DECADIC_PERSISTENT_PARALLEL_PERCEPTION", "1").strip().lower()
+    if flag in ("0", "false", "no", "off"):
+        return PERCEPTUAL_PROCESSING_BATCHING
+    return PERCEPTUAL_PROCESSING_PERSISTENT
+
+# Persistent, anonymous scene workspace. This is pre-cognitive sensory state: it
+# integrates object files into an egocentric scene model before bounded attention
+# and global-workspace broadcast.
+DEFAULT_SCENE_ENTITY_TTL_CYCLES = 12
+DEFAULT_ATTENTION_FOCUS_CAPACITY = 7
+DEFAULT_SCENE_DYNAMICS_ENABLED = True
+DEFAULT_SCENE_DYNAMICS_WEIGHT = 0.05
+DEFAULT_SCENE_DYNAMICS_MAX_ENTITIES = 12
+DEFAULT_SCENE_DYNAMICS_MATCH_THRESHOLD = 0.35
+DEFAULT_SCENE_DYNAMICS_UNCERTAINTY_WEIGHT = 0.05
 
 # --- Embodied motor learning (active inference) -----------------------------
 # The motor head emits one normalized PD target per actuator; the MuJoCo
@@ -113,6 +143,46 @@ def motor_exploration_sigma(
 
 def ai_fwd_weight() -> float:
     return float(os.environ.get("DECADIC_AI_FWD_WEIGHT", str(DEFAULT_AI_FWD_WEIGHT)))
+
+
+def scene_workspace_enabled() -> bool:
+    return _env_bool("DECADIC_SCENE_WORKSPACE_ENABLED", True)
+
+
+def scene_entity_ttl_cycles() -> int:
+    return max(1, int(os.environ.get("DECADIC_SCENE_ENTITY_TTL_CYCLES", str(DEFAULT_SCENE_ENTITY_TTL_CYCLES))))
+
+
+def scene_relation_enabled() -> bool:
+    return _env_bool("DECADIC_SCENE_RELATION_ENABLED", True)
+
+
+def scene_prediction_enabled() -> bool:
+    return _env_bool("DECADIC_SCENE_PREDICTION_ENABLED", True)
+
+
+def scene_dynamics_enabled() -> bool:
+    return _env_bool("DECADIC_SCENE_DYNAMICS_ENABLED", DEFAULT_SCENE_DYNAMICS_ENABLED)
+
+
+def scene_dynamics_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_SCENE_DYNAMICS_WEIGHT", str(DEFAULT_SCENE_DYNAMICS_WEIGHT))))
+
+
+def scene_dynamics_max_entities() -> int:
+    return max(1, int(os.environ.get("DECADIC_SCENE_DYNAMICS_MAX_ENTITIES", str(DEFAULT_SCENE_DYNAMICS_MAX_ENTITIES))))
+
+
+def scene_dynamics_match_threshold() -> float:
+    return max(0.0, min(1.0, float(os.environ.get("DECADIC_SCENE_DYNAMICS_MATCH_THRESHOLD", str(DEFAULT_SCENE_DYNAMICS_MATCH_THRESHOLD)))))
+
+
+def scene_dynamics_uncertainty_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_SCENE_DYNAMICS_UNCERTAINTY_WEIGHT", str(DEFAULT_SCENE_DYNAMICS_UNCERTAINTY_WEIGHT))))
+
+
+def attention_focus_capacity() -> int:
+    return max(1, int(os.environ.get("DECADIC_ATTENTION_FOCUS_CAPACITY", str(DEFAULT_ATTENTION_FOCUS_CAPACITY))))
 
 
 # --- Joint-brace guidance system (replaces the external support harness) -----

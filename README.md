@@ -2,6 +2,21 @@
 
 Phase **2** cognitive architecture server: FastAPI + WebSocket, State Bus (A–F), **PyTorch** Decadic pipeline (multimodal fusion transformer, risk MLP, narrative encoder–decoder stack, GRU/LSTM, policy head), **predictive coding** losses, frozen **CLIP + Whisper** encoders when `DECADIC_ENCODER_MODE=hf`, a need-gated **curiosity** drive (`decadic/state/curiosity.py`), **dual-network memory consolidation** (`decadic/consolidation/`), a pre-cognitive **perception organ** with anonymous object files and LTM write gates (`decadic/perception/`), reusable **Skill Dojo / Perception Dojo** curricula (`decadic/training/`), and structured logging (`decadic/logging/`).
 
+## Recent implementation snapshot
+
+The current branch includes several major upgrades beyond the original Phase 2 server:
+
+- **Fly/human-inspired perception organ** - live camera frames now produce anonymous object files through retinotopic contrast, local motion, flow, looming, stuff/background, and body-candidate cues before Working Memory or LTM.
+- **Retinotopic bootstrap repair** - if CLIP patch tokens or SlotAttention are not yet producing usable proposals, the perception organ falls back to label-free image-region proposals. This fixes the "camera sees objects but graph/LTM shows 0 objects" starvation path without weakening LTM gates.
+- **Persistent 3D Scene Workspace** - object files feed a persistent egocentric rendered space with visible/occluded entities, spatial relations, focus selection, object permanence, and prediction health. Working Memory is now the small focus cache, not the whole scene.
+- **Persistent Parallel Perceptual Processing** - incoming frames enter a default-on, 10-session perceptual pipeline. Perception can process frames concurrently, but commits them into the persistent scene workspace in timestamp order; Decadic cognition remains one serialized decision loop. The old recent-frame batching path is still available as **Batching Perceptual Observations**.
+- **Optional/default-on scene dynamics** - a trainable perception-side head predicts next anonymous entity state from prior scene state plus efference copy, with constant-velocity fallback when disabled.
+- **Anonymous property-belief LTM** - repeated perceptual evidence strengthens beliefs on one anonymous entity instead of duplicating nodes for the same property. Beliefs track evidence count, confidence, variance/instability, and remain label-free.
+- **Stricter memory write gates** - Stage 10 accepts only stable, confident, non-collapsed object files; bad perception skips permanent writes with explicit reasons.
+- **Skill Dojo and Perception Dojo** - reusable skill specs, adaptive teacher assist, attempt/retry lifecycle, perception-first graduation gates, and a packaged Stand and Recover curriculum.
+- **Dashboard/API diagnostics** - Discovery, Perception, Self-Indexed Graph, LTM, Skill Dojo, and camera panels expose object-file health, scene health, LTM write reasons, property beliefs, flow/looming/stuff/body counts, and live viewer controls.
+- **Runtime/process tooling** - Windows launch/restart scripts, managed environment subprocess control, spectator camera views, hand-feeding/admin resource delivery, NPC village/caregiver scaffolding, saved agents, and Vast.ai deployment support.
+
 ## The cognitive architecture
 
 The server runs the **Decadic Cycle of Expression** — a ten-stage model of how cognition
@@ -134,12 +149,28 @@ Discovered perception now runs through a pre-cognitive **perception organ**
 (`decadic/perception/`) before Working Memory and LTM. The purpose is to give the agent
 a fly/human-inspired sensory substrate without changing the Decadic Cycle itself:
 
-`egocentric camera -> CLIP patch tokens + retinotopic maps -> motion/contrast/body cues -> anonymous object files -> Working Memory -> gated LTM`
+`egocentric camera -> CLIP patch tokens + retinotopic maps + bootstrap regions -> motion/contrast/body cues -> anonymous object files -> Scene Workspace -> Working Memory focus -> gated LTM`
+
+The live discovered-perception path now inserts a persistent **Scene Workspace**
+between object files and cognition:
+
+`anonymous object files -> Scene Workspace -> Working Memory focus cache -> Global Workspace -> Decadic Cycle -> episodic + LTM`
+
+The Scene Workspace keeps an egocentric, label-free scene model across frames:
+visible entities, temporarily occluded entities, stuff/background regions,
+body-part candidates, spatial relations, salience, focus ids, and a lightweight
+constant-velocity scene prediction error. Working Memory is therefore the small
+attention/focus cache, not the whole world model. The Global Workspace receives
+focused coalitions derived from the scene instead of the entire perceptual field.
 
 The perception organ adds:
 
 - **Retinotopic feature maps** that preserve image-space location instead of collapsing
   immediately into one global embedding.
+- **Retinotopic bootstrap proposals** from contrast, brightness discontinuity, and
+  frame-difference motion when learned SlotAttention proposals are absent or immature.
+  This prevents a real camera frame from being treated as "no objects" simply because
+  the slot learner has not yet stabilized.
 - **Contrast, edge, and local motion channels** from the live camera frame.
 - **Frame-difference flow diagnostics** that separate global camera motion from local
   independently moving regions.
@@ -148,6 +179,12 @@ The perception organ adds:
   poison object memory, and visually self-moving regions can become body-part candidates.
 - **Stable anonymous object files** with `object_id`, centroid, appearance, motion, flow,
   contrast, looming, persistence, agency, confidence, and `kind_hint`.
+
+The bootstrap path is deliberately sensory-only. It does not infer names, resource kinds,
+simulator classes, or task labels; it only creates anonymous region candidates so the
+same object-file, scene-workspace, Working Memory, and LTM health gates can decide whether
+the percept is trustworthy. If the frame is blank, uniform, stale, or low confidence, the
+health gate still skips memory writes.
 
 Runtime cognition remains label-free. Live object files may say `object`, `stuff`, or
 `body_part_candidate`, but they must not contain semantic labels such as food, water,
@@ -167,9 +204,27 @@ Perception health is computed every discovered cycle:
 
 Health metrics include centroid spread, appearance diversity, mask entropy/diversity,
 active proposal count, stable tracked object count, flow confidence, looming count,
-stuff count, body-candidate count, and the latest LTM write result. The system treats
-bad perception as a reason to skip permanent memory writes rather than storing corrupted
-object memories.
+stuff count, body-candidate count, bootstrap proposal count, and the latest LTM write
+result. The system treats bad perception as a reason to skip permanent memory writes
+rather than storing corrupted object memories.
+
+Scene diagnostics are exposed on `/agent/{id}/state` and `/agent/{id}/discovery`:
+scene entity count, visible/occluded/stable counts, focus ids, relation count,
+duplicate-identity count, Global Workspace ignition metadata, and scene prediction
+error. The dashboard shows these on the Perception and Discovery panels so a failure
+can be localized to camera/body, object files, scene tracking, focus selection, GWT,
+or LTM consolidation.
+
+Scene prediction has two layers. The Scene Workspace is the persistent rendered
+space: it holds anonymous visible and occluded entities, egocentric position,
+relations, focus candidates, and property-belief evidence. The optional/default-on
+Scene Dynamics head is the predictive stabilizer: in discovered perception it learns
+next-frame anonymous entity UV/relative position, motion, visibility, persistence,
+and uncertainty from prior scene state plus efference copy. The same anonymous matched
+scene features are stored in replay and trained during consolidation when present.
+Disable it with `DECADIC_SCENE_DYNAMICS_ENABLED=0` to fall back to constant-velocity diagnostics.
+The learned head is perception-only; no labels, rewards, or simulator classes enter
+the Decadic stages.
 
 ## Watch it live (body viewer + dashboard)
 
@@ -273,15 +328,16 @@ and **Saved Agents** — most are described in the sections below.
 The **Discovery**, **Self-Indexed Graph**, **Long-Term Memory**, and **Skill Dojo** panels
 surface perception health directly: object-file count, stable tracked count, centroid
 spread, appearance diversity, flow confidence, looming count, stuff count, body-candidate
-count, and the latest LTM accepted/skipped reason. If perception collapses, the dashboard
-shows that as a perception/memory failure instead of making it look like a motor or
-cognition failure.
+count, bootstrap proposal count, scene entity/focus counts, property-belief totals, and
+the latest LTM accepted/skipped reason. If perception collapses or starves before memory,
+the dashboard shows that as a perception/memory failure instead of making it look like a
+motor or cognition failure.
 
 Each neural net has **Start / Stop / Reset** controls in the dashboard topbar, backed by
 `POST /agent/{id}/resume`, `POST /agent/{id}/pause`, and `POST /agent/{id}/reset`:
 
 - **Stop** freezes the cognitive cycle loop — state, weights, and memory are retained,
-  and incoming observations keep updating the perceptual buffer.
+  and incoming observations can still update the perception pipeline / scene workspace.
 - **Start** resumes cycling from exactly where it left off.
 - **Reset** gives the agent a fresh mind: re-initialized neural weights, zeroed State
   Bus / viability / perception, and wiped episodic memory (confirmation required).
@@ -356,7 +412,11 @@ When the adapter runs with `--vision`, it also renders spectator cameras (`track
 `debug_views` field next to the egocentric frame. The server strips `debug_views`
 before cognition — only the egocentric eye is ever encoded into perception — and
 serves them via `GET /agent/{id}/vision?camera=<name>`. The Perception panel has a
-camera dropdown to switch between the brain's eye and the spectator angles.
+camera dropdown to switch between the brain's eye and the spectator angles. If the
+selected camera disappears after an agent/body swap, the UI falls back to an available
+view. The **Live window** button asks the managed environment process to open the native
+MuJoCo viewer on the machine running the body; if no managed body is running, start one
+from the Environment tab or run the adapter with `--view`.
 
 If the body wanders off, **Recenter body** (`POST /agent/{id}/body/recenter`) sends a
 `body_command` over the WebSocket; the adapter teleports the root back to the stage
@@ -534,6 +594,17 @@ Two complementary stores (a Complementary-Learning-Systems framing; see `decadic
 
 Both persist per agent under `DECADIC_DATA_DIR` and are bundled when an agent is saved.
 
+The LTM now stores **anonymous property beliefs** on consolidated entities. When the agent
+sees the same anonymous object again, numeric perceptual evidence such as area, compactness,
+roundness, edge strength, brightness contrast, depth, bearing, local motion, looming, and
+experienced consequence predictors strengthens the existing belief instead of creating a new
+node. Each belief tracks running mean, evidence count, confidence, variance, first/last cycle,
+source, and instability. Semantic keys and simulator labels are stripped; allowed consequence
+beliefs are still anonymous/survival-indexed, for example `predicts_pain`,
+`predicts_integrity_loss`, `predicts_energy_relief`, or localized body-pain predictors.
+The LTM dashboard shows total beliefs, per-node belief chips, confidence, evidence counts,
+and unstable belief counts.
+
 Stage 10 now gates LTM writes on perception health. It accepts stable, confident,
 non-collapsed object files and records a write reason such as:
 
@@ -541,11 +612,13 @@ non-collapsed object files and records a write reason such as:
 - `skipped_no_objects`
 - `skipped_perception_collapsed`
 - `skipped_low_confidence`
+- `skipped_prediction_unstable`
 
 The graph also avoids merging simultaneous distinct object files into the same LTM node
 unless appearance plus spatial/temporal evidence says they are the same tracked entity.
 This is intentionally conservative: a skipped write is preferable to poisoning permanent
-memory with collapsed perception.
+memory with collapsed perception. Fresh objects normally appear in the self-indexed graph
+first; LTM follows only after the configured minimum stable sightings.
 
 ## Discovery API and perception diagnostics
 
@@ -556,11 +629,21 @@ memory with collapsed perception.
 - `ltm_consolidation`
 - `perception_organ`
 - `retinotopic_map`
+- `scene_workspace`
+- `scene_prediction`
 - `discovery`
 
 `GET /agent/{id}/state` also includes the current perception organ diagnostics and
 object-file snapshots. These payloads are diagnostic only; they expose what the sensory
 system produced without feeding semantic labels back into cognition.
+
+The useful debugging read is:
+
+- `perception_organ.frame_seen` — whether a decodable egocentric camera frame reached perception.
+- `perception_organ.bootstrap_proposal_count` — anonymous image-region proposals created before learned slots are reliable.
+- `discovery_health.object_files` — healthy foreground object files after stuff/low-confidence filtering.
+- `discovery_health.reason` and `ltm_consolidation.status` — why LTM accepted or skipped the cycle.
+- `scene_health.entity_count`, `visible_count`, `occluded_count`, and `focus_count` — whether the persistent scene space is tracking entities even when LTM has not written yet.
 
 ## Environments & scenarios
 
@@ -620,6 +703,32 @@ python -m pytest -q
 
 Integration tests disable neural weights (`DECADIC_USE_NEURAL=0`) for speed. `tests/test_neural_cycle.py` exercises the torch path. The whole suite is pinned to `cpu` / `zeros` / `fp32` / synchronous episodic writes (`tests/conftest.py`), so it is byte-identical regardless of the GPU/precision/async knobs below.
 
+For the current perception/memory stack, the focused regression sweep is:
+
+```powershell
+$env:TMP = "$PWD\.pytest_tmp"
+$env:TEMP = $env:TMP
+.\.venv\Scripts\python.exe -m pytest `
+  tests/test_perception_organ.py `
+  tests/test_object_files.py `
+  tests/test_scene_workspace.py `
+  tests/test_property_beliefs.py `
+  tests/test_perception_discovery.py `
+  tests/test_pipeline.py `
+  tests/test_neural_cycle.py `
+  tests/test_scene_dynamics.py `
+  tests/test_working_memory.py `
+  tests/test_ltm_write_behind.py `
+  tests/test_world_graph.py `
+  tests/test_global_workspace.py `
+  tests/test_persistent_mental_image.py -q
+```
+
+That set covers retinotopic bootstrap proposals, object-file health gates, scene tracking,
+anonymous property-belief LTM, the neural cycle, scene dynamics replay fields, write-behind
+LTM, and Global Workspace integration. Setting `TMP`/`TEMP` inside the repo avoids Windows
+temp-folder ACL issues on some machines.
+
 ## Performance / GPU
 
 The `full` preset trains a ~25M-param stack **and** runs frozen CLIP + Whisper **every cycle**. On CPU that is ~1 Hz; on an NVIDIA GPU it is an order of magnitude faster. Cognition is device-aware end to end (the consolidation clone and loss-landscape probe inherit the GPU for free), so the only thing standing between you and a 10–20 Hz cycle is turning the GPU on and trimming a little CPU work.
@@ -642,6 +751,21 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu126  
 
 7. **Less CPU on the lock (always on, no toggle).** Two pure wins run unconditionally: **(a)** logging is non-blocking — the root logger only enqueues to a `QueueHandler`, and a background `QueueListener` owns the stream/rotating-file handlers (same JSON output, same order), so a per-cycle `logger.info` never blocks on a slow console; **(b)** the camera frame is **decoded once** — `predecode` base64-decodes + CLIP/Whisper-preprocesses each frame a single time at observation-arrival (off the cognitive lock) and stashes the CPU tensors on the observation, so the pooled-vision and patch-token paths share one decode instead of three inside the cycle (byte-identical output). Trace/probe file writes likewise leave the cycle via a background JSONL writer (inherits the existing `DECADIC_CYCLE_TRACE_EVERY` / probe-capture gating).
 
+8. **Persistent Parallel Perceptual Processing (default on).** `DECADIC_PARALLEL_SESSIONS`
+   now defaults to `10` and means perception pipeline capacity in the default mode:
+   each incoming frame gets a sequence number and enters a bounded perceptual pipeline.
+   Workers may stage frames concurrently, but commits into the anonymous scene workspace
+   are ordered, so frame `N+1` cannot overwrite the world model before frame `N`.
+   The Decadic cycle remains serialized and samples the latest coherent scene. Set
+   `DECADIC_PERCEPTUAL_PROCESSING_MODE=batching_observations` or
+   `DECADIC_PERSISTENT_PARALLEL_PERCEPTION=0` to restore the legacy behavior where up
+   to `K` recent observations are encoded together and recency-pooled into one cycle.
+   In **Agent Settings → Workspace capacity**, the segmented control switches between
+   **Persistent Parallel Perceptual Processing** and **Batching Perceptual Observations**;
+   the `K` slider is labeled as pipeline sessions or batched frames accordingly, and
+   live readouts show queue depth, in-flight sessions, committed percepts/sec, dropped
+   frames, and scene sample age.
+
 > **Cognition vs. wall clock.** Speeding the cycle from ~1 Hz to 10–20 Hz means the agent *thinks* 10–20× more per real second, while wall-clock-timed processes (metabolic drain, consolidation sync interval, landscape refresh) keep their real-time cadence. The science is unchanged — the agent simply gets far more cognition per unit of the same world time. Adjust the `*_INTERVAL_S` / metabolic constants if you want to preserve the old cognition-to-event ratio.
 
 ## Environment — Phase 1 + Phase 2
@@ -659,6 +783,10 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu126  
 | `DECADIC_BACKUPS_DIR` | Checkpoint JSON + `agent_{id}_brain.pt` |
 | `DECADIC_LOG_DIR` | Rotating JSON logs + optional cycle traces |
 | `DECADIC_CYCLE_INTERVAL_S` | Cycle tick interval |
+| `DECADIC_PARALLEL_SESSIONS` | Perception pipeline capacity in default persistent mode; batched-frame count in legacy batching mode (default `10`, max `16`) |
+| `DECADIC_PERCEPTUAL_PROCESSING_MODE` | `persistent_parallel` (default) or `batching_observations` (legacy recent-frame encode+pool path) |
+| `DECADIC_PERSISTENT_PARALLEL_PERCEPTION` | Boolean alias for the default-on mode (`1` default; set `0` to use `batching_observations` when the explicit mode var is unset) |
+| `DECADIC_SESSION_RECENCY` | Recency-pooling decay used only by `batching_observations` mode (default `0.7`) |
 | `DECADIC_CONSOLIDATION_STUB_INTERVAL_S` | Heartbeat cadence for the consolidation runner when consolidation is OFF (`0` disables) |
 | `DECADIC_CYCLE_TRACE_EVERY` | Cycle trace JSONL every N cycles (`0` off) |
 | `DECADIC_PE_STUB_EMA_ALPHA` | EMA on the prediction-error magnitude surfaced as a metric (`DECADIC_PE_EMA_ALPHA` alias) |
@@ -726,6 +854,16 @@ pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu126  
 | `DECADIC_SLOT_SPATIAL_SEPARATION_WEIGHT` | Discourages center-collapsed object centroids (default `0.02`) |
 | `DECADIC_ASSOC_APPEARANCE_WEIGHT` | Appearance-vs-position share of working-memory object-file matching (default `0.6`) |
 | `DECADIC_ASSOC_MATCH_THRESHOLD` | Minimum association score to bind a proposal to an existing object file (default `0.35`) |
+| `DECADIC_SCENE_WORKSPACE_ENABLED` | Persistent anonymous scene workspace between object files and Working Memory focus (default `1`) |
+| `DECADIC_SCENE_ENTITY_TTL_CYCLES` | Cycles an occluded scene entity persists before expiring (default `12`) |
+| `DECADIC_SCENE_RELATION_ENABLED` | Anonymous scene relation extraction (`near`, `left_of`, `co_visible`, etc.; default `1`) |
+| `DECADIC_SCENE_PREDICTION_ENABLED` | Expose scene prediction-error diagnostics from constant-velocity entity tracking (default `1`) |
+| `DECADIC_SCENE_DYNAMICS_ENABLED` | Trainable anonymous scene-dynamics head for next-entity prediction in discovered perception (default `1`; set `0` for constant-velocity fallback) |
+| `DECADIC_SCENE_DYNAMICS_WEIGHT` | Live self-supervised scene-dynamics loss weight (default `0.05`) |
+| `DECADIC_SCENE_DYNAMICS_MAX_ENTITIES` | Max scene entities predicted/replayed per cycle (default `12`) |
+| `DECADIC_SCENE_DYNAMICS_MATCH_THRESHOLD` | Prediction-position confidence threshold for prediction-assisted re-identification (default `0.35`) |
+| `DECADIC_SCENE_DYNAMICS_UNCERTAINTY_WEIGHT` | Uncertainty calibration term weight inside the scene-dynamics loss (default `0.05`) |
+| `DECADIC_ATTENTION_FOCUS_CAPACITY` | Max scene entities selected into the focus cache per cycle (default `7`) |
 | `DECADIC_LTM_MATCH_THRESHOLD` | Appearance threshold for LTM re-identification (default `0.6`) |
 | `DECADIC_LTM_MIN_SEEN` | Cycles an object file must persist before LTM consolidation can accept it (default `2`) |
 | `DECADIC_LTM_SNAPSHOT_LIMIT` | Max LTM nodes returned to dashboard snapshots; the graph itself remains unbounded (default `64`) |

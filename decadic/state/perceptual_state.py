@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from decadic import config as C
 from decadic.state.body_map import normalize_body_map, normalize_effort
 from decadic.state.working_memory import WorkingMemory
 from decadic.state.world_graph import (
@@ -19,6 +20,7 @@ from decadic.state.world_graph import (
 
 if TYPE_CHECKING:
     from decadic.perception.discovery_metrics import DiscoveryEvaluator
+    from decadic.perception.scene_workspace import SceneWorkspace
 
 
 def _new_discovery_evaluator() -> "DiscoveryEvaluator":
@@ -27,6 +29,16 @@ def _new_discovery_evaluator() -> "DiscoveryEvaluator":
     from decadic.perception.discovery_metrics import DiscoveryEvaluator
 
     return DiscoveryEvaluator()
+
+
+def _new_scene_workspace() -> "SceneWorkspace":
+    # Lazy import avoids a package cycle:
+    # perceptual_state -> decadic.perception.scene_workspace would execute
+    # decadic.perception.__init__, which imports the integrator, which imports
+    # perceptual_state.
+    from decadic.perception.scene_workspace import SceneWorkspace
+
+    return SceneWorkspace()
 
 
 def _utc_now_iso() -> str:
@@ -88,6 +100,11 @@ class PerceptualState:
     oracle_truth: list[dict[str, Any]] = field(default_factory=list)
     discovery_eval: "DiscoveryEvaluator" = field(default_factory=_new_discovery_evaluator)
     object_files: list[dict[str, Any]] = field(default_factory=list)
+    scene_workspace: "SceneWorkspace" = field(default_factory=_new_scene_workspace)
+    scene_health: dict[str, Any] | None = None
+    focus: dict[str, Any] = field(default_factory=lambda: {"ids": [], "entities": []})
+    workspace_ignition: dict[str, Any] | None = None
+    scene_prediction: dict[str, Any] | None = None
     discovery_health: dict[str, Any] | None = None
     perception_organ: dict[str, Any] | None = None
     retinotopic_map: dict[str, Any] | None = None
@@ -166,6 +183,65 @@ class PerceptualState:
         self.fused_stub_emb = np.tanh(self.fused_stub_emb * 0.95 + 0.05 * noise)
         self.integration_ticks += 1
 
+    def update_scene_workspace(
+        self,
+        *,
+        dynamics_predictions: list[dict[str, Any]] | None = None,
+        dynamics_report: dict[str, Any] | None = None,
+    ) -> None:
+        """Update the persistent anonymous scene model from current object files."""
+        if not C.scene_workspace_enabled():
+            self.scene_health = None
+            self.focus = {"ids": [], "entities": []}
+            self.scene_prediction = None
+            return
+        self.scene_workspace.ttl_cycles = C.scene_entity_ttl_cycles()
+        self.scene_workspace.relation_enabled = C.scene_relation_enabled()
+        self.scene_workspace.update(
+            list(self.object_files),
+            focus_capacity=C.attention_focus_capacity(),
+            predictions=dynamics_predictions,
+            prediction_match_threshold=C.scene_dynamics_match_threshold(),
+        )
+        snap = self.scene_workspace.snapshot()
+        self.scene_health = {
+            "entity_count": snap["entity_count"],
+            "visible_count": snap["visible_count"],
+            "occluded_count": snap["occluded_count"],
+            "stable_count": snap["stable_count"],
+            "stuff_count": snap["stuff_count"],
+            "body_candidate_count": snap["body_candidate_count"],
+            "duplicate_identity_count": snap["duplicate_identity_count"],
+            "focus_count": len(snap["focus_ids"]),
+            "prediction_error": snap["prediction_error"],
+            "prediction_unstable_count": snap.get("prediction_unstable_count", 0),
+            "prediction_count": snap.get("prediction_count", 0),
+            "reidentified_count": snap.get("reidentified_count", 0),
+            "prediction_assisted_count": snap.get("prediction_assisted_count", 0),
+            "duplicate_prevention_count": snap.get("duplicate_prevention_count", 0),
+        }
+        focused = [
+            ent
+            for ent in snap["entities"]
+            if ent.get("entity_id") in set(snap["focus_ids"])
+        ]
+        self.focus = {"ids": list(snap["focus_ids"]), "entities": focused}
+        mode = "learned_scene_dynamics" if (dynamics_report or {}).get("model_active") else "centroid_uv_constant_velocity"
+        self.scene_prediction = {
+            "enabled": C.scene_prediction_enabled(),
+            "dynamics_enabled": C.scene_dynamics_enabled(),
+            "model_active": bool((dynamics_report or {}).get("model_active", False)),
+            "error": snap["prediction_error"],
+            "loss": (dynamics_report or {}).get("loss"),
+            "uncertainty": (dynamics_report or {}).get("uncertainty"),
+            "prediction_count": snap.get("prediction_count", 0),
+            "reidentified_count": snap.get("reidentified_count", 0),
+            "prediction_assisted_count": snap.get("prediction_assisted_count", 0),
+            "duplicate_prevention_count": snap.get("duplicate_prevention_count", 0),
+            "unstable_count": snap.get("prediction_unstable_count", 0),
+            "target": mode,
+        }
+
     def _self_node_from_proprio(self) -> dict[str, Any]:
         """The minimal self: a node the agent senses via its own proprioception."""
         node: dict[str, Any] = {"role": "self", "id": "self"}
@@ -219,6 +295,11 @@ class PerceptualState:
         )
 
     def snapshot_dict(self) -> dict[str, Any]:
+        scene_snapshot = (
+            self.scene_workspace.snapshot()
+            if C.scene_workspace_enabled()
+            else None
+        )
         return {
             "last_timestamp_iso": self.last_timestamp_iso,
             "vision_resolution": self.vision_resolution,
@@ -243,6 +324,14 @@ class PerceptualState:
             },
             "working_memory": self.working_memory.snapshot(),
             "object_files": list(self.object_files),
+            "scene_workspace": scene_snapshot,
+            "scene_health": dict(self.scene_health) if self.scene_health else None,
+            "focus": {
+                "ids": list(self.focus.get("ids", [])),
+                "entities": list(self.focus.get("entities", [])),
+            },
+            "workspace_ignition": dict(self.workspace_ignition) if self.workspace_ignition else None,
+            "scene_prediction": dict(self.scene_prediction) if self.scene_prediction else None,
             "discovery_health": dict(self.discovery_health) if self.discovery_health else None,
             "perception_organ": dict(self.perception_organ) if self.perception_organ else None,
             "retinotopic_map": dict(self.retinotopic_map) if self.retinotopic_map else None,

@@ -118,7 +118,7 @@ export default function HomeostasisPanel(props: {
       <div className="strip-label" style={{ marginTop: 14 }}>
         <span>
           Provisions
-          <Info tip="Give the agent water or food two ways. 'Nearby' drops the (unlabeled) item a step in front of it, so it must perceive and walk over to consume it — the self-learned drive path. 'Direct' is an admin top-up that instantly refills the reservoir and registers the same pleasure, bypassing learning (useful for testing or rescuing a starving agent)." />
+          <Info tip="Give the agent water or food two ways. 'Nearby' drops the (unlabeled) item a step in front of it, so it must perceive and walk over to consume it. 'Direct' shows the item in the egocentric camera and moves it toward the head until normal consumption fires, preserving the object-to-relief learning path." />
         </span>
       </div>
       {(["water", "food"] as const).map((resource) => (
@@ -141,7 +141,7 @@ export default function HomeostasisPanel(props: {
             style={{ flex: 1 }}
             disabled={provBusy || !agentId}
             onClick={() => void give(resource, "direct")}
-            title={`Instantly refill ${resource === "water" ? "hydration" : "energy"} (admin top-up; bypasses learning, works with no body).`}
+            title={`Show ${resource} in the agent's view and deliver it toward the head until normal consumption gives ${resource === "water" ? "hydration" : "energy"} relief.`}
           >
             Give directly
           </button>

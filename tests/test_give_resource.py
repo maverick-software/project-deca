@@ -1,14 +1,25 @@
-"""Admin provisioning: AgentRuntime.give_resource + the /agent/{id}/give route.
+"""Provisioning: AgentRuntime.give_resource + the /agent/{id}/give route.
 
-The "direct" credit mirrors a real drink/meal (reservoir + pleasure) minus the
-body; the "near" mode just queues a body command. These cover the credit math,
-mode guards, and endpoint validation.
+The explicit "admin" credit mirrors a real drink/meal (reservoir + pleasure)
+minus the body. The normal "direct" route now queues a body-side visual delivery
+so the agent sees the object before the usual food/water event provides relief.
 """
 
 import asyncio
 
 import pytest
 from fastapi.testclient import TestClient
+
+
+class _FakeEnvironment:
+    def __init__(self, agent_id: str) -> None:
+        self.agent_id = agent_id
+
+    def is_running(self) -> bool:
+        return True
+
+    def status(self) -> dict:
+        return {"agent_id": self.agent_id}
 
 
 def _runtime(tmp_path, monkeypatch, agent_id="give"):
@@ -22,7 +33,7 @@ def _runtime(tmp_path, monkeypatch, agent_id="give"):
     return AgentRuntime(agent_id)
 
 
-# --- Direct credit (runtime) ------------------------------------------------
+# --- Admin credit (runtime) -------------------------------------------------
 
 
 def test_give_water_credits_hydration_and_pleasure(tmp_path, monkeypatch):
@@ -92,14 +103,30 @@ def test_give_resource_rejects_unknown_resource(tmp_path, monkeypatch):
 # --- Endpoint validation ----------------------------------------------------
 
 
-def test_give_endpoint_direct_ok(api_app):
+def test_give_endpoint_admin_ok(api_app):
     with TestClient(api_app) as client:
         aid = client.post("/agent").json()["agent_id"]
-        r = client.post(f"/agent/{aid}/give?resource=water&mode=direct")
+        r = client.post(f"/agent/{aid}/give?resource=water&mode=admin")
         assert r.status_code == 200
         body = r.json()
-        assert body["status"] == "water_direct"
+        assert body["status"] == "water_admin"
         assert "hydration" in body
+
+
+def test_give_endpoint_direct_queues_visual_delivery(api_app):
+    with TestClient(api_app) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        client.post(f"/agent/{aid}/pause")  # keep cycle actions out of the queue
+        api_app.state.environment = _FakeEnvironment(aid)
+
+        r = client.post(f"/agent/{aid}/give?resource=food&mode=direct")
+        assert r.status_code == 200
+        assert r.json()["status"] == "food_direct_visual_queued"
+
+        with client.websocket_connect(f"/agent/{aid}/cycle") as ws:
+            msg = ws.receive_json()
+        assert msg["type"] == "body_command"
+        assert msg["command"] == "give_food_direct_visual"
 
 
 def test_give_endpoint_unknown_agent_404(api_app):
@@ -120,6 +147,13 @@ def test_give_endpoint_bad_mode_400(api_app):
         aid = client.post("/agent").json()["agent_id"]
         r = client.post(f"/agent/{aid}/give?resource=water&mode=teleport")
         assert r.status_code == 400
+
+
+def test_give_endpoint_direct_without_body_409(api_app):
+    with TestClient(api_app) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        r = client.post(f"/agent/{aid}/give?resource=water&mode=direct")
+        assert r.status_code == 409
 
 
 def test_give_endpoint_near_without_body_409(api_app):

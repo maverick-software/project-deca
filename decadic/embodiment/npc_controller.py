@@ -92,6 +92,10 @@ class CrowdController:
         self.habitats = active_habitats()
         self.npcs: list[NPCRuntime] = []
         self._gift_addr: dict[str, tuple[int, int]] = {"food": (-1, -1), "water": (-1, -1)}
+        self.last_offer_item = ""
+        self.delivery_count = 0
+        self.requested_item: str | None = None
+        self.request_kind = ""
         self._discover()
 
     # -- discovery ---------------------------------------------------------
@@ -153,6 +157,49 @@ class CrowdController:
 
     def set_reservoirs(self, reservoirs: dict[str, float] | None) -> None:
         self.reservoirs = reservoirs
+
+    def parent(self) -> NPCRuntime | None:
+        return next((n for n in self.npcs if n.is_parent), None)
+
+    def has_parent(self) -> bool:
+        return self.parent() is not None
+
+    def request_parent(self, kind: str) -> bool:
+        parent = self.parent()
+        if parent is None:
+            return False
+        request = str(kind or "").strip().lower()
+        if request == "water":
+            item = "water"
+        elif request == "food":
+            item = "food"
+        elif request == "care":
+            res = self.reservoirs or {}
+            item = "water" if float(res.get("hydration", 1.0)) < float(res.get("energy", 1.0)) else "food"
+        else:
+            return False
+        if self._gift_addr.get(item, (-1, -1))[0] < 0:
+            return False
+        self.frozen = False
+        parent.item = item
+        parent.carry = False
+        parent.next_deliver = 0.0
+        parent.phase = "pickup"
+        self.requested_item = item
+        self.request_kind = request
+        return True
+
+    def caregiver_status(self) -> str:
+        parent = self.parent()
+        if parent is None:
+            return "missing_parent"
+        if self.frozen:
+            return "paused"
+        if self.requested_item is not None:
+            return "requested" if parent.phase == "pickup" else "delivering"
+        if parent.phase in {"pickup", "deliver"}:
+            return "delivering"
+        return "idle"
 
     def entities(self) -> list[dict[str, Any]]:
         out = []
@@ -239,7 +286,8 @@ class CrowdController:
                 moved = min(B.WALK_SPEED * dt, dist - WALK_STANDOFF)
                 npc.x += math.cos(npc.yaw) * moved
                 npc.y += math.sin(npc.yaw) * moved
-        npc.x, npc.y = clamp_to_zone(npc.x, npc.y, npc.habitat.center, npc.habitat.radius)
+        if not (npc.is_parent and npc.phase == "deliver"):
+            npc.x, npc.y = clamp_to_zone(npc.x, npc.y, npc.habitat.center, npc.habitat.radius)
         npc.gait_phase += 2.0 * math.pi * moved / B.STRIDE_LENGTH
         return moved
 
@@ -319,6 +367,9 @@ class CrowdController:
         return best
 
     def _drop_point(self, npc: NPCRuntime) -> tuple[float, float]:
+        if npc.is_parent and hasattr(self._sim, "_head_forward"):
+            head, fwd = self._sim._head_forward()
+            return (float(head[0]) + float(fwd[0]) * 1.6, float(head[1]) + float(fwd[1]) * 1.6)
         t = self.data.xpos[self._sim.torso_id]
         cx, cy = npc.habitat.center
         dx, dy = float(t[0]) - cx, float(t[1]) - cy
@@ -363,13 +414,18 @@ class CrowdController:
             dx, dy = self._drop_point(npc)
             if math.hypot(nx - dx, ny - dy) <= DROP_REACH:
                 self._drop_gift(npc, dx, dy)
+                offered_item = npc.item
                 npc.carry = False
                 npc.offers += 1
                 npc.next_deliver = now + parent_refractory_s()
                 npc.item = "water" if npc.item == "food" else "food"
                 npc.phase = "seek_food"
+                self.last_offer_item = offered_item
+                self.delivery_count += 1
+                self.requested_item = None
+                self.request_kind = ""
                 events.append(
-                    {"type": "offer", "item": npc.item, "intensity": 1.0, "source": npc.entity_id}
+                    {"type": "offer", "item": offered_item, "intensity": 1.0, "source": npc.entity_id}
                 )
 
     def _consume_if_reached(self, npc: NPCRuntime, nx: float, ny: float, kind: str) -> bool:
@@ -392,7 +448,7 @@ class CrowdController:
             return False
         res = self.reservoirs
         if not res:
-            return True
+            return False
         thr = parent_effective_threshold(npc.offers)
         return min(res.values()) <= thr
 

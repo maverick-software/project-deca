@@ -1,106 +1,114 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Grid, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import type { AgentState, WorkingMemorySlot } from "../api";
+import type { AgentState, SceneEntitySnapshot } from "../api";
 import { usePersistentState } from "../usePersistentState";
+import { visionUrl } from "../api";
 import Info from "./Info";
 
-// Sim is z-up (x east, y north, z up); three.js is y-up. Map (x,y,z) -> (x, z, -y).
 function toThree(p: number[]): [number, number, number] {
-  return [p[0], p[2], -p[1]];
+  return [p[0] ?? 0, p[2] ?? 0, -(p[1] ?? 0)];
 }
 
-type Shape = "capsule" | "sphere" | "box" | "cylinder" | "octa";
-type Proto = { color: string; shape: Shape; size: [number, number, number] };
+function clamp01(v: number | null | undefined): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
 
-// Working memory stores a kind label, not geometry, so we render canonical prototypes.
-const PROTO: Record<string, Proto> = {
-  bear: { color: "#7a4a22", shape: "capsule", size: [0.34, 0.9, 0] },
-  food: { color: "#f28c1a", shape: "sphere", size: [0.16, 0, 0] },
-  box: { color: "#c0392b", shape: "box", size: [0.5, 0.5, 0.5] },
-  sphere: { color: "#2ecc71", shape: "sphere", size: [0.4, 0, 0] },
-  pillar: { color: "#2f6fdb", shape: "cylinder", size: [0.3, 1.2, 0] },
-};
-const DEFAULT_PROTO: Proto = { color: "#8a8f9c", shape: "octa", size: [0.3, 0, 0] };
-
-function Geometry({ proto }: { proto: Proto }) {
-  const [a, b] = proto.size;
-  switch (proto.shape) {
-    case "capsule":
-      return <capsuleGeometry args={[a, b, 6, 12]} />;
-    case "box":
-      return <boxGeometry args={proto.size} />;
-    case "cylinder":
-      return <cylinderGeometry args={[a, a, b, 16]} />;
-    case "octa":
-      return <octahedronGeometry args={[a]} />;
-    default:
-      return <sphereGeometry args={[a, 18, 18]} />;
+function entityPosition(e: SceneEntitySnapshot): number[] | null {
+  if (e.relative && e.relative.length >= 3) return e.relative;
+  if (e.depth != null && e.centroid_uv && e.centroid_uv.length >= 2) {
+    const x = (e.centroid_uv[0] - 0.5) * Math.max(1, e.depth) * 2;
+    const y = Math.max(0.2, e.depth);
+    const z = (0.5 - e.centroid_uv[1]) * Math.max(1, e.depth);
+    return [x, y, z];
   }
+  return null;
 }
 
-function EntityMesh({ slot }: { slot: WorkingMemorySlot }) {
-  const proto = PROTO[slot.kind] ?? DEFAULT_PROTO;
-  if (!slot.position) return null;
-  const [x, y, z] = toThree(slot.position);
+function entityColor(e: SceneEntitySnapshot, focused: boolean): string {
+  if (e.kind_hint === "body_part_candidate") return "#b982ff";
+  if (e.kind_hint === "stuff") return "#69738a";
+  if (focused) return "#7fc3ff";
+  const err = clamp01((e.prediction_error ?? 0) * 2);
+  const hue = Math.round(205 - 65 * err);
+  return `hsl(${hue} 75% 68%)`;
+}
 
-  const salience = Math.max(0, Math.min(1, slot.salience));
-  const affect = slot.affective_weight ?? 0;
-  const audio = slot.audio_intensity ?? 0;
-  const inView = slot.in_view;
+function EntityGeometry({ entity }: { entity: SceneEntitySnapshot }) {
+  if (entity.kind_hint === "stuff") return <boxGeometry args={[3.5, 0.03, 3.5]} />;
+  if (entity.kind_hint === "body_part_candidate") return <capsuleGeometry args={[0.11, 0.28, 5, 10]} />;
+  const size = 0.12 + 0.28 * clamp01(entity.confidence || entity.persistence || 0.5);
+  return <sphereGeometry args={[size, 18, 18]} />;
+}
 
-  const emissive = useMemo(() => {
-    if (affect < 0) return new THREE.Color(1.0, 0.18, 0.18); // threat
-    if (affect > 0) return new THREE.Color(0.2, 1.0, 0.4); // reward
-    return new THREE.Color(0, 0, 0);
-  }, [affect]);
-
-  const opacity = 0.2 + 0.8 * salience;
-  const emissiveIntensity = Math.min(1, Math.abs(affect)) * 0.9;
-
+function PredictionGhost({ entity }: { entity: SceneEntitySnapshot }) {
+  const pos = entityPosition(entity);
+  const pred = entity.predicted_relative ?? null;
+  if (!pos || !pred || pred.length < 3) return null;
+  const a = toThree(pos);
+  const b = toThree(pred);
+  const points = [new THREE.Vector3(...a), new THREE.Vector3(...b)];
+  const geom = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineBasicMaterial({
+    color: "#ffd36a",
+    transparent: true,
+    opacity: 0.45,
+  });
   return (
-    <group position={[x, y, z]}>
-      <mesh castShadow>
-        <Geometry proto={proto} />
-        <meshStandardMaterial
-          color={proto.color}
-          emissive={emissive}
-          emissiveIntensity={emissiveIntensity}
-          transparent
-          opacity={opacity}
-          wireframe={!inView}
-          depthWrite={inView}
-        />
+    <group>
+      <primitive object={new THREE.Line(geom, mat)} />
+      <mesh position={b}>
+        <sphereGeometry args={[0.08, 12, 12]} />
+        <meshBasicMaterial color="#ffd36a" transparent opacity={0.35} />
       </mesh>
-      {audio > 0.05 && <AudioPulse intensity={audio} />}
-      {slot.heading != null && <HeadingArrow yaw={slot.heading} />}
     </group>
   );
 }
 
-function AudioPulse({ intensity }: { intensity: number }) {
+function FocusHalo({ radius }: { radius: number }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame((s) => {
     if (!ref.current) return;
-    const k = 1 + 0.15 * Math.sin(s.clock.elapsedTime * 6);
+    const k = 1 + 0.08 * Math.sin(s.clock.elapsedTime * 5);
     ref.current.scale.set(k, k, k);
   });
   return (
-    <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-      <ringGeometry args={[0.5 + intensity * 0.3, 0.62 + intensity * 0.4, 24]} />
-      <meshBasicMaterial color="#ffd36a" transparent opacity={0.25 + 0.5 * intensity} side={THREE.DoubleSide} />
+    <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[radius, radius + 0.035, 32]} />
+      <meshBasicMaterial color="#7fc3ff" transparent opacity={0.72} side={THREE.DoubleSide} />
     </mesh>
   );
 }
 
-function HeadingArrow({ yaw }: { yaw: number }) {
-  // sim yaw in XY -> rotate cone about three Y so it points along heading
+function SceneEntityMesh({ entity, focused }: { entity: SceneEntitySnapshot; focused: boolean }) {
+  const pos = entityPosition(entity);
+  if (!pos) return null;
+  const p = toThree(pos);
+  const color = entityColor(entity, focused);
+  const salience = clamp01(entity.salience || entity.persistence || entity.confidence);
+  const opacity = entity.occluded ? 0.22 : entity.kind_hint === "stuff" ? 0.18 : 0.35 + 0.6 * salience;
+  const uncertainty = clamp01(entity.prediction_uncertainty ?? 0);
+  const radius = 0.28 + 0.24 * uncertainty;
+
   return (
-    <mesh position={[Math.cos(yaw) * 0.6, 0.05, -Math.sin(yaw) * 0.6]} rotation={[0, -yaw + Math.PI / 2, -Math.PI / 2]}>
-      <coneGeometry args={[0.08, 0.25, 8]} />
-      <meshBasicMaterial color="#cfd6e6" transparent opacity={0.7} />
-    </mesh>
+    <group position={p}>
+      <mesh castShadow={entity.kind_hint !== "stuff"} receiveShadow={entity.kind_hint === "stuff"}>
+        <EntityGeometry entity={entity} />
+        <meshStandardMaterial
+          color={color}
+          emissive={focused ? new THREE.Color("#234f82") : new THREE.Color("#000000")}
+          emissiveIntensity={focused ? 0.8 : 0}
+          transparent
+          opacity={opacity}
+          wireframe={entity.occluded}
+          depthWrite={!entity.occluded}
+        />
+      </mesh>
+      {focused && <FocusHalo radius={radius} />}
+      {entity.predicted_relative && <PredictionGhost entity={entity} />}
+    </group>
   );
 }
 
@@ -111,7 +119,7 @@ function FirstPersonRig({ pose, enabled }: { pose: Pose; enabled: boolean }) {
   useFrame(() => {
     if (!enabled) return;
     const [sx, sy, sz] = pose.position;
-    camera.position.set(sx, sz + 0.4, -sy);
+    camera.position.set(sx, sz + 0.35, -sy);
     const fx = Math.cos(pose.yaw);
     const fy = Math.sin(pose.pitch);
     const fz = -Math.sin(pose.yaw);
@@ -120,17 +128,27 @@ function FirstPersonRig({ pose, enabled }: { pose: Pose; enabled: boolean }) {
   return null;
 }
 
-function Scene({ slots, pose, orbit }: { slots: WorkingMemorySlot[]; pose: Pose; orbit: boolean }) {
+function RenderedScene({
+  entities,
+  focusIds,
+  pose,
+  orbit,
+}: {
+  entities: SceneEntitySnapshot[];
+  focusIds: Set<string>;
+  pose: Pose;
+  orbit: boolean;
+}) {
   return (
     <>
       <color attach="background" args={["#0d111a"]} />
-      <fog attach="fog" args={["#0d111a", 7, 48]} />
+      <fog attach="fog" args={["#0d111a", 8, 48]} />
       <ambientLight intensity={0.65} />
-      <directionalLight position={[12, 24, 8]} intensity={0.85} />
+      <directionalLight position={[12, 24, 8]} intensity={0.9} />
       <Grid
         args={[80, 80]}
         cellSize={1}
-        cellThickness={0.6}
+        cellThickness={0.55}
         cellColor="#1d2536"
         sectionSize={5}
         sectionThickness={1}
@@ -140,8 +158,12 @@ function Scene({ slots, pose, orbit }: { slots: WorkingMemorySlot[]; pose: Pose;
         infiniteGrid
         position={[0, 0, 0]}
       />
-      {slots.map((s) => (
-        <EntityMesh key={s.entity_id} slot={s} />
+      {entities.map((entity) => (
+        <SceneEntityMesh
+          key={entity.entity_id}
+          entity={entity}
+          focused={focusIds.has(entity.entity_id)}
+        />
       ))}
       <FirstPersonRig pose={pose} enabled={!orbit} />
       {orbit && <OrbitControls makeDefault target={toThree(pose.position) as never} />}
@@ -149,17 +171,58 @@ function Scene({ slots, pose, orbit }: { slots: WorkingMemorySlot[]; pose: Pose;
   );
 }
 
-/** Signed value → blue (negative) / dark (zero) / red (positive). */
-function heatColor(v: number, maxAbs: number): string {
-  if (maxAbs < 1e-9) return "#1d2230";
-  const n = Math.max(-1, Math.min(1, v / maxAbs));
-  const intensity = Math.round(Math.abs(n) * 70 + 12);
-  return n >= 0 ? `hsl(355 75% ${intensity}%)` : `hsl(215 75% ${intensity}%)`;
+function RawLens({
+  agentId,
+  tick,
+  entities,
+  focusIds,
+}: {
+  agentId: string;
+  tick: number;
+  entities: SceneEntitySnapshot[];
+  focusIds: Set<string>;
+}) {
+  const [ok, setOk] = useState(true);
+  useEffect(() => setOk(true), [agentId]);
+  const visible = entities.filter((e) => e.visible && e.centroid_uv && e.centroid_uv.length >= 2);
+  return (
+    <div className="me-lens me-raw-lens">
+      <div className="me-lens-head">
+        <span>Raw egocentric camera</span>
+        <span>{visible.length} overlays</span>
+      </div>
+      <div className="me-camera-frame">
+        <img
+          src={visionUrl(agentId, tick, "egocentric")}
+          alt="egocentric vision"
+          onError={() => setOk(false)}
+          onLoad={() => setOk(true)}
+        />
+        {!ok && <div className="me-no-frame">no vision frame</div>}
+        {visible.map((entity) => {
+          const uv = entity.centroid_uv ?? [0.5, 0.5];
+          const focused = focusIds.has(entity.entity_id);
+          const err = clamp01((entity.prediction_error ?? 0) * 2);
+          return (
+            <div
+              key={entity.entity_id}
+              className={`me-uv-marker ${focused ? "focused" : ""} ${entity.kind_hint}`}
+              style={{
+                left: `${uv[0] * 100}%`,
+                top: `${uv[1] * 100}%`,
+                opacity: 0.35 + 0.65 * clamp01(entity.confidence),
+                boxShadow: `0 0 ${4 + err * 14}px rgba(255, 211, 106, ${err})`,
+              }}
+              title={`${entity.entity_id} ${entity.kind_hint}`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function SceneLatentStrip({ preview, rms }: { preview: (number | null)[]; rms: number | null }) {
-  // The server can serialize NaN/None as null (unstable neural state); coerce to
-  // finite numbers so a single bad bucket can't crash the whole Mind's Eye panel.
   const values = preview.map((v) =>
     typeof v === "number" && Number.isFinite(v) ? v : 0,
   );
@@ -169,22 +232,29 @@ function SceneLatentStrip({ preview, rms }: { preview: (number | null)[]; rms: n
     <div style={{ marginTop: 8 }}>
       <div className="strip-label">
         <span>
-          Scene latent (persisting percept)
-          <Info tip="The literal image in the neural layer: every cycle the pooled multi-frame percept (vision + audio + body, fused by the frozen encoders) is EMA-blended into this vector, so it persists and drifts across cycles instead of being replaced. The 3D scene above is the symbolic read-out; this strip is the sub-symbolic one. Folded to 32 buckets for display." />
+          Scene latent
+          <Info tip="Sub-symbolic persisting percept folded from the neural scene latent. The lenses above are the visual/object read-out; this strip is the latent trace." />
         </span>
         <span>{rmsFinite != null ? `rms ${rmsFinite.toFixed(3)}` : ""}</span>
       </div>
       <div className="heatstrip">
-        {values.map((v, i) => (
-          <div key={i} style={{ backgroundColor: heatColor(v, maxAbs) }} title={v.toFixed(4)} />
-        ))}
+        {values.map((v, i) => {
+          const n = maxAbs < 1e-9 ? 0 : Math.max(-1, Math.min(1, v / maxAbs));
+          const light = Math.round(Math.abs(n) * 70 + 12);
+          return (
+            <div
+              key={i}
+              style={{ backgroundColor: n >= 0 ? `hsl(355 75% ${light}%)` : `hsl(215 75% ${light}%)` }}
+              title={v.toFixed(4)}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
 function moodGradient(viability: number, pain: number): string {
-  // healthy -> faint, dying -> red closing in; pain pulses the rim
   const harm = Math.max(0, Math.min(1, 1 - viability / 100));
   const r = Math.round(180 + 60 * harm);
   const edge = 0.12 + 0.5 * harm + 0.3 * Math.min(1, pain);
@@ -193,88 +263,76 @@ function moodGradient(viability: number, pain: number): string {
   )}) 100%)`;
 }
 
-export default function MindsEyePanel(props: { state: AgentState; embedded?: boolean }) {
-  const { state } = props;
+export default function MindsEyePanel(props: {
+  agentId: string;
+  state: AgentState;
+  embedded?: boolean;
+}) {
+  const { agentId, state } = props;
   const [orbit, setOrbit] = usePersistentState("decadic.mindseye.orbit", false);
+  const scene = state.perceptual.scene_workspace;
+  const prediction = state.perceptual.scene_prediction;
+  const workspace = state.perceptual.workspace_ignition;
   const wm = state.perceptual.working_memory;
-  const slots = useMemo(() => (wm?.slots ?? []).filter((s) => s.position), [wm]);
+  const entities = useMemo(() => scene?.entities ?? [], [scene]);
+  const focusIds = useMemo(() => new Set(scene?.focus_ids ?? state.perceptual.focus?.ids ?? []), [scene, state.perceptual.focus]);
 
   const pos = state.perceptual.proprio_position ?? [0, 0, 1.4];
   const ori = state.perceptual.proprio_orientation ?? [0, 0, 0];
   const pose: Pose = { position: pos, yaw: ori[2] ?? 0, pitch: ori[1] ?? 0 };
-
   const viability = state.viability?.value ?? 100;
   const pain = state.state_bus?.B_pain_scalar ?? 0;
-  const contacts = state.perceptual.proprio_contacts ?? [];
-  const contactLabels = ["R foot", "L foot", "R hand", "L hand"];
-
-  const inView = slots.filter((s) => s.in_view).length;
-  const remembered = slots.length - inView;
-  const events = slots
-    .filter((s) => (s.audio_intensity ?? 0) > 0.05 && s.last_event)
-    .sort((a, b) => (b.audio_intensity ?? 0) - (a.audio_intensity ?? 0))
-    .slice(0, 4);
+  const tick = state.perceptual.integration_ticks;
+  const visible = entities.filter((e) => e.visible).length;
+  const occluded = entities.filter((e) => e.occluded).length;
 
   const content = (
     <>
       <h2>
         Mind's Eye
-        <Info tip="The world as the agent models it, rendered from working memory + proprioception (not the head camera). Objects sit at their remembered coordinates; they fade as salience decays (object permanence), glow red when threatening / green when rewarding, and pulse when they make a sound. The view is from the agent's own pose and heading. CLIP is untouched - this is a read-out of the bound mental scene, not a photo." />
+        <Info tip="Dual lens into the agent: raw egocentric camera on the left, anonymous scene workspace rendered from the agent's own pose on the right. This is a read-only observer view; no labels or rewards feed cognition." />
       </h2>
 
       <div className="me-bar">
         <span className="strip-label">
-          {inView} in view · {remembered} remembered
+          {visible} visible · {occluded} occluded · {focusIds.size} focused
         </span>
         <div style={{ flex: 1 }} />
         <button
           className="btn"
-          title={orbit ? "Return to the agent's first-person view" : "Detach the camera to inspect the scene"}
+          title={orbit ? "Return to the agent's first-person rendered scene" : "Detach the camera to inspect the rendered scene"}
           onClick={() => setOrbit((v) => !v)}
         >
           {orbit ? "First-person" : "Inspect"}
         </button>
       </div>
 
-      <div className="me-stage">
-        <Canvas shadows camera={{ fov: 75, near: 0.1, far: 100, position: [0, 3, 7] }}>
-          <Scene slots={slots} pose={pose} orbit={orbit} />
-        </Canvas>
-
-        {/* HUD overlays: interoception + multimodal binding made visible */}
-        <div className="me-vignette" style={{ background: moodGradient(viability, pain) }} />
-        {!orbit && <div className="me-reticle" />}
-
-        <div className="me-hud me-hud-tl">
-          <div className="me-via">
-            viability <b>{viability.toFixed(0)}</b>
+      <div className="me-dual">
+        <RawLens agentId={agentId} tick={tick} entities={entities} focusIds={focusIds} />
+        <div className="me-lens">
+          <div className="me-lens-head">
+            <span>Rendered scene workspace</span>
+            <span>{prediction?.model_active ? "learned dynamics" : "fallback dynamics"}</span>
           </div>
-          {pain > 0.05 && <div className="me-pain">pain {pain.toFixed(2)}</div>}
-        </div>
-
-        <div className="me-hud me-hud-bl">
-          {contactLabels.map((lab, i) => {
-            const f = contacts[i] ?? 0;
-            return (
-              <div className="me-contact" key={lab} title={`${f.toFixed(0)} N`}>
-                <span>{lab}</span>
-                <span className="me-contact-track">
-                  <span className="me-contact-fill" style={{ width: `${Math.min(100, (f / 400) * 100)}%` }} />
-                </span>
+          <div className="me-stage">
+            <Canvas shadows camera={{ fov: 75, near: 0.1, far: 100, position: [0, 3, 7] }}>
+              <RenderedScene entities={entities} focusIds={focusIds} pose={pose} orbit={orbit} />
+            </Canvas>
+            <div className="me-vignette" style={{ background: moodGradient(viability, pain) }} />
+            {!orbit && <div className="me-reticle" />}
+            <div className="me-hud me-hud-tl">
+              <div className="me-via">
+                viability <b>{viability.toFixed(0)}</b>
               </div>
-            );
-          })}
-        </div>
-
-        {events.length > 0 && (
-          <div className="me-hud me-hud-tr">
-            {events.map((e) => (
-              <div className="me-event" key={e.entity_id}>
-                <span className="me-event-kind">{e.kind}</span> {e.last_event}
-              </div>
-            ))}
+              {pain > 0.05 && <div className="me-pain">pain {pain.toFixed(2)}</div>}
+            </div>
+            <div className="me-hud me-hud-tr">
+              <div>PE {prediction?.error != null ? prediction.error.toFixed(3) : "n/a"}</div>
+              <div>unc {prediction?.uncertainty != null ? prediction.uncertainty.toFixed(3) : "n/a"}</div>
+              <div>{workspace?.ignited ? "GWT ignited" : "GWT quiet"}</div>
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
       {wm?.scene_preview && wm.scene_preview.length > 0 && (
@@ -282,14 +340,15 @@ export default function MindsEyePanel(props: { state: AgentState; embedded?: boo
       )}
 
       <div className="me-legend">
-        <span><i className="me-dot threat" /> threatening</span>
-        <span><i className="me-dot reward" /> rewarding</span>
-        <span><i className="me-dot ghost" /> remembered (out of view)</span>
-        <span><i className="me-dot audio" /> sounding</span>
+        <span><i className="me-dot object" /> object</span>
+        <span><i className="me-dot stuff" /> stuff</span>
+        <span><i className="me-dot body" /> body candidate</span>
+        <span><i className="me-dot focus" /> focused</span>
+        <span><i className="me-dot ghost" /> occluded/predicted</span>
       </div>
 
-      {slots.length === 0 && (
-        <div className="empty">nothing in working memory yet — connect a body in a populated scene</div>
+      {entities.length === 0 && (
+        <div className="empty">no scene workspace entities yet; connect a vision body in discovered perception</div>
       )}
     </>
   );

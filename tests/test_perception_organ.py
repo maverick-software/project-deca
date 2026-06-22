@@ -55,6 +55,20 @@ def test_flow_confidence_separates_global_from_local_motion():
     assert props[0]["local_motion"] > global_diag["global_motion"]
 
 
+def test_retinotopic_bootstrap_prevents_empty_slot_starvation():
+    img = np.zeros((16, 16), dtype=np.float32)
+    img[2:5, 2:5] = 0.9
+    img[11:14, 11:14] = 0.65
+    organ = PerceptionOrgan(grid_size=16)
+    props, diag, _ret = organ.process(_obs(img, "t0"), [])
+    files = object_files_from_proposals(props)
+    foreground = [f for f in files if f.kind_hint != "stuff" and f.confidence >= 0.2]
+    assert diag["frame_seen"] is True
+    assert diag["bootstrap_proposal_count"] >= 2
+    assert len(foreground) >= 2
+    assert foreground[0].centroid_uv != foreground[1].centroid_uv
+
+
 def test_body_candidate_uses_motion_motor_and_touch():
     organ = PerceptionOrgan(grid_size=16)
     organ.process(_obs(np.zeros((16, 16), dtype=np.float32), "t0"), [])
@@ -96,4 +110,3 @@ def test_bootstrap_frames_are_offline_and_label_free(tmp_path):
 
 def test_health_state_contract_lists_required_states():
     assert {"healthy", "low_confidence", "collapsed", "no_objects", "teacher_only", "stale_frame"} <= set(HEALTH_STATES)
-

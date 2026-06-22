@@ -289,11 +289,11 @@
       "reset_commands": ["set_stance:stand", "recenter"],
       "periodic_body_commands": [
         {
-          "command": "give_food_near",
+          "command": "parent_request:food",
           "period_s": 18
         },
         {
-          "command": "give_water_near",
+          "command": "parent_request:water",
           "period_s": 18
         }
       ],
@@ -412,11 +412,11 @@
       "reset_commands": ["set_stance:stand", "recenter"],
       "periodic_body_commands": [
         {
-          "command": "give_food_near",
+          "command": "parent_request:food",
           "period_s": 35
         },
         {
-          "command": "give_water_near",
+          "command": "parent_request:water",
           "period_s": 35
         }
       ],
@@ -523,11 +523,11 @@
       "reset_commands": ["set_stance:stand", "recenter"],
       "periodic_body_commands": [
         {
-          "command": "give_food_near",
+          "command": "parent_request:food",
           "period_s": 45
         },
         {
-          "command": "give_water_near",
+          "command": "parent_request:water",
           "period_s": 45
         },
         {
@@ -628,3 +628,4 @@
     }
   ]
 }
+

@@ -113,6 +113,11 @@ class NeuralBundle:
         # affect context, fed to the forward model to anticipate the next moment.
         # Ephemeral (never checkpointed); stays None when the faculty is off.
         self.prev_affect: torch.Tensor | None = None
+        # Scene dynamics (perception organ): previous anonymous scene entities
+        # used to predict the next scene. Ephemeral and label-free; never
+        # checkpointed.
+        self.prev_scene_features: torch.Tensor | None = None
+        self.prev_scene_entity_ids: list[str] = []
         # Represented self (self-model program): the previous cycle's compact
         # self-node embedding (intero‖affect‖capability), fed back via repself_ingress.
         # Ephemeral (never checkpointed); stays None when the faculty is off.

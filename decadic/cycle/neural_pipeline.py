@@ -42,6 +42,11 @@ from decadic.nn.frozen_encoders import (
     intero_preference_weights,
     preferred_intero_vector,
 )
+from decadic.nn.scene_dynamics import (
+    entities_to_features,
+    prediction_rows_to_dicts,
+    scene_dynamics_loss,
+)
 from decadic.state.curiosity import CuriosityState, compute_curiosity
 from decadic.state.viability import (
     apply_pain_pleasure_to_B,
@@ -92,6 +97,36 @@ def _slot_mask_entropies(attn: torch.Tensor) -> list[float]:
     if w.shape[-1] > 1:
         ent = ent / math.log(float(w.shape[-1]))
     return [float(x) for x in ent.detach().float().cpu().tolist()]
+
+
+def _scene_feature_snapshot(scene_ws: Any, max_entities: int) -> tuple[list[str], torch.Tensor]:
+    if scene_ws is None:
+        return [], torch.zeros(0, 32, dtype=torch.float32)
+    snap = scene_ws.snapshot()
+    entities = [
+        e for e in snap.get("entities", [])
+        if isinstance(e, dict) and e.get("entity_id")
+    ][: max(1, int(max_entities))]
+    ids = [str(e["entity_id"]) for e in entities]
+    return ids, entities_to_features(entities)
+
+
+def _scene_targets_for_ids(scene_ws: Any, ids: list[str]) -> tuple[torch.Tensor, torch.Tensor]:
+    if scene_ws is None or not ids:
+        return torch.zeros(0, 32, dtype=torch.float32), torch.zeros(0, dtype=torch.bool)
+    snap = scene_ws.snapshot()
+    by_id = {
+        str(e.get("entity_id")): e
+        for e in snap.get("entities", [])
+        if isinstance(e, dict) and e.get("entity_id")
+    }
+    rows: list[dict[str, Any]] = []
+    mask: list[bool] = []
+    for eid in ids:
+        ent = by_id.get(str(eid))
+        rows.append(ent or {})
+        mask.append(ent is not None)
+    return entities_to_features(rows), torch.as_tensor(mask, dtype=torch.bool)
 
 
 def _stable_object_file_snapshots(wm: Any) -> list[dict[str, Any]]:
@@ -215,6 +250,8 @@ def apply_plasticity_step(
         bundle.prev_state = None
         bundle.prev_motor = None
         bundle.prev_intero = None
+        bundle.prev_scene_features = None
+        bundle.prev_scene_entity_ids = []
 
     structural = False
     # Per-cycle edge counts (non-zero only on the cycle the event fires).
@@ -315,7 +352,13 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # attention parses the patch-feature map into object proposals; the pooled
     # slots are injected additively into z0 (zero-init projection -> starts at
     # exact bottom-up parity) so the deliberative stack sees object structure.
-    discovered = ctx.perception_mode == "discovered" and getattr(
+    persistent_perception = (
+        getattr(ctx, "perceptual_processing_mode", "") == C.PERCEPTUAL_PROCESSING_PERSISTENT
+    )
+    discovered = (
+        not persistent_perception
+        and ctx.perception_mode == "discovered"
+    ) and getattr(
         bundle.stack, "has_slots", False
     )
     slot_out = None
@@ -707,6 +750,9 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     l_agency = torch.zeros((), device=z0.device, dtype=z0.dtype)
     discovery_diag: dict = {}
     agency_scores: dict[str, float] = {}
+    scene_replay_prev_features: torch.Tensor | None = None
+    scene_replay_target_features: torch.Tensor | None = None
+    scene_replay_match_mask: torch.Tensor | None = None
     if slot_out is not None and patch_tokens is not None:
         from decadic.cycle.discovery import extract_proposals
 
@@ -745,12 +791,99 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             prev_motor=bundle.prev_motor,
         )
         object_files = object_files_from_proposals(proposals)
+        scene_dynamics_report: dict[str, Any] = {
+            "enabled": bool(C.scene_dynamics_enabled()),
+            "model_active": False,
+            "loss": None,
+            "uncertainty": None,
+            "prediction_count": 0,
+            "matched_count": 0,
+        }
+        scene_dynamics_predictions: list[dict[str, Any]] = []
+        scene_dyn_raw: torch.Tensor | None = None
+        scene_dyn_prev_features: torch.Tensor | None = None
+        scene_dyn_entity_ids: list[str] = []
+        l_scene_dyn = torch.zeros((), device=z0.device, dtype=z0.dtype)
+        if (
+            C.scene_workspace_enabled()
+            and C.scene_dynamics_enabled()
+            and getattr(bundle.stack, "has_scene_dynamics", False)
+            and getattr(bundle, "prev_scene_features", None) is not None
+            and getattr(bundle, "prev_scene_entity_ids", None)
+        ):
+            max_n = C.scene_dynamics_max_entities()
+            prev_feats_cpu = bundle.prev_scene_features[:max_n]
+            scene_dyn_entity_ids = list(bundle.prev_scene_entity_ids[: int(prev_feats_cpu.shape[0])])
+            if scene_dyn_entity_ids and int(prev_feats_cpu.shape[0]) > 0:
+                scene_dyn_prev_features = prev_feats_cpu.to(device=z0.device, dtype=z0.dtype)
+                if bundle.prev_motor is None:
+                    scene_motor = torch.zeros(1, bundle.cfg.n_actuators, device=z0.device, dtype=z0.dtype)
+                else:
+                    scene_motor = bundle.prev_motor.detach().to(device=z0.device, dtype=z0.dtype)
+                scene_dyn_raw = bundle.stack.scene_dynamics_predict(scene_dyn_prev_features, scene_motor)
+                scene_dynamics_predictions = prediction_rows_to_dicts(
+                    scene_dyn_entity_ids,
+                    scene_dyn_prev_features,
+                    scene_dyn_raw,
+                )
+                uncertainties = [
+                    float(p.get("uncertainty", 0.0) or 0.0)
+                    for p in scene_dynamics_predictions
+                ]
+                scene_dynamics_report.update(
+                    {
+                        "model_active": True,
+                        "prediction_count": len(scene_dynamics_predictions),
+                        "uncertainty": (
+                            float(sum(uncertainties) / len(uncertainties))
+                            if uncertainties
+                            else None
+                        ),
+                    }
+                )
         wm_disc = getattr(ctx.perceptual, "working_memory", None)
+        if hasattr(ctx.perceptual, "object_files"):
+            ctx.perceptual.object_files = [f.to_dict() for f in object_files]
+        scene_focus_proposals = None
+        if C.scene_workspace_enabled() and hasattr(ctx.perceptual, "update_scene_workspace"):
+            ctx.perceptual.update_scene_workspace(
+                dynamics_predictions=scene_dynamics_predictions,
+                dynamics_report=scene_dynamics_report,
+            )
+            scene_ws = getattr(ctx.perceptual, "scene_workspace", None)
+            if (
+                scene_dyn_raw is not None
+                and scene_dyn_prev_features is not None
+                and scene_dyn_entity_ids
+                and scene_ws is not None
+            ):
+                target_features, match_mask = _scene_targets_for_ids(scene_ws, scene_dyn_entity_ids)
+                match_mask_dev = match_mask.to(device=z0.device)
+                l_scene_dyn = scene_dynamics_loss(
+                    scene_dyn_raw,
+                    scene_dyn_prev_features,
+                    target_features.to(device=z0.device, dtype=z0.dtype),
+                    match_mask_dev,
+                    uncertainty_weight=C.scene_dynamics_uncertainty_weight(),
+                )
+                loss = loss + C.scene_dynamics_weight() * l_scene_dyn
+                matched_count = int(match_mask.sum().item())
+                scene_dynamics_report["loss"] = round(float(l_scene_dyn.detach().cpu().item()), 6)
+                scene_dynamics_report["matched_count"] = matched_count
+                if matched_count > 0:
+                    scene_replay_prev_features = scene_dyn_prev_features.detach().to("cpu")
+                    scene_replay_target_features = target_features.detach().to("cpu")
+                    scene_replay_match_mask = match_mask.detach().to("cpu")
+            scene_focus_proposals = (
+                scene_ws.focus_proposals() if scene_ws is not None else None
+            )
         events = (latest or {}).get("events") if isinstance(latest, dict) else None
         matched = []
         if wm_disc is not None:
             matched = wm_disc.integrate_discovered(
-                [f.to_working_memory_proposal() for f in object_files],
+                scene_focus_proposals
+                if scene_focus_proposals is not None
+                else [f.to_working_memory_proposal() for f in object_files],
                 events=events if isinstance(events, list) else [],
                 appearance_weight=C.assoc_appearance_weight(),
                 match_threshold=C.assoc_match_threshold(),
@@ -775,6 +908,17 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 if wm_disc is not None
                 else [f.to_dict() for f in object_files]
             )
+            if C.scene_workspace_enabled() and hasattr(ctx.perceptual, "update_scene_workspace"):
+                # Re-run the scene snapshot from the stable WM ids when available
+                # so dashboard object ids, focus ids, and LTM ids stay aligned.
+                ctx.perceptual.update_scene_workspace(dynamics_report=scene_dynamics_report)
+                scene_ws_final = getattr(ctx.perceptual, "scene_workspace", None)
+                ids, feats = _scene_feature_snapshot(
+                    scene_ws_final,
+                    C.scene_dynamics_max_entities(),
+                )
+                bundle.prev_scene_entity_ids = ids
+                bundle.prev_scene_features = feats.detach().to("cpu")
         if hasattr(ctx.perceptual, "discovery_health"):
             ctx.perceptual.discovery_health = health.to_dict()
         if hasattr(ctx.perceptual, "ltm_consolidation"):
@@ -835,11 +979,99 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             "looming_count": health.looming_count,
             "stuff_count": health.stuff_count,
             "body_candidate_count": health.body_candidate_count,
+            "scene_entities": (
+                int((getattr(ctx.perceptual, "scene_health", {}) or {}).get("entity_count", 0))
+                if C.scene_workspace_enabled()
+                else 0
+            ),
+            "scene_focus_count": (
+                int((getattr(ctx.perceptual, "scene_health", {}) or {}).get("focus_count", 0))
+                if C.scene_workspace_enabled()
+                else 0
+            ),
+            "scene_prediction_error": (
+                (getattr(ctx.perceptual, "scene_health", {}) or {}).get("prediction_error")
+                if C.scene_workspace_enabled()
+                else None
+            ),
+            "scene_dynamics_enabled": bool(C.scene_dynamics_enabled()),
+            "scene_dynamics_model_active": bool(scene_dynamics_report.get("model_active")),
+            "scene_dynamics_loss": scene_dynamics_report.get("loss"),
+            "scene_dynamics_uncertainty": scene_dynamics_report.get("uncertainty"),
+            "scene_dynamics_predictions": scene_dynamics_report.get("prediction_count", 0),
+            "scene_dynamics_matches": scene_dynamics_report.get("matched_count", 0),
         }
     elif discovered:
-        health = evaluate_discovery_health([], tracked_count=0, stable_tracked_objects=0)
+        organ = getattr(bundle, "_perception_organ", None)
+        if organ is None:
+            organ = PerceptionOrgan()
+            bundle._perception_organ = organ
+        proposals, organ_diag, ret_map = organ.process(
+            latest,
+            [],
+            prev_motor=bundle.prev_motor,
+        )
+        object_files = object_files_from_proposals(proposals)
+        scene_dynamics_report: dict[str, Any] = {
+            "enabled": bool(C.scene_dynamics_enabled()),
+            "model_active": False,
+            "loss": None,
+            "uncertainty": None,
+            "prediction_count": 0,
+            "matched_count": 0,
+        }
+        wm_disc = getattr(ctx.perceptual, "working_memory", None)
         if hasattr(ctx.perceptual, "object_files"):
-            ctx.perceptual.object_files = []
+            ctx.perceptual.object_files = [f.to_dict() for f in object_files]
+        if C.scene_workspace_enabled() and hasattr(ctx.perceptual, "update_scene_workspace"):
+            ctx.perceptual.update_scene_workspace(
+                dynamics_report=scene_dynamics_report
+            )
+        scene_focus_proposals = None
+        scene_ws = getattr(ctx.perceptual, "scene_workspace", None)
+        if scene_ws is not None:
+            scene_focus_proposals = scene_ws.focus_proposals()
+        if wm_disc is not None:
+            wm_disc.integrate_discovered(
+                scene_focus_proposals
+                if scene_focus_proposals is not None
+                else [f.to_working_memory_proposal() for f in object_files],
+                events=((latest or {}).get("events") if isinstance(latest, dict) else []) or [],
+                appearance_weight=C.assoc_appearance_weight(),
+                match_threshold=C.assoc_match_threshold(),
+                appearance_ema=C.appearance_ema(),
+                reidentify=(
+                    ctx.ltm_graph.match if getattr(ctx, "ltm_graph", None) is not None else None
+                ),
+            )
+        stable_count = sum(
+            1
+            for s in getattr(wm_disc, "slots", {}).values()
+            if int(getattr(s, "seen_count", 0)) >= C.ltm_consolidate_min_seen()
+        ) if wm_disc is not None else 0
+        health = evaluate_discovery_health(
+            object_files,
+            tracked_count=len(getattr(wm_disc, "slots", {}) or {}) if wm_disc is not None else 0,
+            stable_tracked_objects=stable_count,
+        )
+        if hasattr(ctx.perceptual, "object_files"):
+            ctx.perceptual.object_files = (
+                _stable_object_file_snapshots(wm_disc)
+                if wm_disc is not None
+                else [f.to_dict() for f in object_files]
+            )
+            if C.scene_workspace_enabled() and hasattr(ctx.perceptual, "update_scene_workspace"):
+                ctx.perceptual.update_scene_workspace(dynamics_report=scene_dynamics_report)
+                scene_ws_final = getattr(ctx.perceptual, "scene_workspace", None)
+                ids, feats = _scene_feature_snapshot(
+                    scene_ws_final,
+                    C.scene_dynamics_max_entities(),
+                )
+                bundle.prev_scene_entity_ids = ids
+                bundle.prev_scene_features = feats.detach().to("cpu")
+        else:
+            bundle.prev_scene_features = None
+            bundle.prev_scene_entity_ids = []
         if hasattr(ctx.perceptual, "discovery_health"):
             ctx.perceptual.discovery_health = health.to_dict()
         if hasattr(ctx.perceptual, "ltm_consolidation"):
@@ -848,33 +1080,48 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 "reason": health.reason,
             }
         if hasattr(ctx.perceptual, "perception_organ"):
-            ctx.perceptual.perception_organ = {
-                "frame_seen": False,
-                "stale_frame": False,
-                "grid_size": 0,
-                "flow_confidence": 0.0,
-                "global_motion": 0.0,
-                "local_motion_max": 0.0,
-                "local_motion_mean": 0.0,
-                "looming_count": 0,
-                "stuff_count": 0,
-                "body_candidate_count": 0,
-                "foreground_count": 0,
-                "checkpoint_status": "no_frame",
-            }
+            ctx.perceptual.perception_organ = organ_diag
+        if hasattr(ctx.perceptual, "retinotopic_map"):
+            ctx.perceptual.retinotopic_map = ret_map
         discovery_diag = {
-            "slots_present": 0,
-            "discovered_objects": 0,
-            "object_files": 0,
-            "stable_tracked_objects": 0,
-            "perception_collapsed": 0.0,
+            "slots_present": len(proposals),
+            "slot_recon_error": 0.0,
+            "slot_diversity_loss": 0.0,
+            "slot_entropy_loss": 0.0,
+            "slot_spatial_loss": 0.0,
+            "discovered_objects": len(getattr(wm_disc, "slots", {}) or {}),
+            "object_files": health.object_files,
+            "stable_tracked_objects": health.stable_tracked_objects,
+            "perception_collapsed": 1.0 if health.collapsed else 0.0,
             "perception_health": health.status,
             "perception_health_reason": health.reason,
-            "centroid_spread": 0.0,
-            "flow_confidence": 0.0,
-            "looming_count": 0,
-            "stuff_count": 0,
-            "body_candidate_count": 0,
+            "centroid_spread": health.centroid_spread,
+            "appearance_cosine_mean": health.appearance_cosine_mean,
+            "flow_confidence": health.flow_confidence,
+            "looming_count": health.looming_count,
+            "stuff_count": health.stuff_count,
+            "body_candidate_count": health.body_candidate_count,
+            "scene_entities": (
+                int((getattr(ctx.perceptual, "scene_health", {}) or {}).get("entity_count", 0))
+                if C.scene_workspace_enabled()
+                else 0
+            ),
+            "scene_focus_count": (
+                int((getattr(ctx.perceptual, "scene_health", {}) or {}).get("focus_count", 0))
+                if C.scene_workspace_enabled()
+                else 0
+            ),
+            "scene_prediction_error": (
+                (getattr(ctx.perceptual, "scene_health", {}) or {}).get("prediction_error")
+                if C.scene_workspace_enabled()
+                else None
+            ),
+            "scene_dynamics_enabled": bool(C.scene_dynamics_enabled()),
+            "scene_dynamics_model_active": False,
+            "scene_dynamics_loss": None,
+            "scene_dynamics_uncertainty": None,
+            "scene_dynamics_predictions": scene_dynamics_report.get("prediction_count", 0),
+            "scene_dynamics_matches": 0,
         }
 
     tb0 = time.perf_counter()
@@ -902,6 +1149,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         bundle.prev_motor = None
         bundle.prev_intero = None
         bundle.prev_affect = None
+        bundle.prev_scene_features = None
+        bundle.prev_scene_entity_ids = []
         bundle.prev_repself = None
     bwd_ms = (time.perf_counter() - tb0) * 1000.0
 
@@ -958,6 +1207,14 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             )
             transition_payload["feat"] = phi
             transition_payload["reward"] = float((w_i * phi).sum().item())
+        if (
+            scene_replay_prev_features is not None
+            and scene_replay_target_features is not None
+            and scene_replay_match_mask is not None
+        ):
+            transition_payload["scene_prev_features"] = scene_replay_prev_features
+            transition_payload["scene_target_features"] = scene_replay_target_features
+            transition_payload["scene_match_mask"] = scene_replay_match_mask
 
     # Perception-feedback telemetry (None when the loop is off).
     gate_mean = (
@@ -1130,8 +1387,16 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 "threshold": round(float(C.gwt_ignition_threshold()), 4),
                 "n_candidates": int(len(vecs)),
                 "winners": list(ign.winners),
+                "focus_ids": list((getattr(ctx.perceptual, "focus", {}) or {}).get("ids", [])),
+                "scene_entity_count": int((getattr(ctx.perceptual, "scene_health", {}) or {}).get("entity_count", 0) or 0),
+                "scene_relation_count": len(
+                    ((getattr(ctx.perceptual, "scene_workspace", None).relation_dicts())
+                     if getattr(ctx.perceptual, "scene_workspace", None) is not None else [])
+                ),
             }
             ctx.latents["workspace"] = workspace_block
+            if hasattr(ctx.perceptual, "workspace_ignition"):
+                ctx.perceptual.workspace_ignition = dict(workspace_block)
         elif wm_slots or getattr(wm, "scene_latent", None):
             attn = np.asarray(wm.attention_vector(dim), dtype=np.float32)
             a_vec = ctx.state_bus.state_of_mind

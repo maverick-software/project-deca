@@ -334,6 +334,9 @@ DRINK_RADIUS = 1.0  # root within this distance of a glass drinks it (m)
 # seconds; tuned for watchable replenishment (not the metabolic survival clock).
 FOOD_RESPAWN_S = 30.0
 WATER_RESPAWN_S = 25.0
+DIRECT_PROVISION_START_M = 2.4
+DIRECT_PROVISION_TARGET_M = 0.18
+DIRECT_PROVISION_DURATION_S = 2.4
 EFFORT_FATIGUE_RISE_S = 2.5
 EFFORT_FATIGUE_RECOVERY_S = 8.0
 EFFORT_STRAIN_GAIN = 0.45
@@ -607,6 +610,7 @@ class BodySnapshot:
     teacher_vertical_velocity: float = 0.0
     teacher_support_mode: str = "off"
     caregiver_parent_present: bool = False
+    caregiver_kind: str = "none"
     caregiver_status: str = "missing_parent"
     caregiver_request_kind: str = ""
     caregiver_last_offer_item: str = ""
@@ -620,6 +624,19 @@ class BodySnapshot:
     # Eval-only ground truth (never fed to cognition): world xpos of the limb
     # extremities, used solely to score discovered "self_part" / agency edges.
     body_parts: dict[str, list[float]] | None = None
+
+
+@dataclass
+class DirectProvision:
+    """One visible resource delivery along the egocentric head-camera ray."""
+
+    kind: str
+    name: str
+    body_id: int
+    start: list[float]
+    target: list[float]
+    elapsed_s: float = 0.0
+    duration_s: float = DIRECT_PROVISION_DURATION_S
 
 
 def body_events(
@@ -758,6 +775,7 @@ def build_body_observation(
                 "teacher_vertical_velocity": round(float(snap.teacher_vertical_velocity), 5),
                 "teacher_support_mode": str(snap.teacher_support_mode),
                 "caregiver_parent_present": bool(snap.caregiver_parent_present),
+                "caregiver_kind": str(snap.caregiver_kind),
                 "caregiver_status": str(snap.caregiver_status),
                 "caregiver_request_kind": str(snap.caregiver_request_kind),
                 "caregiver_last_offer_item": str(snap.caregiver_last_offer_item),
@@ -892,6 +910,8 @@ class HumanoidSim:
         mujoco.mj_forward(self.model, self.data)
 
         self.torso_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "torso")
+        head_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "head")
+        self.head_id = head_id if head_id >= 0 else self.torso_id
         # Hinge joints driven by actuators (skip the free root joint, scene props,
         # and the parent NPC's joints -- only the agent's own joints feed the
         # brain's proprioception and the 21-actuator motor contract).
@@ -1082,6 +1102,8 @@ class HumanoidSim:
             elif "water" in name:
                 self.water_bodies[name] = b
         self.eaten: set[str] = set()
+        self._direct_delivery: DirectProvision | None = None
+        self._direct_delivery_events: list[dict[str, Any]] = []
         # Seed of the most recent per-life resource scatter (-1 = never scattered);
         # echoed to the brain so the life is reproducible / telemetered.
         self._resource_seed: int = -1
@@ -1124,8 +1146,8 @@ class HumanoidSim:
         self._npc_last_offer_item = ""
         self._npc_delivery_count = 0
         # Scripted crowd ("village") controller and the agent's latest reservoir
-        # levels (piggybacked on the brain's action message). Reservoirs gate the
-        # parent's need-threshold provisioning (legacy parent + crowd parent).
+        # levels (piggybacked on the brain's action message). Known low reservoirs
+        # or explicit requests gate provisioning (legacy parent + crowd parent).
         self.crowd: CrowdController | None = None
         self._agent_reservoirs: dict[str, float] | None = None
         if "npc" in self.elements:
@@ -1397,7 +1419,7 @@ class HumanoidSim:
             self._joint_pe_buf = buf
         # Agent reservoir levels (normalized 0..1), piggybacked by the server on
         # the action message. Gate the parent's need-threshold provisioning; never
-        # touch cognition. Absent -> the parent falls back to its refractory timer.
+        # touch cognition. Absent -> no automatic caregiver provisioning.
         res = params.get("reservoirs")
         if isinstance(res, dict) and res:
             parsed: dict[str, float] = {}
@@ -1458,6 +1480,7 @@ class HumanoidSim:
                 self._apply_teacher_spotter()
                 self._apply_motor()
             self._mj.mj_step(self.model, self.data)
+        self._advance_direct_delivery(sim_seconds)
         self._update_effort_telemetry(sim_seconds)
         if self.viewer is not None:
             if self.viewer.is_running():
@@ -1510,6 +1533,10 @@ class HumanoidSim:
         t = self.data.xpos[self.torso_id]
         return (float(t[0]), float(t[1]))
 
+    def _resource_candidates(self, kind: str) -> list[str]:
+        bodies = self.water_bodies if kind == "water" else self.food_bodies
+        return sorted(name for name in bodies if "gift" not in name)
+
     def give_near(self, kind: str) -> bool:
         """Admin provisioning: relocate a food/water prop a step ahead of the agent.
 
@@ -1522,7 +1549,7 @@ class HumanoidSim:
         otherwise.
         """
         bodies = self.water_bodies if kind == "water" else self.food_bodies
-        candidates = sorted(name for name in bodies if "gift" not in name)
+        candidates = self._resource_candidates(kind)
         if not candidates:
             return False
         name = candidates[0]
@@ -1538,6 +1565,94 @@ class HumanoidSim:
         self._respawn_at.pop(name, None)
         self._mj.mj_forward(self.model, self.data)
         return True
+
+    def _head_forward(self) -> tuple[list[float], list[float]]:
+        """Return world head position and egocentric forward unit vector."""
+        pos = [float(x) for x in self.data.xpos[self.head_id][:3]]
+        xmat = self.data.xmat[self.head_id].reshape(3, 3)
+        fwd = [float(xmat[0, 0]), float(xmat[1, 0]), float(xmat[2, 0])]
+        norm = math.sqrt(sum(v * v for v in fwd)) or 1.0
+        return pos, [v / norm for v in fwd]
+
+    def _set_resource_delivery_contact(self, body_id: int, *, enabled: bool) -> None:
+        """Disable collision while a direct resource flies into the camera view."""
+        for g in range(self.model.ngeom):
+            if int(self.model.geom_bodyid[g]) != body_id:
+                continue
+            if g not in self._geom_orig:
+                self._geom_orig[g] = (
+                    float(self.model.geom_rgba[g, 3]),
+                    int(self.model.geom_contype[g]),
+                    int(self.model.geom_conaffinity[g]),
+                )
+            if enabled:
+                alpha, contype, conaffinity = self._geom_orig[g]
+                self.model.geom_rgba[g, 3] = alpha
+                self.model.geom_contype[g] = contype
+                self.model.geom_conaffinity[g] = conaffinity
+            else:
+                self.model.geom_contype[g] = 0
+                self.model.geom_conaffinity[g] = 0
+
+    def give_direct_visual(self, kind: str) -> bool:
+        """Show a resource in the egocentric view and deliver it to the head.
+
+        This replaces the old instant "direct" top-up for learning runs: the
+        brain first sees the object, then the normal food/water event fires only
+        when the object reaches the head/mouth zone.
+        """
+        kind = "water" if kind == "water" else "food"
+        if self._direct_delivery is not None:
+            return False
+        bodies = self.water_bodies if kind == "water" else self.food_bodies
+        candidates = self._resource_candidates(kind)
+        if not candidates:
+            return False
+        name = candidates[0]
+        bid = bodies[name]
+        head, fwd = self._head_forward()
+        start = [head[i] + fwd[i] * DIRECT_PROVISION_START_M for i in range(3)]
+        target = [head[i] + fwd[i] * DIRECT_PROVISION_TARGET_M for i in range(3)]
+        self._respawn(name)
+        self._respawn_at.pop(name, None)
+        self._set_resource_delivery_contact(bid, enabled=False)
+        self.model.body_pos[bid][:3] = start
+        self._direct_delivery = DirectProvision(
+            kind=kind,
+            name=name,
+            body_id=bid,
+            start=start,
+            target=target,
+        )
+        self._mj.mj_forward(self.model, self.data)
+        return True
+
+    def _advance_direct_delivery(self, dt_s: float) -> None:
+        delivery = self._direct_delivery
+        if delivery is None:
+            return
+        head, fwd = self._head_forward()
+        delivery.target = [
+            head[i] + fwd[i] * DIRECT_PROVISION_TARGET_M for i in range(3)
+        ]
+        delivery.elapsed_s = min(
+            delivery.duration_s, delivery.elapsed_s + max(0.0, float(dt_s))
+        )
+        t = min(1.0, delivery.elapsed_s / max(1e-6, delivery.duration_s))
+        # Smoothstep: the object starts and arrives gently while staying visible.
+        a = t * t * (3.0 - 2.0 * t)
+        pos = [
+            delivery.start[i] * (1.0 - a) + delivery.target[i] * a
+            for i in range(3)
+        ]
+        self.model.body_pos[delivery.body_id][:3] = pos
+        self._mj.mj_forward(self.model, self.data)
+        if t >= 1.0:
+            self._consume(delivery.name)
+            self._direct_delivery_events.append(
+                {"type": delivery.kind, "intensity": 1.0, "source": delivery.name}
+            )
+            self._direct_delivery = None
 
     @staticmethod
     def _is_scatterable_prop(name: str) -> bool:
@@ -1603,19 +1718,18 @@ class HumanoidSim:
         """Need-threshold trigger for parental provisioning (was a fixed timer).
 
         The parent offers only once its refractory has elapsed AND the agent is
-        actually in need: a reservoir at/below the (fading) threshold. When the
-        body has no reservoir info yet (e.g. before the first action, or in unit
-        tests), it falls back to the refractory alone, preserving prior behavior.
+        actually in need: a reservoir at/below the (fading) threshold. Missing
+        reservoir telemetry is treated as unknown, not as permission to deliver.
         """
         if now < self._npc_next_deliver:
             return False
         res = self._agent_reservoirs
         if not res:
-            return True
+            return False
         return min(res.values()) <= _parent_effective_threshold(self._npc_offers)
 
-    def _request_parent(self, kind: str) -> bool:
-        """Explicit dojo caregiver request; uses visible gifts, never reservoir credit."""
+    def _request_legacy_parent(self, kind: str) -> bool:
+        """Explicit dojo caregiver request through the legacy parent."""
         if self.npc_torso is None or self.npc_root_qadr < 0:
             return False
         request = str(kind or "").strip().lower()
@@ -1640,8 +1754,28 @@ class HumanoidSim:
         self._npc_begin_delivery()
         return True
 
+    def _request_parent(self, kind: str) -> bool:
+        """Explicit caregiver request; routes to any visible parent in the scene."""
+        if self._request_legacy_parent(kind):
+            return True
+        if self.crowd is not None:
+            return bool(self.crowd.request_parent(kind))
+        return False
+
+    def _caregiver_parent_present(self) -> bool:
+        return bool(self.npc_torso is not None or (self.crowd is not None and self.crowd.has_parent()))
+
+    def _caregiver_kind(self) -> str:
+        if self.npc_torso is not None:
+            return "legacy_npc"
+        if self.crowd is not None and self.crowd.has_parent():
+            return "crowd_parent"
+        return "none"
+
     def _caregiver_status(self) -> str:
         if self.npc_torso is None:
+            if self.crowd is not None:
+                return self.crowd.caregiver_status()
             return "missing_parent"
         if self._npc_frozen:
             return "paused"
@@ -1650,6 +1784,29 @@ class HumanoidSim:
         if self._npc_phase in {"pickup", "deliver"}:
             return "delivering"
         return "idle"
+
+    def _caregiver_request_kind(self) -> str:
+        if self._npc_request_kind:
+            return str(self._npc_request_kind)
+        if self.crowd is not None:
+            return str(self.crowd.request_kind)
+        return ""
+
+    def _caregiver_last_offer_item(self) -> str:
+        if self._npc_last_offer_item:
+            return str(self._npc_last_offer_item)
+        if self.crowd is not None:
+            return str(self.crowd.last_offer_item)
+        return ""
+
+    def _caregiver_delivery_count(self) -> int:
+        crowd_count = int(self.crowd.delivery_count) if self.crowd is not None else 0
+        return int(self._npc_delivery_count) + crowd_count
+
+    def _caregiver_pending_request(self) -> bool:
+        if self._npc_requested_item is not None:
+            return True
+        return bool(self.crowd is not None and self.crowd.requested_item is not None)
 
     def _npc_target_xy(self) -> tuple[float, float] | None:
         """Target point for the current parental phase (read-only on phase).
@@ -1890,6 +2047,12 @@ class HumanoidSim:
         """Bear threat/contact, food and water consumption events for this obs."""
         events: list[dict[str, Any]] = []
         self._process_respawns()
+        if self._direct_delivery_events:
+            events.extend(self._direct_delivery_events)
+            self._direct_delivery_events = []
+        active_direct = (
+            {self._direct_delivery.name} if self._direct_delivery is not None else set()
+        )
         tpos = self.data.xpos[self.torso_id]
         root = [float(tpos[0]), float(tpos[1]), float(tpos[2])]
 
@@ -1920,7 +2083,7 @@ class HumanoidSim:
             live = {
                 name: [float(x) for x in self.data.xpos[b][:3]]
                 for name, b in self.food_bodies.items()
-                if name not in self.eaten
+                if name not in self.eaten and name not in active_direct
             }
             for name in eaten_now(root, live):
                 self._consume(name)
@@ -1930,7 +2093,7 @@ class HumanoidSim:
             live_w = {
                 name: [float(x) for x in self.data.xpos[b][:3]]
                 for name, b in self.water_bodies.items()
-                if name not in self.eaten
+                if name not in self.eaten and name not in active_direct
             }
             for name in drunk_now(root, live_w):
                 self._consume(name)
@@ -2438,7 +2601,11 @@ class HumanoidSim:
             motor=motor,
             n_actuators=int(self.model.nu),
             rom_mean=float(sum(1.0 - t for t in self._tightness) / max(1, len(self._tightness))),
-            brace_engaged=float(sum(self._tightness) / max(1, len(self._tightness))),
+            brace_engaged=(
+                float(sum(self._tightness) / max(1, len(self._tightness)))
+                if self._braces_enabled and not self._lifeless
+                else 0.0
+            ),
             rom_frac=[float(1.0 - t) for t in self._tightness],
             braces_enabled=bool(self._braces_enabled),
             stance=str(self._stance_name),
@@ -2456,12 +2623,13 @@ class HumanoidSim:
             teacher_height_error_m=float(self._teacher_height_error_m),
             teacher_vertical_velocity=float(self._teacher_vertical_velocity),
             teacher_support_mode=str(self._teacher_support_mode),
-            caregiver_parent_present=bool(self.npc_torso is not None),
+            caregiver_parent_present=self._caregiver_parent_present(),
+            caregiver_kind=self._caregiver_kind(),
             caregiver_status=self._caregiver_status(),
-            caregiver_request_kind=str(self._npc_request_kind),
-            caregiver_last_offer_item=str(self._npc_last_offer_item),
-            caregiver_delivery_count=int(self._npc_delivery_count),
-            caregiver_pending_request=bool(self._npc_requested_item is not None),
+            caregiver_request_kind=self._caregiver_request_kind(),
+            caregiver_last_offer_item=self._caregiver_last_offer_item(),
+            caregiver_delivery_count=self._caregiver_delivery_count(),
+            caregiver_pending_request=self._caregiver_pending_request(),
             part_loads={k: float(v) for k, v in self._part_loads.items()},
             body_map={
                 "parts": list(BODY_PARTS),
@@ -2708,6 +2876,18 @@ async def _run(
                         else:
                             print(
                                 f"[body] no {kind} prop in this scenario to place",
+                                flush=True,
+                            )
+                    elif cmd in ("give_water_direct_visual", "give_food_direct_visual"):
+                        kind = "water" if cmd == "give_water_direct_visual" else "food"
+                        if sim.give_direct_visual(kind):
+                            print(
+                                f"[body] delivering {kind} through egocentric view",
+                                flush=True,
+                            )
+                        else:
+                            print(
+                                f"[body] could not start direct {kind} delivery",
                                 flush=True,
                             )
                     elif cmd == "randomize_resources" or cmd.startswith("randomize_resources:"):

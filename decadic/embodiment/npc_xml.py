@@ -52,6 +52,7 @@ def clone_humanoid_xml(
     pos: tuple[float, float, float],
     *,
     collisionless: bool = True,
+    tint_rgba: tuple[float, float, float, float] | None = None,
 ) -> str:
     """One prefixed, actuator-free, optionally-collisionless humanoid clone."""
     torso = _load_torso(asset_path)
@@ -70,6 +71,16 @@ def clone_humanoid_xml(
         if el.tag == "geom" and collisionless:
             el.attrib["contype"] = "0"
             el.attrib["conaffinity"] = "0"
+        if el.tag == "geom" and tint_rgba is not None:
+            alpha = tint_rgba[3]
+            if "rgba" in el.attrib:
+                parts = el.attrib["rgba"].split()
+                if len(parts) >= 4:
+                    try:
+                        alpha = float(parts[3])
+                    except ValueError:
+                        alpha = tint_rgba[3]
+            el.attrib["rgba"] = f"{tint_rgba[0]} {tint_rgba[1]} {tint_rgba[2]} {alpha}"
 
     _rewrite(torso)
     torso.attrib["pos"] = f"{pos[0]} {pos[1]} {pos[2]}"
@@ -167,7 +178,13 @@ def crowd_scene_xml(asset_path: Path, habitats: list[Habitat] | None = None) -> 
     for hi, hab in enumerate(habs):
         cx, cy = hab.center
         parts.append(
-            clone_humanoid_xml(asset_path, f"npc{hi}_", (cx, cy, 1.30), collisionless=True)
+            clone_humanoid_xml(
+                asset_path,
+                f"npc{hi}_",
+                (cx, cy, 1.30),
+                collisionless=True,
+                tint_rgba=(0.9, 0.82, 0.35, 1.0) if hab.is_parent else None,
+            )
         )
         if hab.is_parent:
             parts.append(parent_gifts_xml((cx, cy + 0.6)))

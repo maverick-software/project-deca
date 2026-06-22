@@ -48,7 +48,8 @@ def _adapter_script() -> Path:
 
 
 def _self_host() -> str:
-    return os.environ.get("DECADIC_SELF_HOST", "127.0.0.1")
+    host = str(os.environ.get("DECADIC_SELF_HOST", "127.0.0.1")).strip()
+    return host or "127.0.0.1"
 
 
 def _self_port() -> int:

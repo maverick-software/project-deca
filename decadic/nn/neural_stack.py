@@ -240,6 +240,10 @@ class NeuralCognitiveStack(nn.Module):
         self.has_slots = self.faculties.discovered
         if self.has_slots:
             from decadic.nn.agency import AgencyHead
+            from decadic.nn.scene_dynamics import (
+                SCENE_DYNAMICS_FEATURE_DIM,
+                SceneDynamicsHead,
+            )
             from decadic.nn.slots import SlotAttention
 
             self._slots_k = _cfg.slots_k()
@@ -256,6 +260,15 @@ class NeuralCognitiveStack(nn.Module):
                 self.slot_ingress.weight.zero_()
                 self.slot_ingress.bias.zero_()
             self.agency = AgencyHead(slot_dim=self._slot_dim, n_actuators=cfg.n_actuators)
+            self.has_scene_dynamics = _cfg.scene_dynamics_enabled()
+            if self.has_scene_dynamics:
+                self.scene_dynamics = SceneDynamicsHead(
+                    feature_dim=SCENE_DYNAMICS_FEATURE_DIM,
+                    motor_dim=cfg.n_actuators,
+                    hidden=cfg.motor_hidden,
+                )
+        else:
+            self.has_scene_dynamics = False
         # Self-state feedback spine (self-model program, Phase 1). When the
         # faculty is on, this projection injects the previous cycle's self-report
         # (A state-of-mind || C narrative || E metacognition) additively into the
@@ -589,6 +602,24 @@ class NeuralCognitiveStack(nn.Module):
         live policy value-shaping term (``detach_params=True``, anti-hallucination).
         """
         return self.sf_head.predict(state, u, detach_params=detach_params)
+
+    def scene_dynamics_predict(
+        self, features: torch.Tensor, u: torch.Tensor, *, detach_params: bool = False
+    ) -> torch.Tensor:
+        """Predict next anonymous scene entity state from prior entity state + motor."""
+        if not getattr(self, "has_scene_dynamics", False):
+            raise RuntimeError("scene dynamics head is not built")
+        if not detach_params:
+            return self.scene_dynamics(features, u)
+        params = list(self.scene_dynamics.parameters())
+        old = [p.requires_grad for p in params]
+        try:
+            for p in params:
+                p.requires_grad_(False)
+            return self.scene_dynamics(features, u)
+        finally:
+            for p, flag in zip(params, old):
+                p.requires_grad_(flag)
 
     def forward(
         self,

@@ -39,6 +39,7 @@ export default function PerceptionPanel(props: {
   const [camera, setCamera] = usePersistentState("decadic.perception.camera", "track");
   const [recentering, setRecentering] = useState(false);
   const [viewerBusy, setViewerBusy] = useState(false);
+  const [viewerError, setViewerError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   // integration_ticks advances with each observation; reusing it busts the img cache
@@ -79,10 +80,11 @@ export default function PerceptionPanel(props: {
 
   const onOpenViewer = async () => {
     setViewerBusy(true);
+    setViewerError(null);
     try {
       await openBodyViewer(agentId);
-    } catch {
-      // body not connected; nothing to open
+    } catch (err) {
+      setViewerError(err instanceof Error ? err.message : "Unable to open live window");
     } finally {
       setTimeout(() => setViewerBusy(false), 600);
     }
@@ -141,6 +143,71 @@ export default function PerceptionPanel(props: {
         <div className="empty">
           no vision frames yet (run the body adapter with <code>--vision</code>)
         </div>
+      )}
+      {viewerError && <div className="empty">{viewerError}</div>}
+
+      {p.scene_health && (
+        <>
+          <div className="strip-label" style={{ marginTop: 12 }}>
+            <span>
+              Scene Workspace
+              <Info tip="Persistent anonymous scene model built before cognition: visible, occluded, and focused scene entities. Labels never enter this layer." />
+            </span>
+            <span>
+              {p.scene_health.visible_count} visible / {p.scene_health.entity_count} total
+            </span>
+          </div>
+          <div className="stat-grid mini">
+            <div>
+              <strong>{p.scene_health.focus_count}</strong>
+              <span>focus</span>
+            </div>
+            <div>
+              <strong>{p.scene_health.occluded_count}</strong>
+              <span>occluded</span>
+            </div>
+            <div>
+              <strong>{p.scene_health.stable_count}</strong>
+              <span>stable</span>
+            </div>
+            <div>
+              <strong>
+                {p.scene_health.prediction_error != null
+                  ? p.scene_health.prediction_error.toFixed(3)
+                  : "n/a"}
+              </strong>
+              <span>scene PE</span>
+            </div>
+            <div>
+              <strong>{p.scene_health.reidentified_count ?? 0}</strong>
+              <span>re-id</span>
+            </div>
+            <div>
+              <strong>{p.scene_health.prediction_unstable_count ?? 0}</strong>
+              <span>unstable</span>
+            </div>
+          </div>
+          {p.scene_prediction && (
+            <div className="strip-label" style={{ marginTop: 8 }}>
+              <span>
+                Scene dynamics: {p.scene_prediction.model_active ? "learned" : "fallback"}
+              </span>
+              <span>
+                {p.scene_prediction.prediction_count ?? 0} predicted · loss{" "}
+                {p.scene_prediction.loss != null ? p.scene_prediction.loss.toFixed(4) : "n/a"}
+              </span>
+            </div>
+          )}
+          {p.workspace_ignition && (
+            <div className="strip-label" style={{ marginTop: 8 }}>
+              <span>Global workspace</span>
+              <span>
+                {p.workspace_ignition.ignited ? "ignited" : "not ignited"} ·{" "}
+                {p.workspace_ignition.n_candidates} candidates
+              </span>
+            </div>
+          )}
+        </>
       )}
 
       <div className="strip-label" style={{ marginTop: 12 }}>

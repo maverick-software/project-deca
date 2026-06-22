@@ -722,3 +722,49 @@ def test_consumable_respawns_after_delay():
         assert int(sim.model.geom_contype[geoms[0]]) != 0  # collidable again
     finally:
         sim.close()
+
+
+def test_direct_visual_delivery_starts_on_head_camera_ray():
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        assert sim.give_direct_visual("water") is True
+        delivery = sim._direct_delivery
+        assert delivery is not None
+        head, fwd = sim._head_forward()
+        expected = [
+            head[i] + fwd[i] * mod.DIRECT_PROVISION_START_M
+            for i in range(3)
+        ]
+        pos = [float(x) for x in sim.data.xpos[delivery.body_id][:3]]
+        assert pos == pytest.approx(expected, abs=1e-5)
+    finally:
+        sim.close()
+
+
+def test_direct_visual_delivery_suppresses_radius_until_head_arrival():
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        assert sim.give_direct_visual("food") is True
+        delivery = sim._direct_delivery
+        assert delivery is not None
+        # Even if the active delivery body is inside the generic torso radius,
+        # it must not be consumed until the head-delivery animation arrives.
+        root = sim.data.xpos[sim.torso_id]
+        sim.model.body_pos[delivery.body_id][:3] = [
+            float(root[0]),
+            float(root[1]),
+            float(root[2]),
+        ]
+        sim._mj.mj_forward(sim.model, sim.data)
+        assert not any(ev["type"] == "food" for ev in sim.scene_events(0))
+
+        sim.step(mod.DIRECT_PROVISION_DURATION_S + 0.1)
+        events = sim.scene_events(1)
+        assert any(ev["type"] == "food" and ev["source"] == delivery.name for ev in events)
+        assert delivery.name in sim.eaten
+    finally:
+        sim.close()

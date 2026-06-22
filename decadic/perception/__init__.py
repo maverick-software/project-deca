@@ -1,7 +1,11 @@
-"""Perceptual package: integrator, object files, and health gates."""
+"""Perceptual package: integrator, object files, scene workspace, and health gates."""
 
-from decadic.perception.integration import PerceptualIntegrator
-from decadic.perception.organ import PerceptionOrgan, PerceptionOrganDiagnostics, RetinotopicMap
+from decadic.perception.scene_workspace import (
+    FORBIDDEN_SCENE_TOKENS,
+    SceneEntity,
+    SceneRelation,
+    SceneWorkspace,
+)
 from decadic.perception.object_files import (
     DiscoveryHealth,
     HEALTH_STATES,
@@ -9,6 +13,8 @@ from decadic.perception.object_files import (
     evaluate_discovery_health,
     object_files_from_proposals,
 )
+from decadic.perception.integration import PerceptualIntegrator
+from decadic.perception.organ import PerceptionOrgan, PerceptionOrganDiagnostics, RetinotopicMap
 
 __all__ = [
     "DiscoveryHealth",
@@ -18,6 +24,10 @@ __all__ = [
     "PerceptionOrganDiagnostics",
     "PerceptualIntegrator",
     "RetinotopicMap",
+    "FORBIDDEN_SCENE_TOKENS",
+    "SceneEntity",
+    "SceneRelation",
+    "SceneWorkspace",
     "evaluate_discovery_health",
     "object_files_from_proposals",
 ]

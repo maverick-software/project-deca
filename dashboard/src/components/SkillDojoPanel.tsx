@@ -453,6 +453,8 @@ function CaregiverPanel(props: { status: DojoStatus }) {
         <b>{activeNeed ? s.caregiver_need : "none"}</b>
         <span>Request</span>
         <b>{s.caregiver_request_kind ?? "none"}</b>
+        <span>Caregiver</span>
+        <b>{s.caregiver_kind ?? "none"}</b>
         <span>Last offer</span>
         <b>{s.caregiver_last_offer_item ?? "none"}</b>
         <span>Deliveries</span>

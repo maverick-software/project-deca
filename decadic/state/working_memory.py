@@ -98,7 +98,11 @@ class MemorySlot:
     local_motion: float = 0.0
     retina_contrast: float = 0.0
     looming: float = 0.0
+    prediction_error: float = 0.0
+    prediction_uncertainty: float = 0.0
+    occlusion_age: int = 0
     property_evidence: dict[str, Any] = field(default_factory=dict)
+    scene_entity_id: str | None = None
 
     def heading(self) -> float | None:
         """Planar heading (radians) inferred from remembered position history."""
@@ -139,6 +143,12 @@ class MemorySlot:
             node["agency"] = round(float(self.agency), 4)
         node["confidence"] = round(float(self.confidence), 4)
         node["kind_hint"] = self.kind_hint
+        if self.scene_entity_id is not None:
+            node["scene_entity_id"] = self.scene_entity_id
+        if self.prediction_error:
+            node["prediction_error"] = round(float(self.prediction_error), 4)
+        if self.prediction_uncertainty:
+            node["prediction_uncertainty"] = round(float(self.prediction_uncertainty), 4)
         return node
 
 
@@ -413,7 +423,11 @@ class WorkingMemory:
             local_motion=_as_float(prop.get("local_motion")),
             retina_contrast=_as_float(prop.get("retina_contrast")),
             looming=_as_float(prop.get("looming")),
+            prediction_error=_as_float(prop.get("prediction_error")),
+            prediction_uncertainty=_as_float(prop.get("prediction_uncertainty")),
+            occlusion_age=int(_as_float(prop.get("occlusion_age"))),
             property_evidence=_as_property_evidence(prop.get("property_evidence")),
+            scene_entity_id=str(prop.get("scene_entity_id")) if prop.get("scene_entity_id") else None,
         )
         if uv is not None:
             slot.uv_history.append(list(uv))
@@ -461,7 +475,12 @@ class WorkingMemory:
         slot.local_motion = _as_float(prop.get("local_motion"))
         slot.retina_contrast = _as_float(prop.get("retina_contrast"))
         slot.looming = _as_float(prop.get("looming"))
+        slot.prediction_error = _as_float(prop.get("prediction_error"))
+        slot.prediction_uncertainty = _as_float(prop.get("prediction_uncertainty"))
+        slot.occlusion_age = int(_as_float(prop.get("occlusion_age")))
         slot.property_evidence = _as_property_evidence(prop.get("property_evidence"))
+        if prop.get("scene_entity_id"):
+            slot.scene_entity_id = str(prop.get("scene_entity_id"))
 
     def update_agency(
         self,
@@ -684,7 +703,11 @@ class WorkingMemory:
                     "local_motion": _fin(round(s.local_motion, 4)),
                     "retina_contrast": _fin(round(s.retina_contrast, 4)),
                     "looming": _fin(round(s.looming, 4)),
+                    "prediction_error": _fin(round(s.prediction_error, 4)),
+                    "prediction_uncertainty": _fin(round(s.prediction_uncertainty, 4)),
+                    "occlusion_age": int(s.occlusion_age),
                     "property_evidence": dict(s.property_evidence),
+                    "scene_entity_id": s.scene_entity_id,
                 }
                 for s in self.active_slots()
             ],

@@ -14,12 +14,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from decadic import config as C
 from decadic.config import (
     DEFAULT_CYCLE_INTERVAL_S,
     DEFAULT_PARALLEL_SESSIONS,
     DEFAULT_REVIVE_VIABILITY,
     FAST_PATH_COLLISION_THRESHOLD,
     MAX_PARALLEL_SESSIONS,
+    PERCEPTUAL_PROCESSING_BATCHING,
+    PERCEPTUAL_PROCESSING_MODES,
+    PERCEPTUAL_PROCESSING_PERSISTENT,
     cognition_history_len,
     cognition_trace_enabled,
     consolidation_enabled,
@@ -56,11 +60,13 @@ from decadic.config import (
     ltm_snapshot_limit,
     max_integrity_damage_per_obs,
     metabolic_compression,
+    perceptual_processing_mode,
     metabolic_tick_s,
     plasticity_log_every,
     probe_capture_enabled,
     randomize_resources_enabled,
     replay_buffer_size,
+    scene_dynamics_enabled,
     sf_gamma,
     sf_lambda,
     stress_gain,
@@ -91,6 +97,8 @@ from decadic.nn.bundle import NeuralBundle
 from decadic.nn.faculties import CognitionFaculties
 from decadic.nn.plastic import PlasticityFlags
 from decadic.perception.integration import PerceptualIntegrator
+from decadic.perception.object_files import evaluate_discovery_health, object_files_from_proposals
+from decadic.perception.organ import PerceptionOrgan
 from decadic.state.goal_lifecycle import GoalState
 from decadic.state.perceptual_state import PerceptualState
 from decadic.state.state_bus import StateBus
@@ -244,6 +252,7 @@ class AgentRuntime:
         self.died_at_cycle: int | None = None
         k = int(os.environ.get("DECADIC_PARALLEL_SESSIONS", str(DEFAULT_PARALLEL_SESSIONS)))
         self.parallel_sessions = max(1, min(MAX_PARALLEL_SESSIONS, k))
+        self.perceptual_processing_mode = perceptual_processing_mode()
         # Manual assist-harness override: None -> follow the fading curriculum;
         # a float (0/1/2/3) -> hold that level regardless of training progress.
         # Default 0 -> no training-wheel assist unless the operator opts in.
@@ -271,8 +280,24 @@ class AgentRuntime:
         self._threat_stress = 0.0
         self._last_metab_monotonic: float | None = None
         self._metabolic_task: asyncio.Task[None] | None = None
-        # Observations buffered between cycles → drained as one batched encode pass.
+        # Legacy batching buffer. Persistent Parallel Perceptual Processing uses
+        # the queue below; batching mode drains this buffer once per cycle.
         self._obs_buffer: deque[dict[str, Any]] = deque(maxlen=self.parallel_sessions)
+        self._perception_queue: asyncio.Queue[tuple[int, dict[str, Any], float]] = asyncio.Queue(
+            maxsize=MAX_PARALLEL_SESSIONS * 2
+        )
+        self._perception_workers: list[asyncio.Task[None]] = []
+        self._perception_ready: dict[int, tuple[dict[str, Any] | None, float, float]] = {}
+        self._perception_commit_lock = asyncio.Lock()
+        self._perception_seq = 0
+        self._perception_next_commit = 1
+        self._perception_inflight = 0
+        self._perception_committed = 0
+        self._perception_dropped = 0
+        self._perception_ingested = 0
+        self._perception_started_at = time.perf_counter()
+        self._perception_last_commit_s: float | None = None
+        self._runtime_perception_organ = PerceptionOrgan()
         # Read-only locomotion / gait telemetry (curriculum evaluation only; NEVER
         # read by cognition). Tracks how far the body has travelled, its net
         # displacement from the run origin, a rolling fall-rate, and a gait
@@ -323,6 +348,7 @@ class AgentRuntime:
         self.dojo_training: dict[str, Any] | None = None
         self.metrics["perception_mode"] = self.perception_mode
         self.metrics["discovered_perception"] = self.faculties.discovered
+        self._refresh_perception_pipeline_metrics()
         self._refresh_homeostasis_metrics()
         self._refresh_plasticity_metrics()
 
@@ -355,6 +381,17 @@ class AgentRuntime:
             "learning_rate": 0.0,
             "gpu_memory_max_allocated": 0,
             "parallel_sessions": 0,
+            "perceptual_processing_mode": PERCEPTUAL_PROCESSING_PERSISTENT,
+            "pipeline_sessions": 0,
+            "perception_queue_depth": 0,
+            "perception_inflight": 0,
+            "perception_ingest_hz": 0.0,
+            "perception_commit_hz": 0.0,
+            "frames_committed": 0,
+            "frames_dropped": 0,
+            "commit_lag_ms": 0.0,
+            "sample_age_ms": 0.0,
+            "batching_fallback": False,
             "working_memory_slots": 0,
             "encode_phase_ms": 0.0,
             "forward_model_error": 0.0,
@@ -503,6 +540,7 @@ class AgentRuntime:
             self._cycle_task = asyncio.create_task(
                 self._cycle_loop(), name=f"decadic-cycle-{self.agent_id}"
             )
+        self._ensure_perception_workers()
         interval = float(os.environ.get("DECADIC_CONSOLIDATION_STUB_INTERVAL_S", "10"))
         # The real dual-network consolidator starts whenever the feature is on
         # (regardless of the stub interval); otherwise the no-op heartbeat runs only
@@ -534,6 +572,250 @@ class AgentRuntime:
                 self._landscape_runner(),
                 name=f"decadic-landscape-{self.agent_id}",
             )
+
+    def _perception_pipeline_enabled(self) -> bool:
+        return self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_PERSISTENT
+
+    def _ensure_perception_workers(self) -> None:
+        if not self._perception_pipeline_enabled():
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        alive = [t for t in self._perception_workers if not t.done()]
+        target = max(1, min(MAX_PARALLEL_SESSIONS, int(self.parallel_sessions)))
+        self._perception_workers = alive[:target]
+        for idx in range(len(self._perception_workers), target):
+            self._perception_workers.append(
+                asyncio.create_task(
+                    self._perception_worker_loop(idx),
+                    name=f"decadic-perception-{self.agent_id}-{idx}",
+                )
+            )
+
+    def _clear_perception_pipeline(self) -> None:
+        while True:
+            try:
+                self._perception_queue.get_nowait()
+                self._perception_queue.task_done()
+            except asyncio.QueueEmpty:
+                break
+        self._perception_ready.clear()
+        self._perception_seq = 0
+        self._perception_next_commit = 1
+        self._perception_inflight = 0
+        self._perception_last_commit_s = None
+
+    async def _resize_perception_workers(self) -> None:
+        if not self._perception_pipeline_enabled():
+            for task in self._perception_workers:
+                task.cancel()
+            if self._perception_workers:
+                await asyncio.gather(*self._perception_workers, return_exceptions=True)
+            self._perception_workers = []
+            return
+        target = max(1, min(MAX_PARALLEL_SESSIONS, int(self.parallel_sessions)))
+        live = [t for t in self._perception_workers if not t.done()]
+        extra = live[target:]
+        for task in extra:
+            task.cancel()
+        if extra:
+            await asyncio.gather(*extra, return_exceptions=True)
+        self._perception_workers = live[:target]
+        self._ensure_perception_workers()
+
+    async def _enqueue_perception_observation(self, obs: dict[str, Any]) -> None:
+        if not self._perception_pipeline_enabled():
+            return
+        self._ensure_perception_workers()
+        self._perception_seq += 1
+        seq = self._perception_seq
+        try:
+            self._perception_queue.put_nowait((seq, dict(obs), time.perf_counter()))
+            self._perception_ingested += 1
+        except asyncio.QueueFull:
+            self._perception_dropped += 1
+            now = time.perf_counter()
+            self._perception_ready[seq] = (None, now, now)
+            await self._drain_ready_perception()
+        self._refresh_perception_pipeline_metrics()
+
+    async def _perception_worker_loop(self, worker_idx: int) -> None:
+        del worker_idx
+        while self.running:
+            seq, obs, enqueued_s = await self._perception_queue.get()
+            self._perception_inflight += 1
+            try:
+                if self.neural is not None:
+                    encoders = getattr(self.neural, "encoders", None)
+                    predecode = getattr(encoders, "predecode", None)
+                    if callable(predecode):
+                        try:
+                            predecode(obs)
+                        except Exception:
+                            logger.debug(
+                                "perception_predecode_failed agent_id=%s seq=%s",
+                                self.agent_id,
+                                seq,
+                                exc_info=True,
+                            )
+                self._perception_ready[seq] = (obs, enqueued_s, time.perf_counter())
+                await self._drain_ready_perception()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self._perception_ready[seq] = (None, enqueued_s, time.perf_counter())
+                logger.debug(
+                    "perception_worker_failed agent_id=%s seq=%s",
+                    self.agent_id,
+                    seq,
+                    exc_info=True,
+                )
+                await self._drain_ready_perception()
+            finally:
+                self._perception_inflight = max(0, self._perception_inflight - 1)
+                self._perception_queue.task_done()
+                self._refresh_perception_pipeline_metrics()
+
+    async def _drain_ready_perception(self) -> None:
+        async with self._perception_commit_lock:
+            while self._perception_next_commit in self._perception_ready:
+                obs, enqueued_s, _ready_s = self._perception_ready.pop(
+                    self._perception_next_commit
+                )
+                self._perception_next_commit += 1
+                if obs is None:
+                    continue
+                async with self.lock:
+                    self._commit_perception_observation_locked(obs)
+                    self._perception_committed += 1
+                    now = time.perf_counter()
+                    self._perception_last_commit_s = now
+                    self.metrics["commit_lag_ms"] = (now - enqueued_s) * 1000.0
+        self._refresh_perception_pipeline_metrics()
+
+    def _commit_perception_observation_locked(self, obs: dict[str, Any]) -> None:
+        """Commit anonymous perceptual object files from one frame, under lock."""
+        if self.perception_mode != "discovered":
+            return
+        bundle = self.neural
+        proposals: list[dict[str, Any]] = []
+        if bundle is not None and getattr(bundle.stack, "has_slots", False):
+            try:
+                import torch
+
+                from decadic.cycle.discovery import extract_proposals
+                from decadic.cycle.neural_pipeline import _slot_mask_entropies
+
+                with torch.no_grad():
+                    patch_tokens = bundle.encoders.vision_patch_tokens(obs)
+                    if patch_tokens is not None:
+                        patch_tokens = patch_tokens.to(device=bundle.device)
+                        slot_out = bundle.stack.slot_encode(patch_tokens)
+                        centroids = bundle.stack.slots_module.centroids(slot_out["attn"])
+                        slots_np = slot_out["slots"][0].detach().float().cpu().numpy()
+                        presence_np = slot_out["presence"][0].detach().float().cpu().numpy()
+                        centroids_np = centroids[0].detach().float().cpu().numpy()
+                        mask_entropies = _slot_mask_entropies(slot_out["attn"])
+                        proposals = extract_proposals(
+                            slots_np,
+                            presence_np,
+                            centroids_np,
+                            threshold=C.slot_presence_threshold(),
+                        )
+                        for p in proposals:
+                            idx = int(p.get("idx", -1))
+                            if 0 <= idx < len(mask_entropies):
+                                p["mask_entropy"] = mask_entropies[idx]
+            except Exception:
+                logger.debug(
+                    "perception_slot_commit_failed agent_id=%s",
+                    self.agent_id,
+                    exc_info=True,
+                )
+        organ = getattr(bundle, "_perception_organ", None) if bundle is not None else None
+        if organ is None:
+            organ = self._runtime_perception_organ
+            if bundle is not None:
+                bundle._perception_organ = organ
+        prev_motor = getattr(bundle, "prev_motor", None) if bundle is not None else None
+        proposals, organ_diag, ret_map = organ.process(obs, proposals, prev_motor=prev_motor)
+        object_files = object_files_from_proposals(proposals)
+        self.perceptual.object_files = [f.to_dict() for f in object_files]
+        scene_dynamics_report = {
+            "enabled": bool(C.scene_dynamics_enabled()),
+            "model_active": False,
+            "loss": None,
+            "uncertainty": None,
+            "prediction_count": 0,
+            "matched_count": 0,
+        }
+        if C.scene_workspace_enabled() and hasattr(self.perceptual, "update_scene_workspace"):
+            self.perceptual.update_scene_workspace(dynamics_report=scene_dynamics_report)
+        scene_focus_proposals = None
+        scene_ws = getattr(self.perceptual, "scene_workspace", None)
+        if scene_ws is not None:
+            scene_focus_proposals = scene_ws.focus_proposals()
+        wm_disc = getattr(self.perceptual, "working_memory", None)
+        matched = []
+        if wm_disc is not None:
+            matched = wm_disc.integrate_discovered(
+                scene_focus_proposals
+                if scene_focus_proposals is not None
+                else [f.to_working_memory_proposal() for f in object_files],
+                events=(obs.get("events") if isinstance(obs.get("events"), list) else []),
+                appearance_weight=C.assoc_appearance_weight(),
+                match_threshold=C.assoc_match_threshold(),
+                appearance_ema=C.appearance_ema(),
+                reidentify=(self.ltm_graph.match if self.ltm_graph is not None else None),
+            )
+        del matched
+        stable_count = (
+            sum(
+                1
+                for s in getattr(wm_disc, "slots", {}).values()
+                if int(getattr(s, "seen_count", 0)) >= C.ltm_consolidate_min_seen()
+            )
+            if wm_disc is not None
+            else 0
+        )
+        health = evaluate_discovery_health(
+            object_files,
+            tracked_count=len(getattr(wm_disc, "slots", {}) or {}) if wm_disc is not None else 0,
+            stable_tracked_objects=stable_count,
+        )
+        if wm_disc is not None:
+            from decadic.cycle.neural_pipeline import _stable_object_file_snapshots
+
+            self.perceptual.object_files = _stable_object_file_snapshots(wm_disc)
+            if C.scene_workspace_enabled() and hasattr(self.perceptual, "update_scene_workspace"):
+                self.perceptual.update_scene_workspace(dynamics_report=scene_dynamics_report)
+        self.perceptual.discovery_health = health.to_dict()
+        self.perceptual.ltm_consolidation = {
+            "status": "not_evaluated",
+            "reason": health.reason,
+        }
+        self.perceptual.perception_organ = organ_diag
+        self.perceptual.retinotopic_map = ret_map
+
+    def _refresh_perception_pipeline_metrics(self) -> None:
+        elapsed = max(1e-6, time.perf_counter() - self._perception_started_at)
+        self.metrics["perceptual_processing_mode"] = self.perceptual_processing_mode
+        self.metrics["pipeline_sessions"] = int(self.parallel_sessions)
+        self.metrics["perception_queue_depth"] = int(self._perception_queue.qsize())
+        self.metrics["perception_inflight"] = int(self._perception_inflight)
+        self.metrics["perception_ingest_hz"] = float(self._perception_ingested / elapsed)
+        self.metrics["perception_commit_hz"] = float(self._perception_committed / elapsed)
+        self.metrics["frames_committed"] = int(self._perception_committed)
+        self.metrics["frames_dropped"] = int(self._perception_dropped)
+        self.metrics["batching_fallback"] = (
+            self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_BATCHING
+        )
+        if self._perception_last_commit_s is not None:
+            self.metrics["sample_age_ms"] = (
+                time.perf_counter() - self._perception_last_commit_s
+            ) * 1000.0
 
     async def _consolidation_runner(self) -> None:
         # Real dual-network consolidation when enabled: clone the current stack and
@@ -779,6 +1061,7 @@ class AgentRuntime:
             self.metrics["teacher_support_mode"] = str(teacher_support_mode)
         for key in (
             "caregiver_status",
+            "caregiver_kind",
             "caregiver_request_kind",
             "caregiver_last_offer_item",
         ):
@@ -925,6 +1208,7 @@ class AgentRuntime:
         self,
         *,
         parallel_sessions: int | None = None,
+        perceptual_processing_mode: str | None = None,
         working_memory_slots: int | None = None,
         working_memory_decay: float | None = None,
         assist_override: float | None = None,
@@ -987,10 +1271,20 @@ class AgentRuntime:
         WM->LTM commit off the cognitive lock); drains+stops the worker when turned
         off. No rebuild; no consolidation is lost.
         """
+        if perceptual_processing_mode is not None:
+            mode = str(perceptual_processing_mode).strip().lower()
+            if mode in PERCEPTUAL_PROCESSING_MODES and mode != self.perceptual_processing_mode:
+                self.perceptual_processing_mode = mode
+                self._clear_perception_pipeline()
         if parallel_sessions is not None:
             k = max(1, min(MAX_PARALLEL_SESSIONS, int(parallel_sessions)))
             self.parallel_sessions = k
             self._obs_buffer = deque(self._obs_buffer, maxlen=k)
+            extra = self._perception_workers[k:]
+            for task in extra:
+                task.cancel()
+            self._perception_workers = self._perception_workers[:k]
+            self._ensure_perception_workers()
         wm = self.perceptual.working_memory
         if working_memory_slots is not None:
             wm.capacity = max(1, int(working_memory_slots))
@@ -1101,6 +1395,7 @@ class AgentRuntime:
             sparse_density=sparse_density,
             max_neurons=max_neurons,
         )
+        self._refresh_perception_pipeline_metrics()
         return self.capacity_config()
 
     def _rebuild_brain(self) -> None:
@@ -1160,6 +1455,7 @@ class AgentRuntime:
         wm = self.perceptual.working_memory
         cfg: dict[str, Any] = {
             "parallel_sessions": self.parallel_sessions,
+            "perceptual_processing_mode": self.perceptual_processing_mode,
             "working_memory_slots": wm.capacity,
             "working_memory_decay": wm.decay,
             "assist_override": self.assist_override,
@@ -1175,6 +1471,7 @@ class AgentRuntime:
             "predictive_affect": self.faculties.predictive_affect,
             "represented_self": self.faculties.represented_self,
             "encoder_mode": self.faculties.encoder_mode,
+            "scene_dynamics_enabled": bool(self.faculties.discovered and scene_dynamics_enabled()),
             "cognition_trace": self.cognition_trace,
             "probe_capture": self.probe_capture,
             "gwt_enabled": self.gwt_enabled,
@@ -1354,6 +1651,8 @@ class AgentRuntime:
             self._episode_acc = EpisodeAccumulator(gamma=sf_gamma(), lam=sf_lambda())
             self._cognitive_history.clear()
             self._obs_buffer.clear()
+            self._clear_perception_pipeline()
+            self._runtime_perception_organ = PerceptionOrgan()
             self._loco_last_xy = None
             self._loco_origin_xy = None
             self._loco_distance = 0.0
@@ -1362,6 +1661,7 @@ class AgentRuntime:
             self.status = "alive"
             self.died_at_cycle = None
             self.metrics = self._initial_metrics()
+            self._refresh_perception_pipeline_metrics()
             self._refresh_homeostasis_metrics()
             self._refresh_plasticity_metrics()
             self._brain_topology_cache = None
@@ -1392,6 +1692,11 @@ class AgentRuntime:
                 await self._metabolic_task
             except asyncio.CancelledError:
                 pass
+        for task in self._perception_workers:
+            task.cancel()
+        if self._perception_workers:
+            await asyncio.gather(*self._perception_workers, return_exceptions=True)
+        self._perception_workers = []
         if self._cycle_task is not None:
             self._cycle_task.cancel()
             try:
@@ -1502,10 +1807,13 @@ class AgentRuntime:
                 diagnostics["gpu_memory_max_allocated"]
             )
         for key in ("parallel_sessions", "working_memory_slots"):
-            if diagnostics.get(key) is not None:
+            if key == "parallel_sessions" and self._perception_pipeline_enabled():
+                self.metrics[key] = int(self.parallel_sessions)
+            elif diagnostics.get(key) is not None:
                 self.metrics[key] = int(diagnostics[key])
         if diagnostics.get("encode_phase_ms") is not None:
             self.metrics["encode_phase_ms"] = float(diagnostics["encode_phase_ms"])
+        self._refresh_perception_pipeline_metrics()
         # Embodied motor learning (active inference) telemetry.
         for key in (
             "forward_model_error",
@@ -1771,8 +2079,11 @@ class AgentRuntime:
                 continue
             t0 = time.perf_counter()
             async with self.lock:
-                pending = list(self._obs_buffer)
-                self._obs_buffer.clear()
+                if self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_BATCHING:
+                    pending = list(self._obs_buffer)
+                    self._obs_buffer.clear()
+                else:
+                    pending = []
                 if (
                     self._wait_for_observation_after_reset
                     and not pending
@@ -1789,6 +2100,7 @@ class AgentRuntime:
                     homeostasis=self.homeostasis,
                     last_observation=self._last_observation,
                     pending_observations=pending,
+                    perceptual_processing_mode=self.perceptual_processing_mode,
                     assist_override=self.assist_override,
                     curriculum_mode=self.curriculum_mode,
                     perception_mode=self.perception_mode,
@@ -2042,9 +2354,12 @@ class AgentRuntime:
                 ) + 1
             self._refresh_homeostasis_metrics()
             self._last_observation = dict(obs)
-            self._obs_buffer.append(dict(obs))
+            if self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_BATCHING:
+                self._obs_buffer.append(dict(obs))
             # Fast-path damage can kill between cognitive cycles.
             self._check_death()
+        if self.perceptual_processing_mode == PERCEPTUAL_PROCESSING_PERSISTENT:
+            await self._enqueue_perception_observation(obs)
 
     def last_vision_png(self, camera: str | None = None) -> bytes | None:
         """Latest frame for a camera, decoded from base64 (dashboard endpoint).

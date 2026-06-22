@@ -825,8 +825,9 @@ def test_supervisor_periodic_commands_and_death_demote(tmp_path, monkeypatch):
         await sup.start("A", "developmental_locomotion")
         await sup.set_phase(2)
         await asyncio.sleep(0.03)
-        assert "give_food_near" in agent.body_commands
-        assert "give_water_near" in agent.body_commands
+        assert "parent_request:food" in agent.body_commands
+        assert "parent_request:water" in agent.body_commands
+        assert not any(cmd in {"give_food_near", "give_water_near"} for cmd in agent.body_commands)
         agent.status = "dead"
         await asyncio.sleep(0.03)
         st = sup.status()

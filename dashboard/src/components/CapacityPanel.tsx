@@ -25,10 +25,15 @@ export default function CapacityPanel(props: {
   const k = props.capacity?.parallel_sessions ?? metrics?.parallel_sessions ?? 1;
   const s = props.capacity?.working_memory_slots ?? metrics?.working_memory_slots ?? 12;
   const decay = props.capacity?.working_memory_decay ?? metrics?.working_memory_decay ?? 0.9;
+  const processingMode =
+    props.capacity?.perceptual_processing_mode ??
+    metrics?.perceptual_processing_mode ??
+    "persistent_parallel";
 
   const plast = props.capacity?.plasticity;
   const [local, setLocal] = useState<CapacityConfig>({
     parallel_sessions: k,
+    perceptual_processing_mode: processingMode,
     working_memory_slots: s,
     working_memory_decay: decay,
   });
@@ -72,6 +77,7 @@ export default function CapacityPanel(props: {
   useEffect(() => {
     setLocal({
       parallel_sessions: k,
+      perceptual_processing_mode: processingMode,
       working_memory_slots: s,
       working_memory_decay: decay,
     });
@@ -234,13 +240,42 @@ export default function CapacityPanel(props: {
       <>
       <h3 className="cap-subhead">
         Workspace capacity
-        <Info tip="Throughput and memory knobs for the global workspace. K = parallel sessions: how many buffered observations are encoded together each cycle (the brain's effective parallelism). S = working-memory slots: how many entities can be held at once. Decay: how fast an unseen entity's salience fades — higher means longer object permanence." />
+        <Info tip="Throughput and memory knobs for the global workspace. Persistent mode uses K as perception pipeline capacity. Batching mode uses K as recent observations encoded together each cycle. S = working-memory slots. Decay controls object permanence." />
       </h3>
+
+      <div className="view-toggle">
+        <button
+          type="button"
+          className={`seg${local.perceptual_processing_mode !== "batching_observations" ? " active" : ""}`}
+          onClick={() => {
+            const next = { ...local, perceptual_processing_mode: "persistent_parallel" };
+            setLocal(next);
+            void commit(next);
+          }}
+        >
+          Persistent Parallel Perceptual Processing
+        </button>
+        <button
+          type="button"
+          className={`seg${local.perceptual_processing_mode === "batching_observations" ? " active" : ""}`}
+          onClick={() => {
+            const next = { ...local, perceptual_processing_mode: "batching_observations" };
+            setLocal(next);
+            void commit(next);
+          }}
+        >
+          Batching Perceptual Observations
+        </button>
+      </div>
 
       <label className="cap-row">
         <span>
-          K · parallel sessions
-          <Info tip="Observations encoded per cycle in one batched, no-grad pass. Higher K = more percepts integrated per heartbeat, bounded by GPU memory." />
+          {local.perceptual_processing_mode === "batching_observations"
+            ? "K - batched frames"
+            : "K - pipeline sessions"}
+          <Info tip={local.perceptual_processing_mode === "batching_observations"
+            ? "Legacy fallback: observations encoded per cycle in one batched, no-grad pass."
+            : "Default mode: max simultaneous perception pipeline sessions. Commits into the scene workspace remain ordered."} />
         </span>
         <input
           type="range"
@@ -303,8 +338,30 @@ export default function CapacityPanel(props: {
           <span className="cap-v">{(metrics?.approx_cycles_per_sec ?? 0).toFixed(1)}</span>
         </div>
         <div>
-          <span className="cap-k">live sessions</span>
+          <span className="cap-k">
+            {local.perceptual_processing_mode === "batching_observations" ? "batched frames" : "pipeline sessions"}
+          </span>
           <span className="cap-v">{metrics?.parallel_sessions ?? 0}</span>
+        </div>
+        <div>
+          <span className="cap-k">queue</span>
+          <span className="cap-v">{metrics?.perception_queue_depth ?? 0}</span>
+        </div>
+        <div>
+          <span className="cap-k">in-flight</span>
+          <span className="cap-v">{metrics?.perception_inflight ?? 0}</span>
+        </div>
+        <div>
+          <span className="cap-k">percept/s</span>
+          <span className="cap-v">{(metrics?.perception_commit_hz ?? 0).toFixed(1)}</span>
+        </div>
+        <div>
+          <span className="cap-k">dropped</span>
+          <span className="cap-v">{metrics?.frames_dropped ?? 0}</span>
+        </div>
+        <div>
+          <span className="cap-k">scene age</span>
+          <span className="cap-v">{(metrics?.sample_age_ms ?? 0).toFixed(0)} ms</span>
         </div>
         <div>
           <span className="cap-k">active slots</span>

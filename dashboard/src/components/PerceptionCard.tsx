@@ -37,7 +37,7 @@ export default function PerceptionCard(props: { agentId: string; state: AgentSta
       {view === "camera" ? (
         <PerceptionPanel agentId={agentId} state={state} embedded />
       ) : (
-        <MindsEyePanel state={state} embedded />
+        <MindsEyePanel agentId={agentId} state={state} embedded />
       )}
     </div>
   );

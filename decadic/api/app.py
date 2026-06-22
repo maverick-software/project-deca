@@ -350,6 +350,7 @@ def create_app() -> FastAPI:
     async def configure_agent(
         agent_id: str,
         parallel_sessions: int | None = None,
+        perceptual_processing_mode: str | None = None,
         working_memory_slots: int | None = None,
         working_memory_decay: float | None = None,
         assist_override: float | None = None,
@@ -392,6 +393,7 @@ def create_app() -> FastAPI:
             # episodic_async/ltm_async: live write-behind persistence toggles.
             config = agent.configure(
                 parallel_sessions=parallel_sessions,
+                perceptual_processing_mode=perceptual_processing_mode,
                 working_memory_slots=working_memory_slots,
                 working_memory_decay=working_memory_decay,
                 assist_override=assist_override,
@@ -431,12 +433,50 @@ def create_app() -> FastAPI:
             payload = {
                 "agent_id": agent_id,
                 "perception_mode": perc.perception_mode,
+                "perceptual_processing": {
+                    "mode": agent.perceptual_processing_mode,
+                    "pipeline_sessions": agent.parallel_sessions,
+                    "queue_depth": int(agent.metrics.get("perception_queue_depth", 0)),
+                    "inflight": int(agent.metrics.get("perception_inflight", 0)),
+                    "ingest_hz": float(agent.metrics.get("perception_ingest_hz", 0.0)),
+                    "commit_hz": float(agent.metrics.get("perception_commit_hz", 0.0)),
+                    "frames_committed": int(agent.metrics.get("frames_committed", 0)),
+                    "frames_dropped": int(agent.metrics.get("frames_dropped", 0)),
+                    "commit_lag_ms": float(agent.metrics.get("commit_lag_ms", 0.0)),
+                    "sample_age_ms": float(agent.metrics.get("sample_age_ms", 0.0)),
+                    "batching_fallback": bool(agent.metrics.get("batching_fallback", False)),
+                },
                 "egocentric_graph": {
                     "nodes": list(perc.egocentric_nodes),
                     "edges": list(perc.egocentric_edges),
                 },
                 "working_memory": perc.working_memory.snapshot(),
                 "object_files": list(getattr(perc, "object_files", [])),
+                "scene_workspace": (
+                    perc.scene_workspace.snapshot()
+                    if getattr(perc, "scene_workspace", None) is not None
+                    else None
+                ),
+                "scene_health": (
+                    dict(perc.scene_health)
+                    if getattr(perc, "scene_health", None)
+                    else None
+                ),
+                "focus": (
+                    dict(perc.focus)
+                    if getattr(perc, "focus", None)
+                    else {"ids": [], "entities": []}
+                ),
+                "workspace_ignition": (
+                    dict(perc.workspace_ignition)
+                    if getattr(perc, "workspace_ignition", None)
+                    else None
+                ),
+                "scene_prediction": (
+                    dict(perc.scene_prediction)
+                    if getattr(perc, "scene_prediction", None)
+                    else None
+                ),
                 "discovery_health": (
                     dict(perc.discovery_health)
                     if getattr(perc, "discovery_health", None)
@@ -618,8 +658,8 @@ def create_app() -> FastAPI:
 
     @application.post("/agent/{agent_id}/body/npc")
     async def npc_freeze(agent_id: str, paused: bool = True) -> JSONResponse:
-        """Pause/resume the parent NPC in place (it stops walking, foraging, and
-        offering) without touching the agent's brain or the rest of the world."""
+        """Pause/resume the scene caregiver(s) in place without touching the
+        agent's brain or the rest of the world."""
         registry: AgentRegistry = application.state.registry
         agent = registry.get(agent_id)
         if agent is None:
@@ -658,10 +698,10 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         """Provision the agent with water or food, two ways.
 
-        ``mode=direct`` credits the reservoir immediately (admin top-up; works
-        without a body). ``mode=near`` asks the connected body to place the
-        (unlabeled) prop a step away so the agent must perceive and walk to it,
-        preserving the self-learned act->relief loop.
+        ``mode=direct`` asks the connected body to put the chosen resource in
+        the egocentric camera view and move it toward the head until normal
+        food/water consumption fires. ``mode=near`` places a prop nearby for the
+        agent to seek. ``mode=admin`` is the old instant reservoir top-up.
         """
         registry: AgentRegistry = application.state.registry
         agent = registry.get(agent_id)
@@ -671,23 +711,27 @@ def create_app() -> FastAPI:
         if res not in ("water", "food"):
             raise HTTPException(status_code=400, detail="resource must be 'water' or 'food'")
         md = str(mode).strip().lower()
-        if md not in ("near", "direct"):
-            raise HTTPException(status_code=400, detail="mode must be 'near' or 'direct'")
-        if md == "direct":
+        if md not in ("near", "direct", "visual_direct", "admin"):
+            raise HTTPException(
+                status_code=400,
+                detail="mode must be 'near', 'direct', 'visual_direct', or 'admin'",
+            )
+        if md == "admin":
             try:
                 result = await agent.give_resource(res, amount)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-            return JSONResponse({"agent_id": agent_id, "status": f"{res}_direct", **result})
+            return JSONResponse({"agent_id": agent_id, "status": f"{res}_admin", **result})
         sup: EnvironmentSupervisor = application.state.environment
         if not sup.is_running() or sup.status().get("agent_id") != agent_id:
             raise HTTPException(
                 status_code=409,
                 detail="No running body for this agent; start a scenario with water/food first.",
             )
-        if not agent.queue_body_command(f"give_{res}_near"):
+        suffix = "direct_visual" if md in ("direct", "visual_direct") else "near"
+        if not agent.queue_body_command(f"give_{res}_{suffix}"):
             raise HTTPException(status_code=503, detail="Command queue full")
-        return JSONResponse({"agent_id": agent_id, "status": f"{res}_near_queued"})
+        return JSONResponse({"agent_id": agent_id, "status": f"{res}_{suffix}_queued"})
 
     @application.delete("/agent/{agent_id}")
     async def delete_agent(agent_id: str) -> JSONResponse:

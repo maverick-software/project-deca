@@ -37,6 +37,10 @@ class CycleContext:
     last_observation: dict[str, Any] | None = None
     # Up to K observations buffered since the previous cycle (parallel sessions).
     pending_observations: list[dict[str, Any]] = field(default_factory=list)
+    # Runtime scheduling mode for incoming perception. The Decadic cycle remains
+    # serialized; persistent mode means object/scene perception may be committed
+    # continuously before the cycle samples the current state.
+    perceptual_processing_mode: str = "batching_observations"
     # Manual assist-harness level: None -> follow the fading curriculum; a float
     # (0/1/2/3) -> pin the harness gain to that level for this cycle.
     assist_override: float | None = None

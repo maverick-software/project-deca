@@ -90,6 +90,10 @@ class Transition:
     expert_motor: Any | None = None
     demo_weight: float = 0.0
     success: bool = False
+    # --- Anonymous scene dynamics (perception-only replay) -----------------
+    scene_prev_features: Any | None = None
+    scene_target_features: Any | None = None
+    scene_match_mask: Any | None = None
 
 
 class ReplayBuffer:

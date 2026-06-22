@@ -273,15 +273,18 @@ def test_configure_capacity(api_app):
         aid = client.post("/agent").json()["agent_id"]
         r = client.post(
             f"/agent/{aid}/config"
-            "?parallel_sessions=4&working_memory_slots=20&working_memory_decay=0.8"
+            "?parallel_sessions=4&perceptual_processing_mode=batching_observations"
+            "&working_memory_slots=20&working_memory_decay=0.8"
         )
         body = r.json()
         assert body["parallel_sessions"] == 4
+        assert body["perceptual_processing_mode"] == "batching_observations"
         assert body["working_memory_slots"] == 20
         assert abs(body["working_memory_decay"] - 0.8) < 1e-6
 
         m = client.get(f"/agent/{aid}/metrics").json()["metrics"]
         assert m["parallel_sessions"] == 4
+        assert m["perceptual_processing_mode"] == "batching_observations"
         assert m["working_memory_slots"] == 20
 
         assert client.post("/agent/nope/config").status_code == 404
@@ -570,5 +573,5 @@ def test_migrated_locomotion_skills_available_from_dojo(api_app):
         assert "developmental_locomotion" in by_id
         assert "affective_locomotion" in by_id
         phase = by_id["developmental_locomotion"]["phases"][2]
-        assert phase["periodic_body_commands"][0]["command"] == "give_food_near"
+        assert phase["periodic_body_commands"][0]["command"] == "parent_request:food"
         assert phase["demote_on_death"] is True

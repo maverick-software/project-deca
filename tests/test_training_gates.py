@@ -80,8 +80,8 @@ def test_developmental_locomotion_migrates_legacy_phase_shape():
     assert phases[0].demote_on_death is False
     assert phases[-1].is_terminal is True
     assert {c.command for c in phases[2].periodic_body_commands} == {
-        "give_food_near",
-        "give_water_near",
+        "parent_request:food",
+        "parent_request:water",
     }
     assert {c.key for c in phases[-1].gate.criteria} >= {
         "consume_events",

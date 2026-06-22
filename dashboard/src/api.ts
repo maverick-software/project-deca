@@ -37,6 +37,7 @@ export type PlasticityConfig = {
 
 export type CapacityConfig = {
   parallel_sessions: number;
+  perceptual_processing_mode?: "persistent_parallel" | "batching_observations" | string;
   working_memory_slots: number;
   working_memory_decay: number;
   // Manual assist-harness level; null = Auto (curriculum). Send -1 to clear.
@@ -62,6 +63,8 @@ export type CapacityConfig = {
   represented_self?: boolean;
   // Sensory encoder mode: "hf" (real frozen CLIP/Whisper) | "zeros" (synthetic).
   encoder_mode?: string;
+  // Trainable anonymous scene dynamics head; optional but default-on in discovered mode.
+  scene_dynamics_enabled?: boolean;
   // Read-only observation toggles (apply live; never feed cognition).
   cognition_trace?: boolean;
   probe_capture?: boolean;
@@ -207,7 +210,11 @@ export type WorkingMemorySlot = {
   local_motion?: number | null;
   retina_contrast?: number | null;
   looming?: number | null;
+  prediction_error?: number | null;
+  prediction_uncertainty?: number | null;
+  occlusion_age?: number;
   property_evidence?: Record<string, number | number[]>;
+  scene_entity_id?: string | null;
 };
 
 export type WorkingMemorySnapshot = {
@@ -311,6 +318,112 @@ export type LtmConsolidationStatus = {
   avg_property_confidence?: number;
 };
 
+export type SceneEntitySnapshot = {
+  entity_id: string;
+  object_id?: string | null;
+  kind_hint: string;
+  visible: boolean;
+  occluded: boolean;
+  occlusion_age: number;
+  centroid_uv?: number[] | null;
+  relative?: number[] | null;
+  depth?: number | null;
+  motion?: number[] | null;
+  confidence: number;
+  persistence: number;
+  salience: number;
+  agency: number;
+  looming: number;
+  local_motion: number;
+  retina_contrast: number;
+  predicted_centroid_uv?: number[] | null;
+  predicted_relative?: number[] | null;
+  prediction_visibility?: number | null;
+  prediction_uncertainty?: number | null;
+  prediction_error?: number | null;
+  property_evidence?: Record<string, number | number[]>;
+  first_cycle: number;
+  last_seen_cycle: number;
+  seen_count: number;
+};
+
+export type SceneRelationSnapshot = {
+  src: string;
+  dst: string;
+  kind: string;
+  confidence: number;
+  last_cycle: number;
+};
+
+export type SceneWorkspaceSnapshot = {
+  cycle: number;
+  entity_count: number;
+  visible_count: number;
+  occluded_count: number;
+  stable_count: number;
+  stuff_count: number;
+  body_candidate_count: number;
+  duplicate_identity_count: number;
+  prediction_unstable_count?: number;
+  prediction_count?: number;
+  reidentified_count?: number;
+  prediction_assisted_count?: number;
+  duplicate_prevention_count?: number;
+  focus_ids: string[];
+  prediction_error?: number | null;
+  entities: SceneEntitySnapshot[];
+  relations: SceneRelationSnapshot[];
+};
+
+export type SceneHealthSnapshot = {
+  entity_count: number;
+  visible_count: number;
+  occluded_count: number;
+  stable_count: number;
+  stuff_count: number;
+  body_candidate_count: number;
+  duplicate_identity_count: number;
+  focus_count: number;
+  prediction_error?: number | null;
+  prediction_unstable_count?: number;
+  prediction_count?: number;
+  reidentified_count?: number;
+  prediction_assisted_count?: number;
+  duplicate_prevention_count?: number;
+};
+
+export type FocusSnapshot = {
+  ids: string[];
+  entities: SceneEntitySnapshot[];
+};
+
+export type WorkspaceIgnitionSnapshot = {
+  enabled: boolean;
+  ignited: boolean;
+  share: number;
+  threshold: number;
+  n_candidates: number;
+  winners: number[];
+  focus_ids?: string[];
+  scene_entity_count?: number;
+  scene_relation_count?: number;
+};
+
+export type ScenePredictionSnapshot = {
+  enabled: boolean;
+  dynamics_enabled?: boolean;
+  model_active?: boolean;
+  error?: number | null;
+  loss?: number | null;
+  uncertainty?: number | null;
+  prediction_count?: number;
+  reidentified_count?: number;
+  prediction_assisted_count?: number;
+  duplicate_prevention_count?: number;
+  unstable_count?: number;
+  target?: string;
+};
+
 export type PerceptualSnapshot = {
   last_timestamp_iso: string | null;
   vision_resolution: number[] | null;
@@ -329,6 +442,11 @@ export type PerceptualSnapshot = {
   egocentric_graph?: EgoGraph;
   working_memory?: WorkingMemorySnapshot;
   object_files?: ObjectFileSnapshot[];
+  scene_workspace?: SceneWorkspaceSnapshot | null;
+  scene_health?: SceneHealthSnapshot | null;
+  focus?: FocusSnapshot | null;
+  workspace_ignition?: WorkspaceIgnitionSnapshot | null;
+  scene_prediction?: ScenePredictionSnapshot | null;
   discovery_health?: DiscoveryHealth | null;
   perception_organ?: PerceptionOrganSnapshot | null;
   retinotopic_map?: RetinotopicMapSnapshot | null;
@@ -496,6 +614,17 @@ export type Metrics = {
   status?: AgentStatus;
   died_at_cycle?: number | null;
   parallel_sessions?: number;
+  perceptual_processing_mode?: string;
+  pipeline_sessions?: number;
+  perception_queue_depth?: number;
+  perception_inflight?: number;
+  perception_ingest_hz?: number;
+  perception_commit_hz?: number;
+  frames_committed?: number;
+  frames_dropped?: number;
+  commit_lag_ms?: number;
+  sample_age_ms?: number;
+  batching_fallback?: boolean;
   working_memory_slots?: number;
   working_memory_decay?: number;
   encode_phase_ms?: number;
@@ -535,6 +664,7 @@ export type Metrics = {
   teacher_support_mode?: string;
   caregiver_parent_present?: boolean;
   caregiver_missing_parent?: boolean;
+  caregiver_kind?: string;
   caregiver_status?: string;
   caregiver_request_kind?: string;
   caregiver_last_offer_item?: string;
@@ -643,6 +773,12 @@ export type Metrics = {
   slots_present?: number;
   slot_recon_error?: number;
   discovered_objects?: number;
+  scene_dynamics_enabled?: boolean;
+  scene_dynamics_model_active?: boolean;
+  scene_dynamics_loss?: number | null;
+  scene_dynamics_uncertainty?: number | null;
+  scene_dynamics_predictions?: number;
+  scene_dynamics_matches?: number;
   self_parts?: number;
   agency_mean?: number;
   agency_loss?: number;
@@ -714,7 +850,16 @@ export function audioUrl(agentId: string, tick: number): string {
 
 async function postJson(path: string): Promise<void> {
   const r = await fetch(`${httpBase()}${path}`, { method: "POST" });
-  if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+  if (!r.ok) {
+    let detail = `${path}: HTTP ${r.status}`;
+    try {
+      const body = (await r.json()) as { detail?: string };
+      if (body.detail) detail = body.detail;
+    } catch {
+      // keep status-only fallback
+    }
+    throw new Error(detail);
+  }
 }
 
 export function pauseAgent(agentId: string): Promise<void> {
@@ -740,11 +885,13 @@ export function reviveAgent(agentId: string, restoreTo?: number): Promise<void> 
 
 // Provision the agent with water/food. mode "near" asks the body to place the
 // (unlabeled) prop a step away so the agent must perceive and walk to it;
-// mode "direct" is an admin top-up that credits the reservoir immediately.
+// mode "direct" asks the body to show the prop in the egocentric camera and
+// move it toward the head until normal consumption fires. "admin" is the old
+// instant reservoir top-up for explicit rescue/testing use.
 export async function giveResource(
   agentId: string,
   resource: "water" | "food",
-  mode: "near" | "direct",
+  mode: "near" | "direct" | "admin",
 ): Promise<void> {
   const r = await fetch(
     `${httpBase()}/agent/${agentId}/give?resource=${resource}&mode=${mode}`,
@@ -775,6 +922,8 @@ export async function configureAgent(
   const params = new URLSearchParams();
   if (cfg.parallel_sessions != null)
     params.set("parallel_sessions", String(cfg.parallel_sessions));
+  if (cfg.perceptual_processing_mode != null)
+    params.set("perceptual_processing_mode", String(cfg.perceptual_processing_mode));
   if (cfg.working_memory_slots != null)
     params.set("working_memory_slots", String(cfg.working_memory_slots));
   if (cfg.working_memory_decay != null)
@@ -968,6 +1117,11 @@ export type DiscoveryReport = {
   egocentric_graph: EgoGraph;
   working_memory: WorkingMemorySnapshot;
   object_files?: ObjectFileSnapshot[];
+  scene_workspace?: SceneWorkspaceSnapshot | null;
+  scene_health?: SceneHealthSnapshot | null;
+  focus?: FocusSnapshot | null;
+  workspace_ignition?: WorkspaceIgnitionSnapshot | null;
+  scene_prediction?: ScenePredictionSnapshot | null;
   discovery_health?: DiscoveryHealth | null;
   perception_organ?: PerceptionOrganSnapshot | null;
   retinotopic_map?: RetinotopicMapSnapshot | null;
@@ -1332,6 +1486,7 @@ export type DojoStatus = {
   teacher_support_mode: string;
   caregiver_enabled: boolean;
   caregiver_status: string;
+  caregiver_kind?: string | null;
   caregiver_need: string;
   caregiver_threshold: number;
   caregiver_trigger_reservoir: string | null;

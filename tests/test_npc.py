@@ -133,6 +133,7 @@ def test_npc_fsm_eats_drinks_and_offers():
         # 3) Cooldown elapsed -> leave the forage loop to fetch a gift. Park the
         # parent away from any morsel so it doesn't self-eat on this tick.
         sim._npc_next_deliver = 0.0
+        sim._agent_reservoirs = {"hydration": 0.2, "energy": 0.9, "integrity": 1.0}
         place_npc(8.0, 8.0)
         sim.scene_events(2)
         assert sim._npc_phase == "pickup"
@@ -175,9 +176,9 @@ def test_parent_delivery_is_need_threshold_gated():
     try:
         sim._npc_next_deliver = 0.0  # refractory satisfied
 
-        # No reservoir info streamed yet -> fall back to the refractory (timer).
+        # No reservoir info streamed yet -> do not auto-provision invisibly.
         sim._agent_reservoirs = None
-        assert sim._parent_delivery_due(5.0) is True
+        assert sim._parent_delivery_due(5.0) is False
 
         # Reservoirs known and comfortable -> the parent does NOT provision.
         sim._agent_reservoirs = {"hydration": 0.95, "energy": 0.9, "integrity": 1.0}

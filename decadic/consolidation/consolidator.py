@@ -37,6 +37,7 @@ from decadic.config import (
 )
 from decadic.nn.frozen_encoders import intero_preference_weights, preferred_intero_vector
 from decadic.nn.neural_stack import NeuralCognitiveStack
+from decadic.nn.scene_dynamics import scene_dynamics_loss
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,26 @@ def replay_batch_loss(stack: NeuralCognitiveStack, batch: list, device) -> torch
                 target = F.pad(target, (0, n - target.shape[-1]))
             target = target[:, :n]
             loss = loss + float(t.demo_weight) * F.mse_loss(out["motor_u"], target)
+        if (
+            C.scene_dynamics_enabled()
+            and getattr(stack, "has_scene_dynamics", False)
+            and t.scene_prev_features is not None
+            and t.scene_target_features is not None
+            and t.scene_match_mask is not None
+        ):
+            scene_prev = torch.as_tensor(t.scene_prev_features, device=dev, dtype=prev_state.dtype)
+            scene_target = torch.as_tensor(t.scene_target_features, device=dev, dtype=prev_state.dtype)
+            scene_mask = torch.as_tensor(t.scene_match_mask, device=dev, dtype=torch.bool)
+            if scene_prev.ndim == 2 and scene_prev.shape[0] > 0:
+                scene_motor = prev_motor
+                scene_raw = stack.scene_dynamics_predict(scene_prev, scene_motor)
+                loss = loss + C.scene_dynamics_weight() * scene_dynamics_loss(
+                    scene_raw,
+                    scene_prev,
+                    scene_target,
+                    scene_mask,
+                    uncertainty_weight=C.scene_dynamics_uncertainty_weight(),
+                )
         losses.append(loss)
     return torch.stack(losses).mean()
 

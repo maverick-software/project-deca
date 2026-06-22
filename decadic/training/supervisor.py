@@ -70,9 +70,13 @@ SAMPLE_KEYS = (
     "looming_count",
     "stuff_count",
     "body_candidate_count",
+    "scene_dynamics_error",
+    "scene_dynamics_unstable",
+    "scene_dynamics_matches",
     "caregiver_parent_present",
     "caregiver_missing_parent",
     "caregiver_delivery_count",
+    "caregiver_kind",
 )
 
 
@@ -293,6 +297,7 @@ class SkillDojoSupervisor:
             "teacher_support_mode": str(last.get("teacher_support_mode", "off") or "off"),
             "caregiver_enabled": bool(self._caregiver_enabled),
             "caregiver_status": self._caregiver_status,
+            "caregiver_kind": str(last.get("caregiver_kind", "") or ""),
             "caregiver_need": self._caregiver_need,
             "caregiver_threshold": round(float(self._caregiver_threshold), 3),
             "caregiver_trigger_reservoir": self._caregiver_trigger_reservoir,
@@ -672,6 +677,7 @@ class SkillDojoSupervisor:
             perc = getattr(agent, "perceptual", None)
             health = getattr(perc, "discovery_health", None) if perc is not None else None
             ltm = getattr(perc, "ltm_consolidation", None) if perc is not None else None
+            scene_prediction = getattr(perc, "scene_prediction", None) if perc is not None else None
         sample = {"viability": viability}
         for key in SAMPLE_KEYS:
             if key == "viability":
@@ -683,6 +689,7 @@ class SkillDojoSupervisor:
                 sample[key] = 0.0
         sample["teacher_support_mode"] = str(m.get("teacher_support_mode", "off") or "off")
         sample["caregiver_status"] = str(m.get("caregiver_status", "") or "")
+        sample["caregiver_kind"] = str(m.get("caregiver_kind", "") or "")
         sample["caregiver_last_offer_item"] = str(m.get("caregiver_last_offer_item", "") or "")
         sample["caregiver_request_kind"] = str(m.get("caregiver_request_kind", "") or "")
         if "caregiver_parent_present" not in m:
@@ -702,6 +709,10 @@ class SkillDojoSupervisor:
             sample["body_candidate_count"] = float(health.get("body_candidate_count", 0.0) or 0.0)
         if isinstance(ltm, dict):
             sample["ltm_write_accepted"] = 1.0 if ltm.get("status") == "accepted" else 0.0
+        if isinstance(scene_prediction, dict):
+            sample["scene_dynamics_error"] = float(scene_prediction.get("error", 0.0) or 0.0)
+            sample["scene_dynamics_unstable"] = float(scene_prediction.get("unstable_count", 0.0) or 0.0)
+            sample["scene_dynamics_matches"] = float(scene_prediction.get("reidentified_count", 0.0) or 0.0)
         return sample
 
     def _sample_manual_scaffold_active(self, sample: dict[str, Any]) -> bool:
@@ -966,7 +977,7 @@ class SkillDojoSupervisor:
         bundle = getattr(agent, "neural", None)
         cfg = getattr(bundle, "cfg", None)
         n_act = int(getattr(cfg, "n_actuators", 21) or 21)
-        assist = _clamp01(self._teacher_assist)
+        assist = round(_clamp01(self._teacher_assist), 4)
         origin = self._assist_origin(assist)
         self._teacher_origin = origin
         setattr(

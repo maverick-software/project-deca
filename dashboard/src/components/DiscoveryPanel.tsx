@@ -20,6 +20,8 @@ export default function DiscoveryPanel(props: { state: AgentState }) {
   const health = p.discovery_health;
   const ltm = p.ltm_consolidation;
   const organ = p.perception_organ;
+  const scene = p.scene_workspace;
+  const scenePred = p.scene_prediction;
 
   if (mode !== "discovered") {
     return (
@@ -70,6 +72,34 @@ export default function DiscoveryPanel(props: { state: AgentState }) {
           <span>global {organ.global_motion.toFixed(3)}</span>
           <span>local {organ.local_motion_max.toFixed(3)}</span>
           <span>foreground {organ.foreground_count}</span>
+        </div>
+      )}
+      {scene && (
+        <div className={`health-strip ${scene.duplicate_identity_count > 0 ? "warn" : "ok"}`}>
+          <span>scene {scene.entity_count} entities</span>
+          <span>{scene.visible_count} visible</span>
+          <span>{scene.occluded_count} occluded</span>
+          <span>{scene.stable_count} stable</span>
+          <span>{scene.focus_ids.length} focused</span>
+          <span>{scene.relations.length} relations</span>
+          <span>
+            scene PE {scene.prediction_error != null ? scene.prediction_error.toFixed(3) : "n/a"}
+          </span>
+          <span>{scene.reidentified_count ?? 0} re-id</span>
+        </div>
+      )}
+      {scenePred && (
+        <div className={`health-strip ${(scenePred.unstable_count ?? 0) > 0 ? "warn" : "ok"}`}>
+          <span>{scenePred.model_active ? "learned dynamics" : "constant-velocity fallback"}</span>
+          <span>{scenePred.prediction_count ?? 0} predicted</span>
+          <span>{scenePred.reidentified_count ?? 0} matched</span>
+          <span>
+            loss {scenePred.loss != null ? scenePred.loss.toFixed(4) : "n/a"}
+          </span>
+          <span>
+            unc {scenePred.uncertainty != null ? scenePred.uncertainty.toFixed(3) : "n/a"}
+          </span>
+          <span>{scenePred.unstable_count ?? 0} unstable</span>
         </div>
       )}
 

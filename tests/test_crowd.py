@@ -275,10 +275,15 @@ def test_crowd_parent_delivers_on_need_not_timer():
         sim.crowd.events(1, 5.0)
         assert parent.phase == "seek_food"
 
+        # Missing reservoir telemetry -> no automatic timer provisioning.
+        sim.crowd.set_reservoirs(None)
+        sim.crowd.events(2, 5.5)
+        assert parent.phase == "seek_food"
+
         # Deprived agent -> the parent leaves to fetch a gift (need threshold).
         sim.crowd.set_reservoirs({"hydration": 0.2, "energy": 0.9, "integrity": 1.0})
         _place(sim, parent, cx, cy)  # re-park (events may have nudged nothing, be safe)
-        sim.crowd.events(2, 6.0)
+        sim.crowd.events(3, 6.0)
         assert parent.phase == "pickup"
     finally:
         sim.close()
@@ -308,8 +313,31 @@ def test_crowd_parent_pickup_and_offer():
         evs = sim.crowd.events(1, float(sim.data.time))
         offer = next((e for e in evs if e["type"] == "offer"), None)
         assert offer is not None
+        assert offer["item"] == "food"
         assert parent.phase == "seek_food" and parent.carry is False
         assert parent.offers == 1
+        assert sim.crowd.last_offer_item == "food"
+        assert sim.crowd.delivery_count == 1
+    finally:
+        sim.close()
+
+
+def test_crowd_parent_counts_as_caregiver_and_accepts_request():
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = _crowd_sim(mod)
+    try:
+        snap = sim.snapshot()
+        assert snap.caregiver_parent_present is True
+        assert snap.caregiver_kind == "crowd_parent"
+
+        assert sim._request_parent("water") is True
+        parent = next(n for n in sim.crowd.npcs if n.is_parent)
+        assert parent.item == "water"
+        assert parent.phase == "pickup"
+        assert sim.crowd.requested_item == "water"
+        assert sim._caregiver_status() == "requested"
+        assert sim._caregiver_pending_request() is True
     finally:
         sim.close()
 

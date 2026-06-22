@@ -167,6 +167,8 @@ alongside phase progression:
 - The MuJoCo parent must visibly approach, carry, and drop the existing gift
   object. Relief happens only when the agent perceives/contacts/consumes the
   object and the normal homeostasis path fires.
+- Legacy `npc` and the `crowd` scene's internal caregiver both count as visible
+  parents. Missing reservoir telemetry never authorizes automatic timer delivery.
 - A refractory prevents request spam.
 - If the active environment lacks the parent NPC, status reports
   `caregiver_missing_parent` and embodied graduation is blocked.
@@ -175,7 +177,7 @@ Status fields are exposed through `/dojo/status`: `caregiver_enabled`,
 `caregiver_status`, `caregiver_need`, `caregiver_trigger_reservoir`,
 `caregiver_request_kind`, `caregiver_last_offer_cycle`,
 `caregiver_last_offer_item`, `caregiver_missing_parent`,
-`caregiver_refractory_s`, and `caregiver_delivery_count`.
+`caregiver_kind`, `caregiver_refractory_s`, and `caregiver_delivery_count`.
 
 ## Uploadable Skill JSON
 

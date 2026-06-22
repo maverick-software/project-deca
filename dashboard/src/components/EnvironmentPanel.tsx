@@ -58,7 +58,7 @@ export default function EnvironmentPanel(props: {
   const paused = env?.paused ?? false;
   const state = env?.state ?? "stopped";
   const agentId = env?.agent_id ?? null;
-  const hasParent = running && !!env?.elements?.includes("npc");
+  const hasParent = running && !!(env?.elements?.includes("npc") || env?.elements?.includes("crowd"));
   const editable = !running && !busy;
   const mindOnly = draft.mindOnly;
 

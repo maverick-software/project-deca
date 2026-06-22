@@ -21,6 +21,27 @@ def run(ctx: CycleContext) -> StageTrace:
         "action": ctx.latents.get("action"),
         "compressed_trace_ids": [t.stage for t in traces],
     }
+    scene_ws = getattr(ctx.perceptual, "scene_workspace", None)
+    focus = getattr(ctx.perceptual, "focus", None)
+    if scene_ws is not None:
+        scene_snap = scene_ws.snapshot()
+        summary["scene"] = {
+            "entity_count": scene_snap.get("entity_count", 0),
+            "visible_count": scene_snap.get("visible_count", 0),
+            "occluded_count": scene_snap.get("occluded_count", 0),
+            "focus_ids": list(scene_snap.get("focus_ids", [])),
+            "prediction_error": scene_snap.get("prediction_error"),
+        }
+    elif isinstance(focus, dict):
+        summary["scene"] = {"focus_ids": list(focus.get("ids", []))}
+    ws_summary = ctx.latents.get("workspace")
+    if isinstance(ws_summary, dict):
+        summary["workspace"] = {
+            "ignited": bool(ws_summary.get("ignited")),
+            "share": ws_summary.get("share"),
+            "winners": list(ws_summary.get("winners", [])),
+            "focus_ids": list(ws_summary.get("focus_ids", [])),
+        }
     salience = abs(ctx.state_bus.pain_scalar - ctx.state_bus.pleasure_scalar) + (
         1.0 - ctx.viability.value / 100.0
     )
@@ -54,10 +75,20 @@ def run(ctx: CycleContext) -> StageTrace:
         if wm is not None:
             health = getattr(ctx.perceptual, "discovery_health", None)
             reason = str((health or {}).get("reason", "healthy")) if isinstance(health, dict) else "healthy"
+            scene_health = getattr(ctx.perceptual, "scene_health", None)
+            if (
+                isinstance(scene_health, dict)
+                and int(scene_health.get("prediction_unstable_count", 0) or 0) > 0
+            ):
+                reason = "skipped_prediction_unstable"
             status = "accepted"
             relationship_update = reason != "skipped_perception_collapsed"
-            property_update = reason not in ("skipped_no_objects", "skipped_low_confidence")
-            if reason in ("skipped_no_objects", "skipped_low_confidence"):
+            property_update = reason not in (
+                "skipped_no_objects",
+                "skipped_low_confidence",
+                "skipped_prediction_unstable",
+            )
+            if reason in ("skipped_no_objects", "skipped_low_confidence", "skipped_prediction_unstable"):
                 status = reason
                 ids = []
             else:
@@ -65,6 +96,7 @@ def run(ctx: CycleContext) -> StageTrace:
                     s
                     for s in wm.active_slots()
                     if str(getattr(s, "kind_hint", "object")) != "stuff"
+                    and getattr(s, "appearance", None)
                     and float(getattr(s, "confidence", 1.0) or 0.0) >= 0.2
                     and int(getattr(s, "seen_count", 0)) >= ltm_consolidate_min_seen()
                 ]
@@ -79,6 +111,24 @@ def run(ctx: CycleContext) -> StageTrace:
                         property_update=property_update,
                         relationship_update=relationship_update,
                     )
+                    if relationship_update and scene_ws is not None and ids:
+                        scene_to_ltm: dict[str, str] = {}
+                        for slot, node_id in zip(slots, ids):
+                            sid = getattr(slot, "scene_entity_id", None)
+                            if sid:
+                                scene_to_ltm[str(sid)] = str(node_id)
+                        for rel in scene_ws.relation_dicts():
+                            src = scene_to_ltm.get(str(rel.get("src")))
+                            dst = scene_to_ltm.get(str(rel.get("dst")))
+                            kind = str(rel.get("kind", "scene_relation"))
+                            if src and dst and src != dst:
+                                ctx.ltm_graph.bump_edge(
+                                    src,
+                                    dst,
+                                    kind=f"scene_{kind}",
+                                    weight=float(rel.get("confidence", 1.0) or 1.0),
+                                    cycle=int(ctx.state_bus.cycle_index),
+                                )
                     if not relationship_update:
                         status = "accepted_properties"
             report = {

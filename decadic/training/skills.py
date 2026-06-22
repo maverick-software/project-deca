@@ -289,7 +289,7 @@ DEVELOPMENTAL_LOCOMOTION = SkillSpec(
             index=2,
             name="Locomotion onset",
             description=(
-                "Drive rises and food/water are placed near the body so the agent must perceive, move, "
+                "Drive rises and a visible caregiver offers food/water so the agent must perceive, move, "
                 "and consume through its learned act-to-relief loop."
             ),
             teacher_weight=0.0,
@@ -300,8 +300,8 @@ DEVELOPMENTAL_LOCOMOTION = SkillSpec(
                 "motor_babble_sigma": 0.25,
             },
             periodic_body_commands=(
-                PeriodicBodyCommand("give_food_near", 20.0),
-                PeriodicBodyCommand("give_water_near", 20.0),
+                PeriodicBodyCommand("parent_request:food", 20.0),
+                PeriodicBodyCommand("parent_request:water", 20.0),
             ),
             gate=SkillGate(
                 (
@@ -325,8 +325,8 @@ DEVELOPMENTAL_LOCOMOTION = SkillSpec(
             teacher_weight=0.0,
             config={"viability_mode": "metabolic", "metabolic_compression": 2.0},
             periodic_body_commands=(
-                PeriodicBodyCommand("give_food_near", 60.0),
-                PeriodicBodyCommand("give_water_near", 60.0),
+                PeriodicBodyCommand("parent_request:food", 60.0),
+                PeriodicBodyCommand("parent_request:water", 60.0),
             ),
             gate=SkillGate(
                 (
@@ -392,8 +392,8 @@ AFFECTIVE_LOCOMOTION = SkillSpec(
                 "motor_babble_sigma": 0.25,
             },
             periodic_body_commands=(
-                PeriodicBodyCommand("give_food_near", 45.0),
-                PeriodicBodyCommand("give_water_near", 45.0),
+                PeriodicBodyCommand("parent_request:food", 45.0),
+                PeriodicBodyCommand("parent_request:water", 45.0),
             ),
             gate=SkillGate(
                 (
@@ -454,6 +454,7 @@ PERCEPTION_OBJECT_FILES = SkillSpec(
                 (
                     Criterion("stable_tracked_objects", ">=", 2.0, "Persistent object files"),
                     Criterion("centroid_spread", ">=", 0.04, "Maintains spatial separation"),
+                    Criterion("scene_dynamics_unstable", "<=", 0.0, "Scene dynamics stable"),
                     Criterion("perception_collapsed", "<=", 0.0, "Perception not collapsed"),
                 ),
                 min_samples=10,
@@ -478,6 +479,7 @@ PERCEPTION_OBJECT_FILES = SkillSpec(
                 (
                     Criterion("object_files", ">=", 2.0, "Object files available"),
                     Criterion("flow_confidence", ">=", 0.01, "Local motion signal present"),
+                    Criterion("scene_dynamics_error", "<=", 0.35, "Bounded scene prediction error"),
                     Criterion("perception_collapsed", "<=", 0.0, "Perception not collapsed"),
                 ),
                 min_samples=10,
@@ -547,6 +549,7 @@ PERCEPTION_OBJECT_FILES = SkillSpec(
                 (
                     Criterion("object_files", ">=", 2.0, "Object files available"),
                     Criterion("stable_tracked_objects", ">=", 2.0, "Stable objects"),
+                    Criterion("scene_dynamics_unstable", "<=", 0.0, "Scene dynamics stable"),
                     Criterion("ltm_write_accepted", ">=", 1.0, "LTM writes accepted"),
                     Criterion("perception_collapsed", "<=", 0.0, "Perception not collapsed"),
                 ),
@@ -580,10 +583,10 @@ RESOURCE_ACQUISITION_ENERGY = SkillSpec(
         SkillPhase(
             index=0,
             name="Perception And Relief Binding",
-            description="Place a reachable anonymous resource object and bind reservoir relief to the attended object file.",
+            description="Request a visible anonymous resource offer and bind reservoir relief to the attended object file.",
             teacher_weight=0.0,
             config={"viability_mode": "metabolic", "metabolic_compression": 2.0, "motor_babble_sigma": 0.12},
-            periodic_body_commands=(PeriodicBodyCommand("give_food_near", 18.0),),
+            periodic_body_commands=(PeriodicBodyCommand("parent_request:food", 18.0),),
             gate=SkillGate(
                 (
                     Criterion("object_files", ">=", 1.0, "Anonymous object file present"),
@@ -603,7 +606,7 @@ RESOURCE_ACQUISITION_ENERGY = SkillSpec(
             description="Require contact to register through the body map while reservoir relief occurs.",
             teacher_weight=0.0,
             config={"viability_mode": "metabolic", "metabolic_compression": 2.0, "motor_babble_sigma": 0.15},
-            periodic_body_commands=(PeriodicBodyCommand("give_food_near", 20.0),),
+            periodic_body_commands=(PeriodicBodyCommand("parent_request:food", 20.0),),
             gate=SkillGate(
                 (
                     Criterion("pain_total", ">=", 0.0, "Body-map pain channel present"),
@@ -623,7 +626,7 @@ RESOURCE_ACQUISITION_ENERGY = SkillSpec(
             description="Resource is placed outside contact radius; the agent must move, contact, and improve reservoirs.",
             teacher_weight=0.0,
             config={"viability_mode": "metabolic", "metabolic_compression": 2.0, "motor_babble_sigma": 0.22},
-            periodic_body_commands=(PeriodicBodyCommand("give_food_near", 26.0),),
+            periodic_body_commands=(PeriodicBodyCommand("parent_request:food", 26.0),),
             gate=SkillGate(
                 (
                     Criterion("distance_traveled", "trend>=", 0.4, "Self-generated approach movement"),
@@ -643,7 +646,7 @@ RESOURCE_ACQUISITION_ENERGY = SkillSpec(
             description="Repeated anonymous affordance opportunities from varied placements should strengthen LTM beliefs.",
             teacher_weight=0.0,
             config={"viability_mode": "metabolic", "metabolic_compression": 2.0, "motor_babble_sigma": 0.18},
-            periodic_body_commands=(PeriodicBodyCommand("give_food_near", 35.0),),
+            periodic_body_commands=(PeriodicBodyCommand("parent_request:food", 35.0),),
             gate=SkillGate(
                 (
                     Criterion("ltm_property_beliefs", ">=", 1.0, "LTM property beliefs exist"),
@@ -663,7 +666,7 @@ RESOURCE_ACQUISITION_ENERGY = SkillSpec(
             description="Effort drain is active; consumption must beat movement cost.",
             teacher_weight=0.0,
             config={"viability_mode": "metabolic", "metabolic_compression": 2.0, "motor_babble_sigma": 0.15},
-            periodic_body_commands=(PeriodicBodyCommand("give_food_near", 45.0),),
+            periodic_body_commands=(PeriodicBodyCommand("parent_request:food", 45.0),),
             gate=SkillGate(
                 (
                     Criterion("net_energy_return", ">=", 0.0, "Positive net energy return"),
@@ -684,7 +687,7 @@ RESOURCE_ACQUISITION_ENERGY = SkillSpec(
             description="Mixed objects are present; learned anonymous affordance should guide approach without labels.",
             teacher_weight=0.0,
             config={"viability_mode": "metabolic", "metabolic_compression": 2.0, "motor_babble_sigma": 0.12},
-            periodic_body_commands=(PeriodicBodyCommand("give_food_near", 55.0),),
+            periodic_body_commands=(PeriodicBodyCommand("parent_request:food", 55.0),),
             gate=SkillGate(
                 (
                     Criterion("resource_relief_events", "trend>=", 1.0, "Relief-producing affordance found"),
