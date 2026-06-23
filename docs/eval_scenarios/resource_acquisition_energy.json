@@ -1,0 +1,39 @@
+{
+  "scenario": "resource_acquisition_energy",
+  "description": "Evaluate whether survival behavior improves through anonymous resource acquisition.",
+  "cycles": 5000,
+  "seeds": [1, 2, 3],
+  "dojo_skill_id": "resource_acquisition_energy",
+  "poll_interval_s": 1.0,
+  "timeout_s": 7200.0,
+  "gates": [
+    {
+      "name": "consumption occurred",
+      "metric": "consume_events",
+      "mode": "delta",
+      "op": ">=",
+      "threshold": 1
+    },
+    {
+      "name": "net energy return nonnegative",
+      "metric": "net_energy_return",
+      "mode": "final",
+      "op": ">=",
+      "threshold": 0
+    },
+    {
+      "name": "energy not collapsing",
+      "metric": "energy",
+      "mode": "final",
+      "op": ">=",
+      "threshold": 20
+    },
+    {
+      "name": "teacher disabled in final behavior",
+      "metric": "teacher_override_fraction",
+      "mode": "final",
+      "op": "<=",
+      "threshold": 0
+    }
+  ]
+}

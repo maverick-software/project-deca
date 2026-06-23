@@ -69,6 +69,21 @@ def test_retinotopic_bootstrap_prevents_empty_slot_starvation():
     assert foreground[0].centroid_uv != foreground[1].centroid_uv
 
 
+def test_retinotopic_bootstrap_can_emit_more_than_seven_candidates(monkeypatch):
+    monkeypatch.setenv("DECADIC_PERCEPTION_CANDIDATE_CAPACITY", "64")
+    img = np.zeros((32, 32), dtype=np.float32)
+    for y in (2, 10, 18):
+        for x in (2, 10, 18):
+            img[y : y + 3, x : x + 3] = 0.9
+    organ = PerceptionOrgan(grid_size=32)
+    props, diag, _ret = organ.process(_obs(img, "many"), [])
+    files = object_files_from_proposals(props)
+    foreground = [f for f in files if f.kind_hint != "stuff" and f.confidence >= 0.2]
+    assert diag["candidate_capacity"] == 64
+    assert diag["candidate_count"] > 7
+    assert len(foreground) > 7
+
+
 def test_body_candidate_uses_motion_motor_and_touch():
     organ = PerceptionOrgan(grid_size=16)
     organ.process(_obs(np.zeros((16, 16), dtype=np.float32), "t0"), [])

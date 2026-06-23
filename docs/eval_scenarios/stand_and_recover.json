@@ -1,0 +1,32 @@
+{
+  "scenario": "stand_and_recover",
+  "description": "Evaluate autonomous upright recovery with teacher disabled.",
+  "cycles": 3000,
+  "seeds": [1],
+  "dojo_skill_id": "stand_and_recover",
+  "poll_interval_s": 1.0,
+  "timeout_s": 5400.0,
+  "gates": [
+    {
+      "name": "fall rate bounded",
+      "metric": "fall_rate",
+      "mode": "final",
+      "op": "<=",
+      "threshold": 0.05
+    },
+    {
+      "name": "upright height recovered",
+      "metric": "root_height",
+      "mode": "final",
+      "op": ">=",
+      "threshold": 0.8
+    },
+    {
+      "name": "teacher disabled in final behavior",
+      "metric": "teacher_override_fraction",
+      "mode": "final",
+      "op": "<=",
+      "threshold": 0
+    }
+  ]
+}

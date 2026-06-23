@@ -156,6 +156,13 @@ class ConsolidationManager:
         self.replay_steps = 0
         self.last_loss = 0.0
         self.last_imagined_loss = 0.0
+        self.last_grad_norm = 0.0
+        self.last_sync_metrics: dict[str, float | int] = {
+            "delta_mean": 0.0,
+            "delta_max": 0.0,
+            "moved_params": 0,
+            "reset_params": 0,
+        }
         self.last_sync_cycle = 0
         self.syncs = 0
 
@@ -222,7 +229,13 @@ class ConsolidationManager:
         if not torch.isfinite(loss):
             return None
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.cons_stack.parameters(), 5.0)
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.cons_stack.parameters(),
+            C.consolidation_grad_clip(),
+        )
+        self.last_grad_norm = (
+            float(grad_norm.detach().cpu().item()) if torch.isfinite(grad_norm) else 0.0
+        )
         self.cons_opt.step()
         self.replay_steps += 1
         self.last_loss = float(loss.detach().cpu().item())
@@ -230,7 +243,7 @@ class ConsolidationManager:
 
     # --- soft sync ----------------------------------------------------------
 
-    def soft_sync(self, tau: float) -> None:
+    def soft_sync(self, tau: float) -> dict[str, float | int]:
         """Polyak update: nudge the LIVE stack toward the consolidator by ``tau``.
 
         Parameters only (recurrent/mask buffers are left untouched, so the live
@@ -238,8 +251,18 @@ class ConsolidationManager:
         held -- it mutates the live weights in place.
         """
         tau = float(min(1.0, max(0.0, tau)))
+        metrics: dict[str, float | int] = {
+            "delta_mean": 0.0,
+            "delta_max": 0.0,
+            "moved_params": 0,
+            "reset_params": 0,
+        }
         if tau <= 0.0:
-            return
+            self.last_sync_metrics = metrics
+            return metrics
+        reset_rel_eps = C.consolidation_sync_reset_rel_eps()
+        rel_moves: list[float] = []
+        reset_params: list[torch.nn.Parameter] = []
         with torch.no_grad():
             cons_params = dict(self.cons_stack.named_parameters())
             for name, p_act in self.bundle.stack.named_parameters():
@@ -248,8 +271,28 @@ class ConsolidationManager:
                     continue
                 if not torch.isfinite(p_cons).all():
                     continue
+                before = p_act.detach().clone()
+                delta = (p_cons.detach() - before) * tau
+                rel = float(
+                    delta.norm().detach().cpu().item()
+                    / (before.norm().detach().cpu().item() + 1e-12)
+                )
                 p_act.mul_(1.0 - tau).add_(p_cons, alpha=tau)
+                if rel > 0.0:
+                    rel_moves.append(rel)
+                if reset_rel_eps > 0.0 and rel >= reset_rel_eps:
+                    reset_params.append(p_act)
+        if reset_params:
+            self.bundle.reset_optimizer_state(reset_params)
         self.syncs += 1
+        metrics = {
+            "delta_mean": float(sum(rel_moves) / len(rel_moves)) if rel_moves else 0.0,
+            "delta_max": float(max(rel_moves)) if rel_moves else 0.0,
+            "moved_params": int(len(rel_moves)),
+            "reset_params": int(len(reset_params)),
+        }
+        self.last_sync_metrics = metrics
+        return metrics
 
     def _consolidate_burst(self, buffer, batch_size: int, steps: int) -> float | None:
         last: float | None = None
@@ -267,7 +310,7 @@ class ConsolidationManager:
         *,
         should_continue: Callable[[], bool],
         current_cycle: Callable[[], int],
-        on_sync: Callable[[int, float, int], None] | None = None,
+        on_sync: Callable[[int, float, int, dict[str, float | int]], None] | None = None,
     ) -> None:
         """Periodic replay-burst + soft-sync loop. Replaces the stub heartbeat.
 
@@ -300,9 +343,9 @@ class ConsolidationManager:
                 continue
             if self.lock is not None:
                 async with self.lock:
-                    await asyncio.to_thread(self.soft_sync, tau)
+                    sync_metrics = await asyncio.to_thread(self.soft_sync, tau)
             else:
-                self.soft_sync(tau)
+                sync_metrics = self.soft_sync(tau)
             self.last_sync_cycle = int(current_cycle())
             logger.info(
                 "consolidation_sync agent_id=%s cycle=%s replay_steps=%s loss=%.5f",
@@ -312,4 +355,4 @@ class ConsolidationManager:
                 self.last_loss,
             )
             if on_sync is not None:
-                on_sync(self.replay_steps, self.last_loss, self.last_sync_cycle)
+                on_sync(self.replay_steps, self.last_loss, self.last_sync_cycle, sync_metrics)

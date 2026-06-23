@@ -31,6 +31,7 @@ import BrainMapPanel from "./components/BrainMapPanel";
 import LandscapePanel from "./components/LandscapePanel";
 import EnvironmentPanel from "./components/EnvironmentPanel";
 import SkillDojoPanel from "./components/SkillDojoPanel";
+import TrainingEvalPanel from "./components/TrainingEvalPanel";
 import DeploymentPanel from "./components/DeploymentPanel";
 import SavedAgentsPanel from "./components/SavedAgentsPanel";
 import PresetPicker from "./components/PresetPicker";
@@ -42,6 +43,7 @@ const TABS: TabDef[] = [
   { id: "overview", label: "Overview" },
   { id: "environment", label: "Environment" },
   { id: "dojo", label: "Skill Dojo" },
+  { id: "training_eval", label: "Training Eval" },
   { id: "graph", label: "Self-Indexed Graph" },
   { id: "discovery", label: "Discovery" },
   { id: "cognition", label: "Cognition / Why" },
@@ -285,6 +287,14 @@ export default function App() {
         </div>
       )}
 
+      {activeTab === "training_eval" && (
+        <div className="grid solo">
+          <ErrorBoundary label="Training Eval" resetKey={agentId ?? "none"}>
+            <TrainingEvalPanel agentId={agentId} />
+          </ErrorBoundary>
+        </div>
+      )}
+
       {activeTab === "deploy" && (
         <DeploymentPanel onWatchAgent={() => selectTab("overview")} />
       )}
@@ -303,6 +313,7 @@ export default function App() {
 
       {activeTab !== "environment" &&
         activeTab !== "dojo" &&
+        activeTab !== "training_eval" &&
         activeTab !== "capacity" &&
         activeTab !== "deploy" &&
         activeTab !== "library" &&
@@ -326,7 +337,7 @@ export default function App() {
         </div>
       )}
 
-      {activeTab !== "environment" && activeTab !== "dojo" && agentId && state && (
+      {activeTab !== "environment" && activeTab !== "dojo" && activeTab !== "training_eval" && agentId && state && (
         <>
           {activeTab === "overview" && (
             <div className="overview">

@@ -75,3 +75,56 @@ def test_scene_workspace_builds_anonymous_spatial_relations():
     assert "co_visible" in kinds
     assert "near" in kinds
     assert "left_of" in kinds or "right_of" in kinds
+
+
+def test_scene_workspace_can_hold_more_entities_than_focus_cache():
+    ws = SceneWorkspace()
+    ws.update([_obj(i, uv=[0.05 + i * 0.035, 0.5]) for i in range(12)], focus_capacity=7, entity_capacity=32)
+    snap = ws.snapshot()
+    assert snap["entity_count"] == 12
+    assert len(snap["focus_ids"]) == 7
+
+
+def test_drive_attention_prefers_anonymous_energy_relief_when_energy_low():
+    ws = SceneWorkspace()
+    ws.update(
+        [
+            _obj(0, property_evidence={"predicts_energy_relief": 0.9, "roundness": 0.4}),
+            _obj(1, property_evidence={"roundness": 0.9}),
+        ],
+        focus_capacity=1,
+        attention_context={
+            "energy_deficit": 0.9,
+            "hydration_deficit": 0.0,
+            "integrity_deficit": 0.0,
+            "pain": 0.0,
+            "priority": "explore",
+        },
+    )
+    focused = ws.snapshot()["focus_ids"][0]
+    ent = next(e for e in ws.snapshot()["entities"] if e["entity_id"] == focused)
+    assert ent["object_id"] == "obj-0000"
+    assert ent["attention_reasons"]["relief"] > 0.0
+    assert "predicts_energy_relief" in ent["property_evidence"]
+
+
+def test_drive_attention_prefers_anonymous_threat_when_integrity_low():
+    ws = SceneWorkspace()
+    ws.update(
+        [
+            _obj(0, property_evidence={"roundness": 0.9}),
+            _obj(1, property_evidence={"predicts_integrity_loss": 0.8}),
+        ],
+        focus_capacity=1,
+        attention_context={
+            "energy_deficit": 0.0,
+            "hydration_deficit": 0.0,
+            "integrity_deficit": 0.75,
+            "pain": 0.2,
+            "priority": "avoid",
+        },
+    )
+    focused = ws.snapshot()["focus_ids"][0]
+    ent = next(e for e in ws.snapshot()["entities"] if e["entity_id"] == focused)
+    assert ent["object_id"] == "obj-0001"
+    assert ent["attention_reasons"]["threat"] > 0.0

@@ -192,9 +192,11 @@ def test_soft_sync_moves_active_toward_consolidator(monkeypatch):
     d_before = _param_distance(bundle.stack, mgr.cons_stack)
     assert d_before > 0.0
 
-    mgr.soft_sync(0.5)
+    metrics = mgr.soft_sync(0.5)
     d_after = _param_distance(bundle.stack, mgr.cons_stack)
     assert d_after < d_before
+    assert metrics["moved_params"] > 0
+    assert metrics["delta_max"] > 0.0
     # No NaNs leaked into the live weights.
     for _, p in bundle.stack.named_parameters():
         assert torch.isfinite(p).all()
@@ -213,6 +215,31 @@ def test_soft_sync_zero_tau_is_noop(monkeypatch):
     d_before = _param_distance(bundle.stack, mgr.cons_stack)
     mgr.soft_sync(0.0)
     assert _param_distance(bundle.stack, mgr.cons_stack) == pytest.approx(d_before)
+
+
+def test_soft_sync_resets_optimizer_state_only_for_large_moves(monkeypatch):
+    from decadic.consolidation.consolidator import ConsolidationManager
+
+    monkeypatch.setenv("DECADIC_CONSOLIDATION_SYNC_RESET_REL_EPS", "0.000001")
+    bundle, _transitions = _collect(monkeypatch, 2, enabled=True)
+    mgr = ConsolidationManager(bundle)
+    live_params = dict(bundle.stack.named_parameters())
+    cons_params = dict(mgr.cons_stack.named_parameters())
+    name, p_live = next(iter(live_params.items()))
+    bundle.optimizer.state[p_live]["exp_avg"] = torch.ones_like(p_live)
+    bundle.optimizer.state[p_live]["exp_avg_sq"] = torch.ones_like(p_live)
+    with torch.no_grad():
+        cons_params[name].add_(10.0)
+
+    metrics = mgr.soft_sync(0.5)
+    assert metrics["reset_params"] >= 1
+    assert p_live not in bundle.optimizer.state
+
+
+def test_consolidation_grad_clip_default_is_one():
+    from decadic import config as C
+
+    assert C.consolidation_grad_clip() == pytest.approx(1.0)
 
 
 # --- Part 3: parity when off + transition emission ---------------------------

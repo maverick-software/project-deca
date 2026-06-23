@@ -99,3 +99,57 @@ def test_nan_injection_trips_guard_and_recovers(monkeypatch):
     assert all(torch.isfinite(p).all() for p in bundle.stack.parameters())
     assert bus.cycle_index == 5
     assert out["action"]["type"] == "motor"
+
+
+def test_guardian_warms_effective_alpha_after_stable_pc_loss(monkeypatch):
+    pytest.importorskip("torch")
+
+    from decadic.cycle.neural_pipeline import run_neural_cycle
+
+    bundle = _build(
+        monkeypatch,
+        DECADIC_PLASTICITY_ALPHA="0.001",
+        DECADIC_PLASTICITY_STABLE_CYCLES_TO_INCREASE="2",
+        DECADIC_PLASTICITY_ALPHA_INCREASE_STEP="0.0005",
+    )
+    bus, perc, via, epi = _fresh_state()
+    assert bundle.plasticity_state.effective_alpha == 0.0
+    diag = {}
+    for _ in range(3):
+        diag = run_neural_cycle(_ctx(bus, perc, via, epi), bundle)["_diagnostics"]
+    assert diag["plasticity_alpha_configured"] == pytest.approx(0.001)
+    assert diag["plasticity_alpha_effective"] > 0.0
+    assert diag["plasticity_guardian_state"] in ("warming", "active")
+
+
+def test_guardian_freezes_and_thaws_after_recovery_dwell(monkeypatch):
+    pytest.importorskip("torch")
+
+    from decadic.cycle.neural_pipeline import apply_plasticity_step
+
+    bundle = _build(
+        monkeypatch,
+        DECADIC_PLASTICITY_STABLE_CYCLES_TO_THAW="2",
+        DECADIC_PLASTICITY_THAW_PCEMA="5",
+    )
+    bus, perc, via, epi = _fresh_state()
+    ctx = _ctx(bus, perc, via, epi)
+
+    frozen = apply_plasticity_step(
+        ctx,
+        bundle,
+        pc_loss=10000.0,
+        modulation=0.0,
+        canary_state="diverging",
+        canary_pressure=1.0,
+    )
+    assert frozen["froze"] is True
+    assert frozen["plasticity_frozen"] is True
+    assert frozen["plasticity_alpha_effective"] == 0.0
+    assert frozen["plasticity_freeze_count"] == 1
+
+    apply_plasticity_step(ctx, bundle, pc_loss=1.0, modulation=0.0)
+    thawed = apply_plasticity_step(ctx, bundle, pc_loss=1.0, modulation=0.0)
+    assert thawed["plasticity_frozen"] is False
+    assert thawed["plasticity_thaw_count"] == 1
+    assert thawed["plasticity_guardian_state"] in ("thawing", "warming")

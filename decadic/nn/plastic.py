@@ -29,6 +29,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 HEBB_CLIP = 5.0
+OVERLAY_EPS = 1e-6
 
 
 @dataclass
@@ -80,10 +81,34 @@ class PlasticityRuntimeState:
     max_neurons: int = 0
     density: float = 1.0
     structural_version: int = 0
+    configured_alpha: float = 0.0
+    effective_alpha: float = 0.0
+    pc_slope_ema: float = 0.0
+    prev_pc_ema: float | None = None
+    stable_cycles: int = 0
+    frozen_since_cycle: int | None = None
+    freeze_count: int = 0
+    thaw_count: int = 0
+    last_action: str = "init"
+    guardian_state: str = "warming"
+    blocked_reason: str = "initializing"
+    last_thaw_cycle: int | None = None
 
     @classmethod
     def from_flags(cls, flags: "PlasticityFlags") -> "PlasticityRuntimeState":
-        return cls(max_neurons=int(flags.max_neurons), density=float(flags.density))
+        from decadic import config as _cfg
+
+        configured = max(0.0, float(flags.alpha))
+        effective = min(configured, _cfg.plasticity_alpha_start())
+        state = "active" if effective >= configured and configured > 0 else "warming"
+        return cls(
+            max_neurons=int(flags.max_neurons),
+            density=float(flags.density),
+            configured_alpha=configured,
+            effective_alpha=effective,
+            guardian_state=state,
+            blocked_reason="awaiting_stable_pc_loss",
+        )
 
 
 class PlasticSparseGrowableMLP(nn.Module):
@@ -128,12 +153,13 @@ class PlasticSparseGrowableMLP(nn.Module):
         self._reset_bias(self.l2_weight, self.l2_bias)
 
         self.dropout = nn.Dropout(dropout)
-        # Plastic overlay magnitude is a learnable coefficient (differentiable
-        # plasticity); fixed at 0 and frozen when plasticity is disabled.
+        # Plastic overlay ceiling is operator/guardian controlled, not optimized
+        # by Adam. The guardian applies a runtime gate below this ceiling.
         self.alpha = nn.Parameter(
             torch.tensor(float(plastic_alpha) if self.plastic else 0.0),
-            requires_grad=self.plastic,
+            requires_grad=False,
         )
+        self.register_buffer("alpha_gate", torch.tensor(1.0 if self.plastic else 0.0))
 
         # Non-trained state (saved with the module): Hebbian traces, connection
         # masks, and the per-hidden-neuron awake gate.
@@ -180,17 +206,71 @@ class PlasticSparseGrowableMLP(nn.Module):
             self._zero_dormant_and_pruned()
 
     # --- forward ----------------------------------------------------------------
+    def configured_alpha_value(self) -> float:
+        if not self.plastic:
+            return 0.0
+        return float(self.alpha.detach().abs().item())
+
+    def effective_alpha_value(self) -> float:
+        if not self.plastic:
+            return 0.0
+        return float((self.alpha.detach().abs() * self.alpha_gate.detach().abs()).item())
+
+    def set_effective_alpha(self, value: float) -> None:
+        with torch.no_grad():
+            if not self.plastic:
+                self.alpha_gate.zero_()
+                return
+            configured = float(self.alpha.detach().abs().item())
+            target = max(0.0, float(value))
+            if configured <= 1e-12:
+                self.alpha_gate.zero_()
+            else:
+                self.alpha_gate.fill_(min(1.0, target / configured))
+
+    def _overlay(self, weight: torch.Tensor, hebb: torch.Tensor) -> torch.Tensor:
+        raw = (self.alpha * self.alpha_gate) * hebb
+        try:
+            from decadic import config as _cfg
+
+            frac = _cfg.plasticity_overlay_max_frac()
+        except Exception:
+            frac = 0.05
+        if frac <= 0.0:
+            return torch.zeros_like(raw)
+        cap = frac * (weight.detach().abs() + OVERLAY_EPS)
+        return torch.clamp(raw, min=-cap, max=cap)
+
     def _eff_w1(self) -> torch.Tensor:
         w = self.l1_weight
         if self.plastic:
-            w = w + self.alpha * self.hebb1
+            w = w + self._overlay(self.l1_weight, self.hebb1)
         return w * self.mask1
 
     def _eff_w2(self) -> torch.Tensor:
         w = self.l2_weight
         if self.plastic:
-            w = w + self.alpha * self.hebb2
+            w = w + self._overlay(self.l2_weight, self.hebb2)
         return w * self.mask2
+
+    def overlay_ratio_stats(self) -> tuple[float, float]:
+        if not self.plastic:
+            return 0.0, 0.0
+        vals = []
+        with torch.no_grad():
+            for w, h, m in (
+                (self.l1_weight, self.hebb1, self.mask1),
+                (self.l2_weight, self.hebb2, self.mask2),
+            ):
+                active = m > 0
+                if not bool(active.any()):
+                    continue
+                ratio = self._overlay(w, h).detach().abs() / (w.detach().abs() + OVERLAY_EPS)
+                vals.append(ratio[active])
+            if not vals:
+                return 0.0, 0.0
+            cat = torch.cat(vals)
+            return float(cat.mean().item()), float(cat.max().item())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.pre_ln is not None:
@@ -209,12 +289,25 @@ class PlasticSparseGrowableMLP(nn.Module):
             return
         x, h, y = self._cache
         with torch.no_grad():
-            pre1, post1 = x.mean(0), h.mean(0)
-            pre2, post2 = h.mean(0), y.mean(0)
+            modulation = float(max(-1.0, min(1.0, modulation)))
+            pre1, post1 = self._bounded_activity(x.mean(0)), self._bounded_activity(h.mean(0))
+            pre2, post2 = self._bounded_activity(h.mean(0)), self._bounded_activity(y.mean(0))
             self.hebb1.mul_(1.0 - eta).add_(eta * modulation * torch.outer(post1, pre1))
             self.hebb2.mul_(1.0 - eta).add_(eta * modulation * torch.outer(post2, pre2))
+            self.hebb1.copy_(torch.nan_to_num(self.hebb1, nan=0.0, posinf=0.0, neginf=0.0))
+            self.hebb2.copy_(torch.nan_to_num(self.hebb2, nan=0.0, posinf=0.0, neginf=0.0))
             self.hebb1.mul_(self.mask1).clamp_(-HEBB_CLIP, HEBB_CLIP)
             self.hebb2.mul_(self.mask2).clamp_(-HEBB_CLIP, HEBB_CLIP)
+
+    @staticmethod
+    def _bounded_activity(v: torch.Tensor) -> torch.Tensor:
+        v = torch.nan_to_num(v.detach().float(), nan=0.0, posinf=0.0, neginf=0.0)
+        v = F.layer_norm(v, v.shape)
+        v = torch.clamp(v, -3.0, 3.0)
+        n = torch.linalg.vector_norm(v)
+        if torch.isfinite(n) and float(n.item()) > 1e-6:
+            v = v / n
+        return v
 
     def reset_plastic_trace(self) -> None:
         with torch.no_grad():

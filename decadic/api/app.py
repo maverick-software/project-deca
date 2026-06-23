@@ -39,6 +39,7 @@ from decadic.api.vast.settings_store import VastSettingsStore
 from decadic.training.routes import register_skill_dojo_routes
 from decadic.training.store import UploadedSkillStore
 from decadic.training.supervisor import SkillDojoSupervisor
+from decadic.evaluation.routes import register_evaluation_routes
 from decadic.logging import setup_logging, stop_logging
 from decadic.memory.embeddings import query_vector_from_state_bus
 from decadic.nn.faculties import CognitionFaculties
@@ -1048,6 +1049,7 @@ def create_app() -> FastAPI:
     register_saved_agents_routes(application)
     register_preset_routes(application)
     register_skill_dojo_routes(application)
+    register_evaluation_routes(application)
 
     return application
 

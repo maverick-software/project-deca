@@ -77,6 +77,33 @@ def test_edges_bump_and_snapshot_totals():
     assert all(nd["degree"] == 1 for nd in snap["nodes"])
 
 
+def test_snapshot_reports_render_window_and_parallel_edge_density():
+    g = LongTermGraph()
+    a = g.upsert_node([1.0, 0.0, 0.0], cycle=1)
+    b = g.upsert_node([0.0, 1.0, 0.0], cycle=1)
+    c = g.upsert_node([0.0, 0.0, 1.0], cycle=1)
+    g.bump_edge(a, b, kind="co_occurrence", cycle=1)
+    g.bump_edge(a, b, kind="scene_near", cycle=1)
+    g.bump_edge(a, c, kind="scene_left_of", cycle=1)
+
+    capped = g.snapshot(limit=2)
+    assert capped["total_nodes"] == 3
+    assert capped["total_edges"] == 3
+    assert capped["rendered_nodes"] == 2
+    assert capped["truncated_nodes"] is True
+    assert capped["truncated_edges"] is True
+    assert capped["edge_kind_counts"]["co_occurrence"] == 1
+    assert capped["edge_kind_counts"]["scene_near"] == 1
+    assert max(capped["edge_pair_counts"].values()) == 2
+
+    full = g.snapshot(limit=0)
+    assert full["rendered_nodes"] == 3
+    assert full["rendered_edges"] == 3
+    assert full["truncated_nodes"] is False
+    assert full["truncated_edges"] is False
+    assert all("count" in e and "last_cycle" in e for e in full["edges"])
+
+
 def test_consolidate_commits_stable_and_links_copresent():
     g = LongTermGraph()
     stable_a = MemorySlot(entity_id="obj-0", appearance=[1.0, 0.0, 0.0], seen_count=3)

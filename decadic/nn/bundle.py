@@ -16,6 +16,7 @@ from decadic.nn.config import (
     neural_config_from_env,
     resolve_preset,
 )
+from decadic.cycle.objective_health import ObjectiveHealthCanary
 from decadic.nn.faculties import CognitionFaculties
 from decadic.nn.frozen_encoders import FrozenSensoryEncoders
 from decadic.nn.neural_stack import NeuralCognitiveStack
@@ -89,6 +90,9 @@ class NeuralBundle:
         self.plasticity_state: PlasticityRuntimeState | None = (
             PlasticityRuntimeState.from_flags(self.flags) if self.stack.has_plastic else None
         )
+        if self.plasticity_state is not None:
+            self.stack.set_effective_alpha_all(float(self.plasticity_state.effective_alpha))
+        self.objective_health = ObjectiveHealthCanary()
         # Cross-cycle transition buffers for the forward model (active inference):
         # the previous cycle's state latent and realized motor command, used to
         # score the world-model prediction against the realized next state.
@@ -284,6 +288,8 @@ class NeuralBundle:
         self.plasticity_state = (
             PlasticityRuntimeState.from_flags(flags) if self.stack.has_plastic else None
         )
+        if self.plasticity_state is not None:
+            self.stack.set_effective_alpha_all(float(self.plasticity_state.effective_alpha))
         params = list(self.stack.parameters()) + list(self.encoders.parameters())
         lr = float(self.optimizer.param_groups[0]["lr"])
         from decadic.config import memory_efficient_training_enabled
@@ -382,3 +388,4 @@ class NeuralBundle:
             for k, v in ps.items():
                 if hasattr(self.plasticity_state, k):
                     setattr(self.plasticity_state, k, v)
+            self.stack.set_effective_alpha_all(float(self.plasticity_state.effective_alpha))

@@ -69,6 +69,8 @@ export default function DiscoveryPanel(props: { state: AgentState }) {
       {organ && (
         <div className={`health-strip ${organ.stale_frame ? "warn" : "ok"}`}>
           <span>{organ.checkpoint_status}</span>
+          <span>candidates {organ.candidate_count ?? "n/a"} / {organ.candidate_capacity ?? "n/a"}</span>
+          <span>bootstrap {organ.bootstrap_proposal_count ?? 0}</span>
           <span>global {organ.global_motion.toFixed(3)}</span>
           <span>local {organ.local_motion_max.toFixed(3)}</span>
           <span>foreground {organ.foreground_count}</span>
@@ -80,12 +82,37 @@ export default function DiscoveryPanel(props: { state: AgentState }) {
           <span>{scene.visible_count} visible</span>
           <span>{scene.occluded_count} occluded</span>
           <span>{scene.stable_count} stable</span>
-          <span>{scene.focus_ids.length} focused</span>
+          <span>{scene.focus_ids.length} focus cache</span>
           <span>{scene.relations.length} relations</span>
           <span>
             scene PE {scene.prediction_error != null ? scene.prediction_error.toFixed(3) : "n/a"}
           </span>
           <span>{scene.reidentified_count ?? 0} re-id</span>
+        </div>
+      )}
+      {scene?.active_drive_deficits && (
+        <div className="health-strip ok">
+          <span>drive attention</span>
+          <span>energy {Number(scene.active_drive_deficits.energy ?? 0).toFixed(2)}</span>
+          <span>hydration {Number(scene.active_drive_deficits.hydration ?? 0).toFixed(2)}</span>
+          <span>integrity {Number(scene.active_drive_deficits.integrity ?? 0).toFixed(2)}</span>
+          <span>pain {Number(scene.active_drive_deficits.pain ?? 0).toFixed(2)}</span>
+          <span>{String(scene.active_drive_deficits.priority ?? "explore")}</span>
+        </div>
+      )}
+      {scene?.attention_top && scene.attention_top.length > 0 && (
+        <div className="health-strip ok">
+          <span>top attention</span>
+          {scene.attention_top.slice(0, 3).map((a) => {
+            const reasons = a.attention_reasons ?? {};
+            const topReason = Object.entries(reasons).sort((x, y) => y[1] - x[1])[0];
+            return (
+              <span key={a.entity_id}>
+                {a.entity_id.replace("scene-", "s-")} {a.attention_score.toFixed(2)}
+                {topReason ? ` ${topReason[0]}` : ""}
+              </span>
+            );
+          })}
         </div>
       )}
       {scenePred && (

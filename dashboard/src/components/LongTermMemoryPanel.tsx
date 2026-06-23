@@ -117,6 +117,37 @@ function nodeStroke(n: LtmNode): string {
   return "rgba(0,0,0,0.45)";
 }
 
+function edgePairKey(e: LtmEdge): string {
+  return e.source <= e.target ? `${e.source}->${e.target}` : `${e.target}->${e.source}`;
+}
+
+function edgeSignature(e: LtmEdge): string {
+  return `${e.source}->${e.target}:${e.kind}`;
+}
+
+function edgeStroke(kind: string): string {
+  if (kind.includes("co_occurrence")) return "150,165,210";
+  if (kind.includes("near") || kind.includes("proximity")) return "105,180,235";
+  if (kind.includes("left") || kind.includes("right") || kind.includes("above") || kind.includes("below")) {
+    return "145,215,165";
+  }
+  if (kind.includes("contact") || kind.includes("collision")) return "255,130,110";
+  return "190,160,235";
+}
+
+function edgePath(a: XY, b: XY, parallelIndex: number, parallelCount: number): string {
+  if (parallelCount <= 1) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const d = Math.sqrt(dx * dx + dy * dy) || 1;
+  const offset = (parallelIndex - (parallelCount - 1) / 2) * 5.5;
+  const cx = mx + (-dy / d) * offset;
+  const cy = my + (dx / d) * offset;
+  return `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`;
+}
+
 export default function LongTermMemoryPanel(props: { state: AgentState }) {
   const [zoom, setZoom] = useState(1);
   const ltm: LtmGraphSnapshot | null | undefined = props.state.perceptual.ltm_graph;
@@ -137,6 +168,47 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
     [nodes, edges.length, totalNodes],
   );
   const pos = useMemo(() => layout(nodes, edges), [sig]); // eslint-disable-line react-hooks/exhaustive-deps
+  const renderedNodes = ltm?.rendered_nodes ?? nodes.length;
+  const renderedEdges = ltm?.rendered_edges ?? edges.length;
+  const truncated = Boolean(ltm?.truncated_nodes || ltm?.truncated_edges);
+  const pairCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of edges) {
+      const key = edgePairKey(e);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [edges]);
+  const edgeOrdinals = useMemo(() => {
+    const seen = new Map<string, number>();
+    const ord = new Map<string, number>();
+    for (const e of edges) {
+      const pair = edgePairKey(e);
+      const i = seen.get(pair) ?? 0;
+      ord.set(edgeSignature(e), i);
+      seen.set(pair, i + 1);
+    }
+    return ord;
+  }, [edges]);
+  const bundleLabels = useMemo(() => {
+    const labels: { key: string; x: number; y: number; count: number }[] = [];
+    pairCounts.forEach((count, key) => {
+      if (count <= 1) return;
+      const [aId, bId] = key.split("->");
+      const a = pos.get(aId);
+      const b = pos.get(bId);
+      if (!a || !b) return;
+      labels.push({ key, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, count });
+    });
+    return labels;
+  }, [pairCounts, pos]);
+  const edgeKinds = useMemo(
+    () =>
+      Object.entries(ltm?.edge_kind_counts ?? {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6),
+    [ltm?.edge_kind_counts],
+  );
   const viewW = W / zoom;
   const viewH = H / zoom;
   const viewBox = `${CX - viewW / 2} ${CY - viewH / 2} ${viewW} ${viewH}`;
@@ -161,6 +233,26 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
           {ltmStatus?.status ?? (nodes.length < totalNodes ? `showing ${nodes.length}` : "long-term index")}
         </span>
       </div>
+      <div className={`health-strip ${truncated ? "warn" : "ok"}`}>
+        <span>
+          rendering {renderedNodes.toLocaleString()}/{totalNodes.toLocaleString()} nodes
+        </span>
+        <span>
+          {renderedEdges.toLocaleString()}/{totalEdges.toLocaleString()} edge records
+        </span>
+        <span>{pairCounts.size.toLocaleString()} visible bundles</span>
+        {truncated && <span>snapshot capped at {ltm?.snapshot_limit}</span>}
+      </div>
+      {edgeKinds.length > 0 && (
+        <div className="health-strip ok">
+          <span>edge kinds</span>
+          {edgeKinds.map(([kind, count]) => (
+            <span key={kind}>
+              {kind} {count}
+            </span>
+          ))}
+        </div>
+      )}
       {health && health.status !== "healthy" && (
         <div className={`health-strip ${health.collapsed ? "bad" : "warn"}`}>
           <span>{health.reason}</span>
@@ -233,18 +325,30 @@ export default function LongTermMemoryPanel(props: { state: AgentState }) {
             const b = pos.get(e.target);
             if (!a || !b) return null;
             const w = Math.min(1, Math.max(0, e.weight));
+            const pair = edgePairKey(e);
+            const parallelCount = pairCounts.get(pair) ?? 1;
+            const parallelIndex = edgeOrdinals.get(edgeSignature(e)) ?? 0;
+            const rgb = edgeStroke(e.kind);
             return (
-              <line
+              <path
                 key={`le${i}`}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke={`rgba(150,165,210,${0.12 + 0.5 * w})`}
-                strokeWidth={0.8 + 1.6 * w}
-              />
+                d={edgePath(a, b, parallelIndex, parallelCount)}
+                fill="none"
+                stroke={`rgba(${rgb},${0.11 + 0.42 * w})`}
+                strokeWidth={0.65 + 1.1 * w}
+              >
+                <title>{`${e.kind} ${e.source} -> ${e.target} - count ${e.count ?? 1}`}</title>
+              </path>
             );
           })}
+          {bundleLabels.map((b) => (
+            <g key={`bundle-${b.key}`}>
+              <circle cx={b.x} cy={b.y} r={7} fill="rgba(8,13,26,0.82)" stroke="rgba(150,165,210,0.45)" />
+              <text x={b.x} y={b.y + 2.8} textAnchor="middle" className="graph-label tiny">
+                {b.count}
+              </text>
+            </g>
+          ))}
           {nodes.map((n, i) => {
             const p = pos.get(n.id);
             if (!p) return null;

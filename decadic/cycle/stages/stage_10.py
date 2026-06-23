@@ -2,13 +2,62 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 
+from decadic import config as C
 from decadic.config import entity_promotion_precision, gwt_salience_boost, ltm_consolidate_min_seen
 from decadic.cycle.stages._helpers import trace
 from decadic.cycle.types import CycleContext, StageTrace
 from decadic.memory.embeddings import episode_embedding_from_cycle
 from decadic.memory.episodic_store import EpisodicRecord
+
+
+def _scene_slots(scene_ws: object | None) -> list[object]:
+    if scene_ws is None:
+        return []
+    snap = scene_ws.snapshot() if hasattr(scene_ws, "snapshot") else {}
+    if not isinstance(snap, dict):
+        return []
+    focus_ids = set(str(x) for x in snap.get("focus_ids", []) or [])
+    raw_entities = list(getattr(scene_ws, "entities", {}).values()) if hasattr(scene_ws, "entities") else []
+    out: list[object] = []
+    for ent in raw_entities:
+        app = getattr(ent, "appearance", None)
+        if not isinstance(app, list) or not app:
+            continue
+        eid = str(getattr(ent, "entity_id", None) or getattr(ent, "object_id", None) or "")
+        if not eid:
+            continue
+        conf = float(getattr(ent, "confidence", 0.0) or 0.0)
+        attention = float(getattr(ent, "attention_score", getattr(ent, "salience", 0.0)) or 0.0)
+        focused = eid in focus_ids
+        evidence_boost = 1.0 + (0.5 * attention if focused else 0.15 * attention)
+        precision = max(conf, float(getattr(ent, "persistence", 0.0) or 0.0), min(1.0, attention))
+        out.append(
+            SimpleNamespace(
+                entity_id=eid,
+                scene_entity_id=eid,
+                kind=str(getattr(ent, "entity_role", None) or getattr(ent, "kind_hint", None) or "unknown"),
+                kind_hint=str(getattr(ent, "kind_hint", None) or "object"),
+                entity_role=str(getattr(ent, "entity_role", None) or "compact_entity"),
+                appearance=[float(x) for x in app],
+                position=getattr(ent, "relative", None),
+                relative=getattr(ent, "relative", None),
+                confidence=max(0.0, min(1.0, conf * evidence_boost)),
+                precision=max(0.0, min(1.0, precision)),
+                seen_count=int(getattr(ent, "seen_count", 0) or 0),
+                affective_weight=0.0,
+                property_evidence=dict(getattr(ent, "property_evidence", {}) or {}),
+                provisional=bool(getattr(ent, "provisional", True)),
+                attention_score=attention,
+                attention_focused=focused,
+                attention_reasons=dict(getattr(ent, "attention_reasons", {}) or {}),
+                drive_match=dict(getattr(ent, "drive_match", {}) or {}),
+            )
+        )
+    return out
 
 
 def run(ctx: CycleContext) -> StageTrace:
@@ -84,7 +133,9 @@ def run(ctx: CycleContext) -> StageTrace:
             status = "accepted"
             relationship_update = reason != "skipped_perception_collapsed"
             property_update = reason not in ("skipped_prediction_unstable",)
-            all_slots = list(wm.active_slots())
+            wm_slots = list(wm.active_slots())
+            scene_slots = _scene_slots(scene_ws) if C.ltm_consolidate_from_scene() else []
+            all_slots = scene_slots if scene_slots else wm_slots
             ids: list[str] = []
             slots: list[object] = []
             if not all_slots:
@@ -120,6 +171,7 @@ def run(ctx: CycleContext) -> StageTrace:
                     status = str(report.get("status", "queued_consolidation"))
                     ids = list(report.get("accepted_ids", []) or [])
                     semantic_update = dict(report.get("semantic_update", {}) or {})
+                    report["source"] = "scene_workspace" if scene_slots else "working_memory"
                 else:
                     ids = ctx.ltm_graph.consolidate(
                         slots,
@@ -157,22 +209,32 @@ def run(ctx: CycleContext) -> StageTrace:
                     report = {
                         "status": status,
                         "accepted_ids": list(ids),
+                        "source": "scene_workspace" if scene_slots else "working_memory",
                         "identity_refresh": status == "promoted_entity",
                         "property_update": bool(property_update and ids),
                         "relationship_update": bool(relationship_update and ids),
                         "relationship_updates_skipped": 0 if relationship_update else 1,
                         "semantic_update": semantic_update,
+                        "scene_slots_considered": len(scene_slots),
+                        "wm_focus_slots_considered": len(wm_slots),
                     }
             else:
                 report = {
                     "status": status,
                     "accepted_ids": list(ids),
+                    "source": "scene_workspace" if scene_slots else "working_memory",
                     "identity_refresh": False,
                     "property_update": False,
                     "relationship_update": False,
                     "relationship_updates_skipped": 0 if relationship_update else 1,
                     "semantic_update": semantic_update,
+                    "scene_slots_considered": len(scene_slots),
+                    "wm_focus_slots_considered": len(wm_slots),
                 }
+            report.setdefault("source", "scene_workspace" if scene_slots else "working_memory")
+            report.setdefault("scene_slots_considered", len(scene_slots))
+            report.setdefault("wm_focus_slots_considered", len(wm_slots))
+            report.setdefault("ltm_scene_consolidation_enabled", C.ltm_consolidate_from_scene())
             report = {
                 "reason": reason if status in ("accepted", "promoted_entity", "queued_consolidation") else status,
                 **report,

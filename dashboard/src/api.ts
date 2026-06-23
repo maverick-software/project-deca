@@ -29,6 +29,7 @@ export type PlasticityConfig = {
   // Live means/measurements; null when the matching mechanism is off or
   // not yet measured (e.g. plastic_alpha_mean() with no plastic overlay).
   plasticity_alpha: number | null;
+  plasticity_alpha_effective?: number | null;
   sparse_density: number | null;
   awake_neurons: number;
   allocated_neurons: number;
@@ -185,6 +186,8 @@ export type LtmEdge = {
   target: string;
   kind: string;
   weight: number;
+  count?: number;
+  last_cycle?: number;
 };
 
 export type SemanticStats = {
@@ -202,6 +205,13 @@ export type LtmGraphSnapshot = {
   // Unbounded totals (the windowed nodes/edges above are a read-out cap only).
   total_nodes: number;
   total_edges: number;
+  rendered_nodes?: number;
+  rendered_edges?: number;
+  snapshot_limit?: number;
+  truncated_nodes?: boolean;
+  truncated_edges?: boolean;
+  edge_kind_counts?: Record<string, number>;
+  edge_pair_counts?: Record<string, number>;
   total_property_beliefs?: number;
   unstable_property_count?: number;
   semantic?: SemanticStats;
@@ -309,6 +319,14 @@ export type DiscoveryHealth = {
   flow_confidence: number;
   low_confidence_count: number;
   ltm_write: string;
+  perception_candidate_count?: number;
+  perception_candidate_capacity?: number;
+  scene_entities?: number;
+  scene_focus_count?: number;
+  wm_focus_capacity?: number;
+  scene_entity_capacity?: number;
+  attention_top?: AttentionTopSnapshot[];
+  active_drive_deficits?: Record<string, number | string>;
 };
 
 export type PerceptionOrganSnapshot = {
@@ -324,6 +342,16 @@ export type PerceptionOrganSnapshot = {
   body_candidate_count: number;
   foreground_count: number;
   checkpoint_status: string;
+  bootstrap_proposal_count?: number;
+  candidate_count?: number;
+  candidate_capacity?: number;
+};
+
+export type AttentionTopSnapshot = {
+  entity_id: string;
+  attention_score: number;
+  attention_reasons?: Record<string, number>;
+  drive_match?: Record<string, number>;
 };
 
 export type RetinotopicMapSnapshot = {
@@ -370,6 +398,9 @@ export type SceneEntitySnapshot = {
   confidence: number;
   persistence: number;
   salience: number;
+  attention_score?: number;
+  attention_reasons?: Record<string, number>;
+  drive_match?: Record<string, number>;
   agency: number;
   looming: number;
   local_motion: number;
@@ -407,6 +438,10 @@ export type SceneWorkspaceSnapshot = {
   reidentified_count?: number;
   prediction_assisted_count?: number;
   duplicate_prevention_count?: number;
+  candidate_count?: number;
+  focus_capacity?: number;
+  active_drive_deficits?: Record<string, number | string>;
+  attention_top?: AttentionTopSnapshot[];
   focus_ids: string[];
   prediction_error?: number | null;
   entities: SceneEntitySnapshot[];
@@ -428,6 +463,9 @@ export type SceneHealthSnapshot = {
   reidentified_count?: number;
   prediction_assisted_count?: number;
   duplicate_prevention_count?: number;
+  candidate_count?: number;
+  attention_top?: AttentionTopSnapshot[];
+  active_drive_deficits?: Record<string, number | string>;
 };
 
 export type FocusSnapshot = {
@@ -640,6 +678,20 @@ export type Metrics = {
   cycles_completed: number;
   approx_cycles_per_sec: number;
   neural_pc_loss_last: number;
+  loss_total?: number;
+  loss_dominant_term?: string;
+  loss_dominant_fraction?: number;
+  loss_terms?: Record<string, { raw?: number; weighted?: number }>;
+  loss_canary_state?: string;
+  loss_canary_reason?: string;
+  loss_canary_pressure?: number;
+  loss_canary_optimizer_action?: string;
+  loss_canary_step_scale?: number;
+  loss_canary_ema?: number | null;
+  loss_canary_pc_ema?: number | null;
+  loss_canary_slope_ema?: number | null;
+  loss_canary_pc_slope_ema?: number | null;
+  loss_canary_jump_ratio?: number;
   learning_rate: number;
   fast_path_hits: number;
   last_cycle_wall_ms: number;
@@ -812,6 +864,8 @@ export type Metrics = {
   // Live curriculum overrides (null -> follow the process-env default).
   ai_intero_pref_weight?: number | null;
   drive_priority_gain?: number | null;
+  drive_priority_gain_configured?: number;
+  drive_priority_gain_effective?: number;
   hydration?: number;
   energy?: number;
   integrity?: number;
@@ -824,6 +878,20 @@ export type Metrics = {
   sparse_enabled?: boolean;
   growth_enabled?: boolean;
   plasticity_alpha?: number | null;
+  plasticity_alpha_configured?: number | null;
+  plasticity_alpha_effective?: number | null;
+  plasticity_guardian_state?: string;
+  plasticity_guardian_action?: string;
+  plasticity_pc_ema?: number | null;
+  plasticity_pc_slope_ema?: number | null;
+  plasticity_overlay_ratio_mean?: number | null;
+  plasticity_overlay_ratio_max?: number | null;
+  plasticity_freeze_count?: number;
+  plasticity_thaw_count?: number;
+  plasticity_warmup_blocked_reason?: string;
+  plasticity_stable_cycles?: number;
+  plasticity_thaw_eligible?: boolean;
+  plasticity_thaw_cycles_remaining?: number;
   sparse_density?: number | null;
   awake_neurons?: number;
   allocated_neurons?: number;
@@ -832,6 +900,10 @@ export type Metrics = {
   rewire_events?: number;
   growth_events?: number;
   plasticity_frozen?: boolean;
+  consolidation_sync_delta_mean?: number;
+  consolidation_sync_delta_max?: number;
+  consolidation_sync_moved_params?: number;
+  consolidation_sync_reset_params?: number;
   // Perception feedback loop (top-down predictive perception) telemetry.
   perception_feedback?: boolean;
   precision_gate_mean?: number | null;
@@ -1209,6 +1281,124 @@ export type DiscoveryReport = {
 
 export function fetchDiscovery(agentId: string): Promise<DiscoveryReport> {
   return getJson<DiscoveryReport>(`/agent/${agentId}/discovery`);
+}
+
+export type EvalGate = {
+  name: string;
+  metric: string;
+  op: string;
+  threshold: number;
+  mode?: string;
+  fraction?: number;
+};
+
+export type EvalScenario = {
+  scenario: string;
+  description?: string;
+  cycles: number;
+  seeds: number[];
+  agent_preset?: string | null;
+  dojo_skill_id?: string | null;
+  baseline?: string | null;
+  poll_interval_s?: number;
+  timeout_s?: number;
+  gates: EvalGate[];
+  body_required?: boolean;
+  estimated_runtime_s?: number;
+};
+
+export type EvalReportSummary = {
+  report_id: string;
+  path: string;
+  scenario: string;
+  status: string;
+  agent_id?: string | null;
+  failures_count: number;
+  failures?: string[];
+  samples_path?: string;
+  mtime?: number;
+};
+
+export type EvalReport = {
+  scenario: string;
+  status: string;
+  agent_id?: string | null;
+  seeds?: number[];
+  health?: Record<string, unknown>;
+  mechanical?: Record<string, unknown>;
+  learning?: Record<string, unknown>;
+  perception?: Record<string, unknown>;
+  probes?: Record<string, unknown>;
+  behavior?: Record<string, unknown>;
+  baseline_comparison?: Record<string, unknown>;
+  failures?: string[];
+  samples_path?: string;
+};
+
+export type EvalStatus = {
+  state: "idle" | "starting" | "running" | "stopping" | "completed" | "failed" | "cancelled" | string;
+  job_id?: string | null;
+  scenario?: string | null;
+  agent_id?: string | null;
+  started_at?: number | null;
+  elapsed_s?: number;
+  samples?: number;
+  cycles?: number;
+  target_cycles?: number;
+  report_path?: string;
+  samples_path?: string;
+  error?: string;
+  body_connected?: boolean;
+  body_warning?: string;
+};
+
+export type EvalStartRequest = {
+  scenario: string;
+  cycles?: number | null;
+  seeds?: number[] | null;
+  preset?: string | null;
+  dojo_skill_id?: string | null;
+  poll_interval_s?: number | null;
+  timeout_s?: number | null;
+  agent_id?: string | null;
+};
+
+export async function fetchEvalScenarios(): Promise<EvalScenario[]> {
+  const r = await getJson<{ scenarios: EvalScenario[] }>("/eval/scenarios");
+  return r.scenarios;
+}
+
+export function fetchEvalScenario(id: string): Promise<EvalScenario> {
+  return getJson<EvalScenario>(`/eval/scenarios/${encodeURIComponent(id)}`);
+}
+
+export async function fetchEvalReports(): Promise<EvalReportSummary[]> {
+  const r = await getJson<{ reports: EvalReportSummary[] }>("/eval/reports");
+  return r.reports;
+}
+
+export function fetchEvalReport(reportId: string): Promise<EvalReport> {
+  return getJson<EvalReport>(`/eval/reports/${encodeURIComponent(reportId)}`);
+}
+
+export async function startEvalJob(req: EvalStartRequest): Promise<EvalStatus> {
+  const r = await fetch(`${httpBase()}/eval/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!r.ok) throw new Error(`start eval: HTTP ${r.status}`);
+  return (await r.json()) as EvalStatus;
+}
+
+export function fetchEvalStatus(): Promise<EvalStatus> {
+  return getJson<EvalStatus>("/eval/status");
+}
+
+export async function stopEvalJob(): Promise<EvalStatus> {
+  const r = await fetch(`${httpBase()}/eval/stop`, { method: "POST" });
+  if (!r.ok) throw new Error(`stop eval: HTTP ${r.status}`);
+  return (await r.json()) as EvalStatus;
 }
 
 export function fetchExplain(

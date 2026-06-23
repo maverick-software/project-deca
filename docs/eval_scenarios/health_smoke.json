@@ -1,0 +1,32 @@
+{
+  "scenario": "health_smoke",
+  "description": "Short live run checking objective stability and basic cycle progress.",
+  "cycles": 500,
+  "seeds": [1],
+  "poll_interval_s": 1.0,
+  "timeout_s": 600.0,
+  "gates": [
+    {
+      "name": "cycles advance",
+      "metric": "cycles_completed",
+      "mode": "final",
+      "op": ">=",
+      "threshold": 500
+    },
+    {
+      "name": "no NaN recovery",
+      "metric": "nan_recovery_events",
+      "mode": "final",
+      "op": "<=",
+      "threshold": 0
+    },
+    {
+      "name": "dominant loss usually bounded",
+      "metric": "loss_dominant_fraction",
+      "mode": "fraction<=",
+      "op": "<=",
+      "threshold": 0.7,
+      "fraction": 0.9
+    }
+  ]
+}

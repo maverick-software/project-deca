@@ -379,11 +379,19 @@ def test_plasticity_metrics_and_live_knobs(api_app_plastic):
         assert m["plasticity_enabled"] is True
         assert m["sparse_enabled"] is True
         assert m["growth_enabled"] is True
+        assert "plasticity_alpha_effective" in m
+        assert "plasticity_guardian_state" in m
+        assert "loss_canary_state" in m
+        assert "loss_canary_optimizer_action" in m
+        assert "loss_dominant_term" in m
+        assert "drive_priority_gain_effective" in m
+        assert "consolidation_sync_delta_max" in m
         assert m["awake_neurons"] > 0
         assert m["allocated_neurons"] >= m["awake_neurons"]
         # capacity_config surfaces a plasticity block for the dashboard.
         cfg = client.post(f"/agent/{aid}/config").json()
         assert cfg["plasticity"]["available"] is True
+        assert "plasticity_alpha_effective" in cfg["plasticity"]
 
         # A cycle still produces a motor action with all features on.
         with client.websocket_connect(f"/agent/{aid}/cycle") as ws:
@@ -402,6 +410,7 @@ def test_plasticity_metrics_and_live_knobs(api_app_plastic):
         client.post(f"/agent/{aid}/config?plasticity_alpha=0.25")
         m2 = client.get(f"/agent/{aid}/metrics").json()["metrics"]
         assert abs(m2["plasticity_alpha"] - 0.25) < 1e-3
+        assert m2["plasticity_alpha_effective"] <= m2["plasticity_alpha"]
 
         # Live C knob: shrinking the cap sleeps neurons immediately.
         awake_before = client.get(f"/agent/{aid}/metrics").json()["metrics"]["awake_neurons"]

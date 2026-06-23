@@ -65,6 +65,12 @@
   .ring .ringline{fill:none;stroke:url(#g);stroke-width:1.5;opacity:.5}
   .ring .center{fill:var(--muted);font:600 11px/1 ui-monospace,monospace;text-anchor:middle;letter-spacing:2px}
   .ring .center.b{fill:var(--text);font-weight:800;font-size:15px;letter-spacing:1px}
+  .ring .ir{fill:none}
+  .ring .ir1{stroke:rgba(255,154,77,.32)} .ring .ir2{stroke:rgba(60,225,255,.32)}
+  .ring .core{fill:rgba(155,107,255,.12);stroke:rgba(155,107,255,.5);stroke-width:1.5}
+  .ring .lab{font:700 11px/1 ui-monospace,monospace;letter-spacing:2.5px;text-anchor:middle}
+  .ring .fm{fill:var(--amber)} .ring .sm{fill:var(--cyan)} .ring .mem{fill:#b694ff}
+  .ring .sml{fill:var(--muted);font:600 9px/1 ui-monospace,monospace;letter-spacing:2px;text-anchor:middle}
   .spark{fill:var(--cyan);filter:drop-shadow(0 0 8px var(--cyan))}
 
   /* SECTIONS */
@@ -94,6 +100,10 @@
   .bus .b{font-size:12.5px;padding:6px 11px;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}
   .bus .b b{color:var(--amber)}
   @media(max-width:880px){.fw{grid-template-columns:1fr}}
+  .loop{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:36px}
+  .loop .ls{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:11px 19px;font-weight:600;font-size:14.5px;color:var(--text)}
+  .loop .ar{color:var(--cyan);opacity:.7;font-size:16px}
+  .loop .loopback{font-size:20px;opacity:.95}
 
   /* FEATURE GRID */
   .feat{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:40px}
@@ -105,6 +115,9 @@
   .f p{color:var(--muted);font-size:14.5px}
   @media(max-width:880px){.feat{grid-template-columns:1fr 1fr}}
   @media(max-width:600px){.feat{grid-template-columns:1fr}}
+  .pull{margin-top:34px;background:linear-gradient(120deg,rgba(60,225,255,.12),rgba(155,107,255,.09));
+    border:1px solid rgba(60,225,255,.30);border-radius:16px;padding:26px 30px;font-size:clamp(17px,2.4vw,21px);font-weight:600;line-height:1.45}
+  .pull b{color:var(--cyan)}
 
   /* COMPARISON */
   .vs{margin-top:38px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel)}
@@ -159,6 +172,7 @@
       <a href="#thesis">The bet</a>
       <a href="#cycle">Architecture</a>
       <a href="#system">What's built</a>
+      <a href="#advantage">Why it wins</a>
       <a href="#theory">Theory</a>
       <a href="#contact" class="btn">Get in touch</a>
     </div>
@@ -189,6 +203,8 @@
           <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stop-color="#3ce1ff"/><stop offset="0.55" stop-color="#5b8cff"/><stop offset="1" stop-color="#9b6bff"/>
           </linearGradient>
+          <path id="fmpath" d="M80,200 A120,120 0 0 0 320,200" fill="none"/>
+          <path id="smpath" d="M112,200 A88,88 0 0 0 288,200" fill="none"/>
         </defs>
         <circle class="ringline" cx="200" cy="200" r="150"/>
         <!-- traveling spark -->
@@ -198,8 +214,14 @@
         </circle>
         <!-- 10 nodes -->
         <g id="nodes"></g>
-        <text x="200" y="194" class="center b">DECADIC</text>
-        <text x="200" y="214" class="center">CYCLE · A–F</text>
+        <!-- persistent inner state -->
+        <circle class="ir ir1" cx="200" cy="200" r="120"/>
+        <circle class="ir ir2" cx="200" cy="200" r="88"/>
+        <circle class="core" cx="200" cy="200" r="50"/>
+        <text class="lab fm"><textPath href="#fmpath" startOffset="50%">FRAME OF MIND</textPath></text>
+        <text class="lab sm"><textPath href="#smpath" startOffset="50%">STATE OF MIND</textPath></text>
+        <text x="200" y="197" class="lab mem">MEMORY</text>
+        <text x="200" y="213" class="sml">· A–F ·</text>
       </svg>
     </div>
   </div>
@@ -221,36 +243,17 @@
 <section id="cycle">
   <div class="wrap">
     <div class="kicker reveal">The architecture</div>
-    <h2 class="reveal">Ten stages. One continuous loop.</h2>
-    <p class="sub reveal">Deca runs the <b>Decadic Cycle of Expression</b> — an original ten-stage model of how cognition unfolds from perception to action — as a live, asynchronous process. A persistent <b>State Bus (A–F)</b> carries mind, emotion, narrative, priority, metacognition, and self-model across every cycle.</p>
-    <div class="fw">
-      <div class="stages reveal">
-        <div class="stage"><span class="n">1</span><span class="t">Sensory perception</span></div>
-        <div class="stage"><span class="n">2</span><span class="t">Experience framing &amp; fusion</span></div>
-        <div class="stage"><span class="n">3</span><span class="t">Heuristic &amp; memory</span></div>
-        <div class="stage"><span class="n">4</span><span class="t">Risk · utility · curiosity</span></div>
-        <div class="stage"><span class="n">5</span><span class="t">Pre-normative conclusion</span></div>
-        <div class="stage"><span class="n">6</span><span class="t">Emotion / physiology</span></div>
-        <div class="stage"><span class="n">7</span><span class="t">Reprioritize · state of mind</span></div>
-        <div class="stage"><span class="n">8</span><span class="t">Strategy formation</span></div>
-        <div class="stage"><span class="n">9</span><span class="t">Behavioral response</span></div>
-        <div class="stage"><span class="n">10</span><span class="t">Normative memory mapping</span></div>
-      </div>
-      <div class="reveal">
-        <div class="bus">
-          <div class="lbl">Persistent State Bus</div>
-          <div class="row">
-            <span class="b"><b>A</b> · State of mind</span>
-            <span class="b"><b>B</b> · Emotion / pain · pleasure</span>
-            <span class="b"><b>C</b> · Internal narrative</span>
-            <span class="b"><b>D</b> · Priority</span>
-            <span class="b"><b>E</b> · Metacognition</span>
-            <span class="b"><b>F</b> · Self-model / efference</span>
-          </div>
-        </div>
-        <p class="sub" style="margin-top:18px">Each stage is a small trainable neural module — not a pretrained language model. The cycle never stops: stage 10 feeds the next cycle's stage 1, producing a developing mind rather than static behavior.</p>
-      </div>
+    <h2 class="reveal">A continuous loop of cognition — not one forward pass.</h2>
+    <p class="sub reveal">Deca runs an original, multi-stage cognitive cycle as a live, asynchronous process: perception flows through to action, and a persistent inner state is carried across every cycle. It's a genuine cognitive architecture — not a single neural network, and not a prompted language model.</p>
+    <div class="loop reveal">
+      <span class="ls">Sense</span><span class="ar">→</span>
+      <span class="ls">Integrate</span><span class="ar">→</span>
+      <span class="ls">Evaluate</span><span class="ar">→</span>
+      <span class="ls">Decide</span><span class="ar">→</span>
+      <span class="ls">Act</span><span class="ar">→</span>
+      <span class="ls">Remember</span><span class="ar loopback">↺</span>
     </div>
+    <p class="sub reveal" style="margin-top:20px">Every pass folds its outcome back into memory and a persistent self-model, feeding the next cycle — so behavior <b>develops over time</b> instead of staying fixed. The cycle never stops.</p>
   </div>
 </section>
 
@@ -282,6 +285,20 @@
       <div class="r0"><div class="l">Frozen weights at inference</div><div class="r">Learns continuously, online, forever</div></div>
       <div class="r0"><div class="l">A model you query</div><div class="r">A mind that persists and develops</div></div>
     </div>
+  </div>
+</section>
+
+<section id="advantage">
+  <div class="wrap">
+    <div class="kicker reveal">Why a self-driven mind wins</div>
+    <h2 class="reveal">You don't train it for every task. You give it a goal — and it improves toward it.</h2>
+    <p class="sub reveal">Conventional models must be trained, separately and exhaustively, on every capability you want them to have. A self-driven mind learns from its own experience: point it at an objective, and it tunes itself to get better at it — the way a person grows into a role.</p>
+    <div class="feat">
+      <div class="f reveal"><div class="ic">🎯</div><h3>Tune it to any goal</h3><p>The same architecture can be pointed at different objectives. Its own drives and learning adapt it toward whatever goal it's given — no new model, no new training pipeline per task.</p></div>
+      <div class="f reveal"><div class="ic">📈</div><h3>It improves itself</h3><p>It gets better from its own experience, continuously. You don't have to anticipate and label every situation it will face — it learns the ones it actually encounters.</p></div>
+      <div class="f reveal"><div class="ic">♾️</div><h3>It compounds</h3><p>Because it learns online and never freezes, competence accumulates with use. The longer it pursues a goal, the better it gets — instead of being capped at training time.</p></div>
+    </div>
+    <div class="pull reveal">One adaptable mind, tuned toward <b>your</b> goal — instead of an ever-growing fleet of narrowly-trained models, each built and retrained from scratch.</div>
   </div>
 </section>
 

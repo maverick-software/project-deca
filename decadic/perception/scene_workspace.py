@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 
+from decadic import config as C
+
 FORBIDDEN_SCENE_TOKENS = (
     "label",
     "class",
@@ -131,6 +133,33 @@ def _blend_properties(
     return out
 
 
+def _property_signal(evidence: dict[str, Any], key: str) -> float:
+    value = evidence.get(key)
+    if isinstance(value, list):
+        vals = [_finite_float(v, 0.0) for v in value[:8]]
+        return max(0.0, min(1.0, float(sum(vals) / max(1, len(vals)))))
+    return max(0.0, min(1.0, _finite_float(value, 0.0)))
+
+
+def _attention_context(
+    homeostasis: Any | None = None,
+    state_bus: Any | None = None,
+) -> dict[str, Any]:
+    def deficit(name: str) -> float:
+        if homeostasis is None:
+            return 0.0
+        return max(0.0, min(1.0, (100.0 - _finite_float(getattr(homeostasis, name, 100.0), 100.0)) / 100.0))
+
+    return {
+        "energy_deficit": deficit("energy"),
+        "hydration_deficit": deficit("hydration"),
+        "integrity_deficit": deficit("integrity"),
+        "pain": max(0.0, min(1.0, _finite_float(getattr(state_bus, "pain_scalar", 0.0), 0.0))),
+        "pleasure": max(0.0, min(1.0, _finite_float(getattr(state_bus, "pleasure_scalar", 0.0), 0.0))),
+        "priority": str(getattr(state_bus, "priority_label", "explore") or "explore"),
+    }
+
+
 @dataclass
 class SceneEntity:
     entity_id: str
@@ -147,6 +176,9 @@ class SceneEntity:
     confidence: float = 0.0
     persistence: float = 0.0
     salience: float = 0.0
+    attention_score: float = 0.0
+    attention_reasons: dict[str, float] = field(default_factory=dict)
+    drive_match: dict[str, float] = field(default_factory=dict)
     agency: float = 0.0
     looming: float = 0.0
     local_motion: float = 0.0
@@ -190,6 +222,9 @@ class SceneEntity:
             "confidence": round(float(self.confidence), 4),
             "persistence": round(float(self.persistence), 4),
             "salience": round(float(self.salience), 4),
+            "attention_score": round(float(self.attention_score), 4),
+            "attention_reasons": {k: round(float(v), 4) for k, v in self.attention_reasons.items()},
+            "drive_match": {k: round(float(v), 4) for k, v in self.drive_match.items()},
             "agency": round(float(self.agency), 4),
             "looming": round(float(self.looming), 4),
             "local_motion": round(float(self.local_motion), 4),
@@ -251,16 +286,23 @@ class SceneWorkspace:
         self.focus_ids: list[str] = []
         self.prediction_error: float | None = None
         self.last_update: dict[str, Any] = {}
+        self.attention_context: dict[str, Any] = _attention_context()
+        self.attention_weights: dict[str, float] = C.scene_attention_weights()
 
     def update(
         self,
         object_files: list[dict[str, Any]],
         *,
         focus_capacity: int = 7,
+        entity_capacity: int | None = None,
+        attention_context: dict[str, Any] | None = None,
+        attention_weights: dict[str, float] | None = None,
         predictions: list[dict[str, Any]] | None = None,
         prediction_match_threshold: float = 0.35,
     ) -> None:
         self.cycle += 1
+        self.attention_context = dict(attention_context or self.attention_context or _attention_context())
+        self.attention_weights = dict(attention_weights or self.attention_weights or C.scene_attention_weights())
         self._apply_predictions(predictions or [])
         previous_predictions = {
             eid: ent.predicted_uv()
@@ -313,6 +355,7 @@ class SceneWorkspace:
             seen.add(matched)
 
         self._evict_expired()
+        self._enforce_capacity(entity_capacity)
         self._rebuild_relations()
         self.focus_ids = self.select_focus(focus_capacity)
         self.prediction_error = float(sum(errors) / len(errors)) if errors else None
@@ -325,6 +368,7 @@ class SceneWorkspace:
             "reidentified_count": matched_existing,
             "prediction_assisted_count": prediction_assisted,
             "duplicate_prevention_count": duplicate_prevented,
+            "candidate_count": len(object_files),
         }
 
     def _apply_predictions(self, predictions: list[dict[str, Any]]) -> None:
@@ -426,13 +470,21 @@ class SceneWorkspace:
         ev = _clean_property_evidence(raw.get("property_evidence"))
         ent.property_evidence = _blend_properties(ent.property_evidence, ev, 0.25)
         ent.salience = self._salience(ent)
+        ent.attention_score = ent.salience
 
     def _salience(self, ent: SceneEntity) -> float:
+        score, reasons, drive_match = self._attention_score(ent)
+        ent.attention_reasons = reasons
+        ent.drive_match = drive_match
+        return score
+
+    def _attention_score(self, ent: SceneEntity) -> tuple[float, dict[str, float], dict[str, float]]:
         if ent.kind_hint == "stuff":
             base = 0.15 * ent.confidence
         else:
             base = 0.35 * ent.confidence + 0.20 * ent.persistence
-        novelty = 0.20 if ent.seen_count <= 2 else 0.0
+        weights = self.attention_weights or {}
+        novelty = (0.20 if ent.seen_count <= 2 else 0.0) * float(weights.get("novelty", 1.0))
         motion = min(0.20, abs(ent.local_motion) * 2.0)
         looming = min(0.25, max(0.0, ent.looming))
         surprise = min(0.20, max(0.0, ent.prediction_error or 0.0))
@@ -440,7 +492,53 @@ class SceneWorkspace:
         proximity = 0.0
         if ent.depth is not None and ent.depth > 0:
             proximity = min(0.15, 0.15 / max(1.0, ent.depth))
-        return max(0.0, min(1.0, base + novelty + motion + looming + surprise + agency + proximity))
+        drive_match: dict[str, float] = {}
+        relief = 0.0
+        threat = 0.0
+        curiosity = 0.0
+        if C.drive_attention_enabled():
+            ctx = self.attention_context or {}
+            energy_def = max(0.0, min(1.0, _finite_float(ctx.get("energy_deficit"), 0.0)))
+            hydration_def = max(0.0, min(1.0, _finite_float(ctx.get("hydration_deficit"), 0.0)))
+            integrity_def = max(0.0, min(1.0, _finite_float(ctx.get("integrity_deficit"), 0.0)))
+            pain = max(0.0, min(1.0, _finite_float(ctx.get("pain"), 0.0)))
+            ev = ent.property_evidence or {}
+            energy_relief = _property_signal(ev, "predicts_energy_relief")
+            hydration_relief = _property_signal(ev, "predicts_hydration_relief")
+            pain_risk = max(
+                _property_signal(ev, "predicts_pain"),
+                _property_signal(ev, "predicts_integrity_loss"),
+            )
+            drive_w = float(weights.get("drive", 1.0))
+            relief = drive_w * float(weights.get("relief", 1.0)) * (
+                energy_def * energy_relief + hydration_def * hydration_relief
+            )
+            threat = drive_w * float(weights.get("threat", 1.0)) * max(integrity_def, pain) * pain_risk
+            if str(ctx.get("priority", "")).lower() == "investigate":
+                curiosity = 0.12 * max(novelty, surprise, min(0.2, _finite_float(ent.prediction_uncertainty, 0.0)))
+            drive_match = {
+                "energy_deficit": energy_def,
+                "hydration_deficit": hydration_def,
+                "integrity_deficit": integrity_def,
+                "energy_relief": energy_def * energy_relief,
+                "hydration_relief": hydration_def * hydration_relief,
+                "threat": max(integrity_def, pain) * pain_risk,
+                "curiosity": curiosity,
+            }
+        reasons = {
+            "base": base,
+            "novelty": novelty,
+            "motion": motion,
+            "looming": looming,
+            "surprise": surprise,
+            "agency": agency,
+            "proximity": proximity,
+            "relief": relief,
+            "threat": threat,
+            "curiosity": curiosity,
+        }
+        score = sum(reasons.values())
+        return max(0.0, min(1.0, score)), reasons, drive_match
 
     def _evict_expired(self) -> None:
         expired = [
@@ -450,6 +548,30 @@ class SceneWorkspace:
         ]
         for eid in expired:
             del self.entities[eid]
+        self.relations = {
+            k: r
+            for k, r in self.relations.items()
+            if r.src in self.entities and r.dst in self.entities
+        }
+
+    def _enforce_capacity(self, capacity: int | None) -> None:
+        cap = max(1, int(capacity or C.scene_entity_capacity()))
+        if len(self.entities) <= cap:
+            return
+        ranked = sorted(
+            self.entities.values(),
+            key=lambda e: (
+                e.visible,
+                e.attention_score,
+                e.persistence,
+                e.confidence,
+                e.seen_count,
+                -e.occlusion_age,
+            ),
+            reverse=True,
+        )
+        keep = {e.entity_id for e in ranked[:cap]}
+        self.entities = {eid: ent for eid, ent in self.entities.items() if eid in keep}
         self.relations = {
             k: r
             for k, r in self.relations.items()
@@ -488,8 +610,8 @@ class SceneWorkspace:
         return out
 
     def select_focus(self, capacity: int) -> list[str]:
-        candidates = [e for e in self.entities.values() if e.salience > 0.0]
-        candidates.sort(key=lambda e: (e.salience, e.confidence, e.seen_count), reverse=True)
+        candidates = [e for e in self.entities.values() if e.attention_score > 0.0 or e.salience > 0.0]
+        candidates.sort(key=lambda e: (e.attention_score, e.salience, e.confidence, e.seen_count), reverse=True)
         return [e.entity_id for e in candidates[: max(1, int(capacity))]]
 
     def focus_entities(self) -> list[SceneEntity]:
@@ -521,6 +643,9 @@ class SceneWorkspace:
                     "prediction_uncertainty": float(ent.prediction_uncertainty or 0.0),
                     "occlusion_age": int(ent.occlusion_age),
                     "surprise": float(ent.prediction_error or 0.0),
+                    "attention_score": float(ent.attention_score),
+                    "attention_reasons": dict(ent.attention_reasons),
+                    "drive_match": dict(ent.drive_match),
                     "property_evidence": dict(ent.property_evidence),
                     "scene_entity_id": ent.entity_id,
                 }
@@ -556,6 +681,28 @@ class SceneWorkspace:
             "reidentified_count": int(self.last_update.get("reidentified_count", 0) or 0),
             "prediction_assisted_count": int(self.last_update.get("prediction_assisted_count", 0) or 0),
             "duplicate_prevention_count": int(self.last_update.get("duplicate_prevention_count", 0) or 0),
+            "candidate_count": int(self.last_update.get("candidate_count", 0) or 0),
+            "focus_capacity": len(self.focus_ids),
+            "active_drive_deficits": {
+                "energy": round(float((self.attention_context or {}).get("energy_deficit", 0.0) or 0.0), 4),
+                "hydration": round(float((self.attention_context or {}).get("hydration_deficit", 0.0) or 0.0), 4),
+                "integrity": round(float((self.attention_context or {}).get("integrity_deficit", 0.0) or 0.0), 4),
+                "pain": round(float((self.attention_context or {}).get("pain", 0.0) or 0.0), 4),
+                "priority": str((self.attention_context or {}).get("priority", "explore")),
+            },
+            "attention_top": [
+                {
+                    "entity_id": e.entity_id,
+                    "attention_score": round(float(e.attention_score), 4),
+                    "attention_reasons": {k: round(float(v), 4) for k, v in e.attention_reasons.items()},
+                    "drive_match": {k: round(float(v), 4) for k, v in e.drive_match.items()},
+                }
+                for e in sorted(self.entities.values(), key=lambda x: x.attention_score, reverse=True)[:8]
+            ],
             "entities": [e.to_dict() for e in sorted(self.entities.values(), key=lambda x: x.salience, reverse=True)],
             "relations": self.relation_dicts(),
         }
+
+
+def attention_context_from_state(homeostasis: Any | None = None, state_bus: Any | None = None) -> dict[str, Any]:
+    return _attention_context(homeostasis, state_bus)

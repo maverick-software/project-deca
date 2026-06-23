@@ -695,6 +695,11 @@ body {
   font-size: 9px;
   pointer-events: none;
 }
+.graph-label.tiny {
+  fill: var(--text);
+  font-size: 7px;
+  font-variant-numeric: tabular-nums;
+}
 .graph-legend {
   display: flex;
   flex-wrap: wrap;
@@ -1516,6 +1521,154 @@ body {
 .dojo-workflow-step.done span {
   color: var(--pleasure);
   border-color: rgba(95, 208, 138, 0.55);
+}
+
+/* --- Training evaluation -------------------------------------------------- */
+.training-eval-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.panel-head,
+.eval-status-band,
+.eval-layout,
+.eval-actions,
+.eval-kv,
+.eval-gate,
+.eval-report-row {
+  display: flex;
+  gap: 10px;
+}
+.panel-head {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.panel-head p,
+.muted {
+  color: var(--text-dim);
+  margin: 4px 0 0;
+}
+.eval-status-band {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(90, 169, 255, 0.06);
+}
+.eval-status-band > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.eval-status-band.running,
+.eval-status-band.starting { border-color: rgba(95, 208, 138, 0.45); }
+.eval-status-band.failed,
+.eval-status-band.cancelled { border-color: rgba(255, 90, 110, 0.5); }
+.eval-status-band .warn { color: var(--warn); }
+.eval-layout { align-items: flex-start; }
+.eval-column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.eval-scenario-list,
+.eval-report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eval-card,
+.eval-report-row,
+.eval-field input,
+.eval-field select {
+  width: 100%;
+  border: 1px solid var(--panel-border);
+  background: #0f1420;
+  color: var(--text);
+  border-radius: 8px;
+}
+.eval-card,
+.eval-report-row {
+  text-align: left;
+  padding: 10px;
+  cursor: pointer;
+}
+.eval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.eval-card span,
+.eval-card small,
+.eval-report-row small { color: var(--text-dim); }
+.eval-card.selected,
+.eval-report-row.selected {
+  border-color: var(--accent);
+  background: rgba(90, 169, 255, 0.08);
+}
+.eval-gates {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.eval-gate {
+  justify-content: space-between;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 7px;
+}
+.eval-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.eval-field span,
+.eval-check,
+.eval-gate span { color: var(--text-dim); }
+.eval-field input,
+.eval-field select { padding: 8px 9px; }
+.eval-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.eval-actions button { flex: 1 1 0; }
+.eval-report-row {
+  align-items: center;
+  justify-content: space-between;
+}
+.eval-report-row .pass { color: var(--pleasure); }
+.eval-report-row .fail { color: var(--pain); }
+.eval-report-detail,
+.eval-summary-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.eval-summary-box {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.eval-kv {
+  justify-content: space-between;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+  margin-top: 6px;
+}
+.eval-kv span { color: var(--text-dim); }
+.eval-kv b {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
+  .eval-layout { flex-direction: column; }
+  .eval-column { width: 100%; }
 }
 .dojo-workspace {
   display: grid;

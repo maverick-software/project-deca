@@ -411,8 +411,28 @@ class AgentRuntime:
             "replay_count": 0,
             "consolidator_loss": 0.0,
             "last_sync_cycle": 0,
+            "consolidation_sync_delta_mean": 0.0,
+            "consolidation_sync_delta_max": 0.0,
+            "consolidation_sync_moved_params": 0,
+            "consolidation_sync_reset_params": 0,
             "replay_buffer_size": 0,
             "neural_pc_loss_last": 0.0,
+            "loss_total": 0.0,
+            "loss_dominant_term": "",
+            "loss_dominant_fraction": 0.0,
+            "loss_terms": {},
+            "loss_canary_state": "warming",
+            "loss_canary_reason": "",
+            "loss_canary_pressure": 0.0,
+            "loss_canary_optimizer_action": "normal",
+            "loss_canary_step_scale": 1.0,
+            "loss_canary_ema": None,
+            "loss_canary_pc_ema": None,
+            "loss_canary_slope_ema": 0.0,
+            "loss_canary_pc_slope_ema": 0.0,
+            "loss_canary_jump_ratio": 1.0,
+            "drive_priority_gain_configured": 0.0,
+            "drive_priority_gain_effective": 0.0,
             "learning_rate": 0.0,
             "gpu_memory_max_allocated": 0,
             "hardware_cuda_available": False,
@@ -617,6 +637,17 @@ class AgentRuntime:
             "sparse_enabled": False,
             "growth_enabled": False,
             "plasticity_alpha": 0.0,
+            "plasticity_alpha_configured": 0.0,
+            "plasticity_alpha_effective": 0.0,
+            "plasticity_guardian_state": "inactive",
+            "plasticity_guardian_action": "none",
+            "plasticity_pc_ema": None,
+            "plasticity_pc_slope_ema": 0.0,
+            "plasticity_overlay_ratio_mean": 0.0,
+            "plasticity_overlay_ratio_max": 0.0,
+            "plasticity_freeze_count": 0,
+            "plasticity_thaw_count": 0,
+            "plasticity_warmup_blocked_reason": "",
             "sparse_density": 1.0,
             "awake_neurons": 0,
             "allocated_neurons": 0,
@@ -1014,7 +1045,11 @@ class AgentRuntime:
             "matched_count": 0,
         }
         if C.scene_workspace_enabled() and hasattr(self.perceptual, "update_scene_workspace"):
-            self.perceptual.update_scene_workspace(dynamics_report=scene_dynamics_report)
+            self.perceptual.update_scene_workspace(
+                homeostasis=self.homeostasis,
+                state_bus=self.state_bus,
+                dynamics_report=scene_dynamics_report,
+            )
         scene_focus_proposals = None
         scene_ws = getattr(self.perceptual, "scene_workspace", None)
         if scene_ws is not None:
@@ -1052,7 +1087,11 @@ class AgentRuntime:
 
             self.perceptual.object_files = _stable_object_file_snapshots(wm_disc)
             if C.scene_workspace_enabled() and hasattr(self.perceptual, "update_scene_workspace"):
-                self.perceptual.update_scene_workspace(dynamics_report=scene_dynamics_report)
+                self.perceptual.update_scene_workspace(
+                    homeostasis=self.homeostasis,
+                    state_bus=self.state_bus,
+                    dynamics_report=scene_dynamics_report,
+                )
         self.perceptual.discovery_health = health.to_dict()
         self.perceptual.ltm_consolidation = {
             "status": "not_evaluated",
@@ -1283,10 +1322,29 @@ class AgentRuntime:
             int(self.metrics.get("consolidation_stub_ticks", 0)) + 1
         )
 
-    def _on_consolidation_sync(self, replay_steps: int, loss: float, cycle: int) -> None:
+    def _on_consolidation_sync(
+        self,
+        replay_steps: int,
+        loss: float,
+        cycle: int,
+        sync_metrics: dict[str, float | int] | None = None,
+    ) -> None:
         self.metrics["replay_count"] = int(replay_steps)
         self.metrics["consolidator_loss"] = float(loss)
         self.metrics["last_sync_cycle"] = int(cycle)
+        if sync_metrics:
+            self.metrics["consolidation_sync_delta_mean"] = float(
+                sync_metrics.get("delta_mean", 0.0)
+            )
+            self.metrics["consolidation_sync_delta_max"] = float(
+                sync_metrics.get("delta_max", 0.0)
+            )
+            self.metrics["consolidation_sync_moved_params"] = int(
+                sync_metrics.get("moved_params", 0)
+            )
+            self.metrics["consolidation_sync_reset_params"] = int(
+                sync_metrics.get("reset_params", 0)
+            )
         if self.replay_buffer is not None:
             self.metrics["replay_buffer_size"] = len(self.replay_buffer)
 
@@ -1434,6 +1492,11 @@ class AgentRuntime:
         self.metrics["sparse_enabled"] = bool(f.sparse)
         self.metrics["growth_enabled"] = bool(f.growth)
         self.metrics["plasticity_alpha"] = round(stack.plastic_alpha_mean(), 6)
+        self.metrics["plasticity_alpha_configured"] = round(stack.plastic_alpha_mean(), 6)
+        self.metrics["plasticity_alpha_effective"] = round(stack.plastic_effective_alpha_mean(), 6)
+        overlay_mean, overlay_max = stack.plastic_overlay_ratio_stats()
+        self.metrics["plasticity_overlay_ratio_mean"] = round(overlay_mean, 6)
+        self.metrics["plasticity_overlay_ratio_max"] = round(overlay_max, 6)
         self.metrics["sparse_density"] = round(stack.connection_density(), 6)
         self.metrics["awake_neurons"] = stack.awake_neurons()
         self.metrics["allocated_neurons"] = stack.allocated_neurons()
@@ -1444,6 +1507,13 @@ class AgentRuntime:
             self.metrics["rewire_events"] = int(ps.rewire_events)
             self.metrics["growth_events"] = int(ps.growth_events)
             self.metrics["plasticity_frozen"] = bool(ps.frozen)
+            self.metrics["plasticity_guardian_state"] = str(ps.guardian_state)
+            self.metrics["plasticity_guardian_action"] = str(ps.last_action)
+            self.metrics["plasticity_pc_ema"] = ps.pc_ema
+            self.metrics["plasticity_pc_slope_ema"] = float(ps.pc_slope_ema)
+            self.metrics["plasticity_freeze_count"] = int(ps.freeze_count)
+            self.metrics["plasticity_thaw_count"] = int(ps.thaw_count)
+            self.metrics["plasticity_warmup_blocked_reason"] = str(ps.blocked_reason)
 
     def _refresh_homeostasis_metrics(self) -> None:
         h = self.homeostasis
@@ -1883,6 +1953,13 @@ class AgentRuntime:
             return
         if plasticity_alpha is not None:
             stack.set_alpha_all(max(0.0, float(plasticity_alpha)))
+            if b.plasticity_state is not None:
+                b.plasticity_state.configured_alpha = max(0.0, float(plasticity_alpha))
+                b.plasticity_state.effective_alpha = min(
+                    float(b.plasticity_state.effective_alpha),
+                    float(b.plasticity_state.configured_alpha),
+                )
+                stack.set_effective_alpha_all(float(b.plasticity_state.effective_alpha))
         if sparse_density is not None:
             changed = stack.set_density_all(float(sparse_density))
             if changed:
@@ -1985,6 +2062,9 @@ class AgentRuntime:
             "sparse_enabled": bool(has_plastic and b.flags.sparse),
             "growth_enabled": bool(has_plastic and b.flags.growth),
             "plasticity_alpha": round(stack.plastic_alpha_mean(), 6) if has_plastic else 0.0,
+            "plasticity_alpha_effective": round(stack.plastic_effective_alpha_mean(), 6)
+            if has_plastic
+            else 0.0,
             "sparse_density": round(stack.connection_density(), 6) if has_plastic else 1.0,
             "awake_neurons": stack.awake_neurons() if has_plastic else 0,
             "allocated_neurons": stack.allocated_neurons() if has_plastic else 0,
@@ -2319,6 +2399,31 @@ class AgentRuntime:
         )
         if "neural_pc_loss" in diagnostics:
             self.metrics["neural_pc_loss_last"] = float(diagnostics["neural_pc_loss"])
+        for key in (
+            "loss_total",
+            "loss_dominant_fraction",
+            "loss_canary_pressure",
+            "loss_canary_step_scale",
+            "loss_canary_slope_ema",
+            "loss_canary_pc_slope_ema",
+            "loss_canary_jump_ratio",
+            "drive_priority_gain_configured",
+            "drive_priority_gain_effective",
+        ):
+            if diagnostics.get(key) is not None:
+                self.metrics[key] = float(diagnostics[key])
+        for key in (
+            "loss_dominant_term",
+            "loss_canary_state",
+            "loss_canary_reason",
+            "loss_canary_optimizer_action",
+        ):
+            if diagnostics.get(key) is not None:
+                self.metrics[key] = str(diagnostics[key])
+        for key in ("loss_canary_ema", "loss_canary_pc_ema"):
+            self.metrics[key] = None if diagnostics.get(key) is None else float(diagnostics[key])
+        if isinstance(diagnostics.get("loss_terms"), dict):
+            self.metrics["loss_terms"] = diagnostics["loss_terms"]
         if diagnostics.get("learning_rate") is not None:
             self.metrics["learning_rate"] = float(diagnostics["learning_rate"])
         if diagnostics.get("gpu_memory_max_allocated") is not None:
@@ -2376,6 +2481,22 @@ class AgentRuntime:
             "active_connections",
             "rewire_events",
             "growth_events",
+            "plasticity_alpha_configured",
+            "plasticity_alpha_effective",
+            "plasticity_pc_ema",
+            "plasticity_pc_slope_ema",
+            "plasticity_guardian_state",
+            "plasticity_guardian_action",
+            "plasticity_warmup_blocked_reason",
+            "plasticity_stable_cycles",
+            "plasticity_freeze_count",
+            "plasticity_thaw_count",
+            "plasticity_frozen_since_cycle",
+            "plasticity_last_thaw_cycle",
+            "plasticity_thaw_eligible",
+            "plasticity_thaw_cycles_remaining",
+            "plasticity_overlay_ratio_mean",
+            "plasticity_overlay_ratio_max",
         ):
             if diagnostics.get(key) is not None:
                 self.metrics[key] = diagnostics[key]
@@ -2411,10 +2532,13 @@ class AgentRuntime:
             )
         if diagnostics.get("froze"):
             logger.warning(
-                "plasticity_frozen agent_id=%s cycle=%s reason=pc_ema_diverged_or_nonfinite "
-                "total_rewires=%s total_grows=%s",
+                "plasticity_frozen agent_id=%s cycle=%s reason=%s "
+                "pc_loss=%.6f effective_alpha=%.6f total_rewires=%s total_grows=%s",
                 self.agent_id,
                 cyc,
+                str(diagnostics.get("plasticity_freeze_reason") or "pc_ema_diverged_or_nonfinite"),
+                float(diagnostics.get("neural_pc_loss", 0.0) or 0.0),
+                float(diagnostics.get("plasticity_alpha_effective", 0.0) or 0.0),
                 int(diagnostics.get("rewire_events", 0)),
                 int(diagnostics.get("growth_events", 0)),
             )
@@ -2458,13 +2582,18 @@ class AgentRuntime:
         ):
             logger.info(
                 "plasticity_snapshot agent_id=%s cycle=%s awake=%s allocated=%s "
-                "active=%s density=%.4f rewires=%s grows=%s frozen=%s",
+                "active=%s density=%.4f alpha=%.6f effective_alpha=%.6f "
+                "state=%s action=%s rewires=%s grows=%s frozen=%s",
                 self.agent_id,
                 cyc,
                 int(diagnostics.get("awake_neurons", 0)),
                 int(diagnostics.get("allocated_neurons", 0)),
                 int(diagnostics.get("active_connections", 0)),
                 float(diagnostics.get("sparse_density", 0.0)),
+                float(diagnostics.get("plasticity_alpha_configured", 0.0) or 0.0),
+                float(diagnostics.get("plasticity_alpha_effective", 0.0) or 0.0),
+                str(diagnostics.get("plasticity_guardian_state", "")),
+                str(diagnostics.get("plasticity_guardian_action", "")),
                 int(diagnostics.get("rewire_events", 0)),
                 int(diagnostics.get("growth_events", 0)),
                 bool(diagnostics.get("plasticity_frozen", False)),
@@ -2784,7 +2913,8 @@ class AgentRuntime:
             if cycle_profile_enabled():
                 logger.info(
                     "cycle_profile agent_id=%s cycle=%s total_ms=%.2f encoders_ms=%.2f "
-                    "fwd_ms=%.2f bwd_ms=%.2f mem_recall_ms=%.2f stage10_ms=%.2f gpu_mem_mb=%.1f",
+                    "fwd_ms=%.2f bwd_ms=%.2f mem_recall_ms=%.2f stage10_ms=%.2f "
+                    "pc_loss=%.6f gpu_mem_mb=%.1f",
                     self.agent_id,
                     self.state_bus.cycle_index,
                     wall_ms,
@@ -2793,6 +2923,7 @@ class AgentRuntime:
                     float(diagnostics.get("neural_backward_ms", 0.0)),
                     float(diagnostics.get("memory_recall_ms", 0.0)),
                     float(diagnostics.get("stage10_ms", 0.0)),
+                    float(diagnostics.get("neural_pc_loss", 0.0) or 0.0),
                     float(diagnostics.get("gpu_memory_max_allocated", 0)) / (1024.0 * 1024.0),
                 )
             logger.info(

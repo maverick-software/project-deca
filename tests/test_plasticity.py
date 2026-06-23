@@ -38,6 +38,29 @@ def test_hebbian_update_changes_effective_weights():
     assert not torch.allclose(blk._eff_w1(), blk.l1_weight, atol=1e-7)
 
 
+def test_effective_alpha_gate_is_separate_from_configured_alpha():
+    pytest.importorskip("torch")
+
+    blk = _block(plastic=True, plastic_alpha=0.2)
+    assert abs(blk.configured_alpha_value() - 0.2) < 1e-6
+    blk.set_effective_alpha(0.01)
+    assert abs(blk.configured_alpha_value() - 0.2) < 1e-6
+    assert abs(blk.effective_alpha_value() - 0.01) < 1e-6
+
+
+def test_overlay_cap_bounds_effective_hebbian_weight_delta(monkeypatch):
+    pytest.importorskip("torch")
+    import torch
+
+    monkeypatch.setenv("DECADIC_PLASTICITY_OVERLAY_MAX_FRAC", "0.05")
+    blk = _block(plastic=True, plastic_alpha=0.2)
+    with torch.no_grad():
+        blk.hebb1.fill_(5.0)
+    overlay = blk._eff_w1() - (blk.l1_weight * blk.mask1)
+    cap = 0.05 * (blk.l1_weight.detach().abs() + 1e-6)
+    assert torch.all(overlay.detach().abs() <= cap + 1e-7)
+
+
 def test_modulation_sign_flips_potentiation():
     pytest.importorskip("torch")
     import torch
@@ -73,7 +96,7 @@ def test_trace_decays_with_zero_modulation():
     assert blk.hebb1.abs().sum().item() < mag0
 
 
-def test_backprop_flows_through_alpha_and_weights():
+def test_backprop_flows_through_weights_but_not_guardian_alpha_ceiling():
     pytest.importorskip("torch")
     import torch
 
@@ -83,7 +106,7 @@ def test_backprop_flows_through_alpha_and_weights():
     blk.hebbian_update(modulation=1.0, eta=0.5)
     out = blk(x)
     out.pow(2).mean().backward()
-    assert blk.alpha.grad is not None and torch.isfinite(blk.alpha.grad).all()
+    assert blk.alpha.grad is None
     assert blk.l1_weight.grad is not None and torch.isfinite(blk.l1_weight.grad).all()
 
 

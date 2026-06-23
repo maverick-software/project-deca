@@ -400,6 +400,11 @@ class NeuralCognitiveStack(nn.Module):
                 with torch.no_grad():
                     blk.alpha.fill_(float(alpha))
 
+    def set_effective_alpha_all(self, alpha: float) -> None:
+        for blk in self.plastic_blocks():
+            if blk.plastic:
+                blk.set_effective_alpha(float(alpha))
+
     def connection_density(self) -> float:
         total = 0
         active = 0
@@ -430,6 +435,20 @@ class NeuralCognitiveStack(nn.Module):
         if not blocks:
             return 0.0
         return float(sum(float(blk.alpha.detach().abs().item()) for blk in blocks) / len(blocks))
+
+    def plastic_effective_alpha_mean(self) -> float:
+        blocks = [blk for blk in self.plastic_blocks() if blk.plastic]
+        if not blocks:
+            return 0.0
+        return float(sum(blk.effective_alpha_value() for blk in blocks) / len(blocks))
+
+    def plastic_overlay_ratio_stats(self) -> tuple[float, float]:
+        vals = [blk.overlay_ratio_stats() for blk in self.plastic_blocks() if blk.plastic]
+        if not vals:
+            return 0.0, 0.0
+        means = [v[0] for v in vals]
+        maxes = [v[1] for v in vals]
+        return float(sum(means) / len(means)), float(max(maxes))
 
     def plastic_arch_meta(self) -> dict[str, Any]:
         return {n: getattr(self, n).arch_meta() for n in self._plastic_names}

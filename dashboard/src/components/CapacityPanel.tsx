@@ -536,6 +536,11 @@ export default function CapacityPanel(props: {
                 frozen
               </span>
             )}
+            {metrics?.plasticity_guardian_state && !metrics?.plasticity_frozen && (
+              <span className="badge" title={`guardian action: ${metrics?.plasticity_guardian_action ?? "hold"}`}>
+                {metrics.plasticity_guardian_state}
+              </span>
+            )}
           </h3>
 
           {plast.plasticity_enabled && (
@@ -610,8 +615,52 @@ export default function CapacityPanel(props: {
               <span className="cap-v">{(metrics?.sparse_density ?? plast.sparse_density ?? 1).toFixed(2)}</span>
             </div>
             <div>
-              <span className="cap-k">alpha</span>
+              <span className="cap-k">alpha ceiling</span>
               <span className="cap-v">{(metrics?.plasticity_alpha ?? plast.plasticity_alpha ?? 0).toFixed(3)}</span>
+            </div>
+            <div>
+              <span className="cap-k">effective alpha</span>
+              <span className="cap-v">
+                {(metrics?.plasticity_alpha_effective ?? plast.plasticity_alpha_effective ?? 0).toFixed(4)}
+              </span>
+            </div>
+            <div>
+              <span className="cap-k">pc ema</span>
+              <span className="cap-v">{(metrics?.plasticity_pc_ema ?? 0).toFixed(3)}</span>
+            </div>
+            <div>
+              <span className="cap-k">overlay max</span>
+              <span className="cap-v">{(metrics?.plasticity_overlay_ratio_max ?? 0).toFixed(3)}</span>
+            </div>
+            <div>
+              <span className="cap-k">freeze / thaw</span>
+              <span className="cap-v">
+                {metrics?.plasticity_freeze_count ?? 0} / {metrics?.plasticity_thaw_count ?? 0}
+              </span>
+            </div>
+            <div>
+              <span className="cap-k">guardian</span>
+              <span className="cap-v">
+                {metrics?.plasticity_guardian_action ?? "none"}
+                {metrics?.plasticity_warmup_blocked_reason ? ` · ${metrics.plasticity_warmup_blocked_reason}` : ""}
+              </span>
+            </div>
+            <div>
+              <span className="cap-k">loss canary</span>
+              <span className="cap-v">
+                {metrics?.loss_canary_state ?? "warming"}
+                {metrics?.loss_canary_optimizer_action ? ` - ${metrics.loss_canary_optimizer_action}` : ""}
+              </span>
+            </div>
+            <div>
+              <span className="cap-k">loss jump</span>
+              <span className="cap-v">{(metrics?.loss_canary_jump_ratio ?? 1).toFixed(2)}x</span>
+            </div>
+            <div>
+              <span className="cap-k">dominant loss</span>
+              <span className="cap-v">
+                {metrics?.loss_dominant_term ?? "none"} {(metrics?.loss_dominant_fraction ?? 0).toFixed(2)}
+              </span>
             </div>
             <div>
               <span className="cap-k">grow / rewire</span>

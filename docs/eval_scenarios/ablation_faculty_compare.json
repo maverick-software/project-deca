@@ -1,0 +1,26 @@
+{
+  "scenario": "ablation_faculty_compare",
+  "description": "Template for same-seed faculty on/off comparisons; v1 records metrics for external comparison.",
+  "cycles": 1500,
+  "seeds": [1],
+  "baseline": "configured externally",
+  "poll_interval_s": 1.0,
+  "timeout_s": 2400.0,
+  "gates": [
+    {
+      "name": "cycles advance",
+      "metric": "cycles_completed",
+      "mode": "final",
+      "op": ">=",
+      "threshold": 1500
+    },
+    {
+      "name": "no sustained divergence",
+      "metric": "loss_canary_jump_ratio",
+      "mode": "fraction<=",
+      "op": "<",
+      "threshold": 25,
+      "fraction": 0.99
+    }
+  ]
+}

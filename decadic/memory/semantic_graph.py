@@ -1101,17 +1101,33 @@ class LongTermGraph:
             }
 
     def snapshot(self, limit: int = DEFAULT_SNAPSHOT_LIMIT) -> dict[str, Any]:
-        """Windowed read-out for the dashboard: recent/most-seen nodes + their edges + totals."""
+        """Read-out for the dashboard with explicit render/cap metadata.
+
+        The graph itself is unbounded, but the live API may request a bounded
+        node window to keep polling cheap. Totals always describe the full LTM;
+        ``rendered_*`` fields describe the included read-out so the UI cannot
+        mistake a capped view for the entire persistent graph.
+        """
         with self._lock:
             total_nodes = len(self._nodes)
             total_edges = len(self._edges)
             degree: dict[str, int] = {}
+            edge_kind_counts: dict[str, int] = {}
+            edge_pair_counts: dict[str, int] = {}
             for (s, d, _k) in self._edges:
                 degree[s] = degree.get(s, 0) + 1
                 degree[d] = degree.get(d, 0) + 1
+            for e in self._edges.values():
+                kind = str(e.get("kind", "unknown"))
+                edge_kind_counts[kind] = edge_kind_counts.get(kind, 0) + 1
+                a = str(e.get("src", ""))
+                b = str(e.get("dst", ""))
+                pair_key = "->".join((a, b)) if a <= b else "->".join((b, a))
+                edge_pair_counts[pair_key] = edge_pair_counts.get(pair_key, 0) + 1
+            max_nodes = total_nodes if limit is None or int(limit) <= 0 else max(0, int(limit))
             ranked = sorted(
                 self._nodes.values(), key=lambda n: (n["last_cycle"], n["seen_count"]), reverse=True
-            )[: max(0, limit)]
+            )[:max_nodes]
             ids = {n["id"] for n in ranked}
             beliefs_by_node: dict[str, list[dict[str, Any]]] = {nid: [] for nid in ids}
             for (node_id, _key), belief in self._beliefs.items():
@@ -1147,6 +1163,8 @@ class LongTermGraph:
                     "target": e["dst"],
                     "kind": e["kind"],
                     "weight": round(float(e["weight"]), 4),
+                    "count": int(e.get("count", 1)),
+                    "last_cycle": int(e.get("last_cycle", 0)),
                 }
                 for e in self._edges.values()
                 if e["src"] in ids and e["dst"] in ids
@@ -1156,6 +1174,13 @@ class LongTermGraph:
                 "edges": edges,
                 "total_nodes": total_nodes,
                 "total_edges": total_edges,
+                "rendered_nodes": len(nodes),
+                "rendered_edges": len(edges),
+                "snapshot_limit": max_nodes,
+                "truncated_nodes": len(nodes) < total_nodes,
+                "truncated_edges": len(edges) < total_edges,
+                "edge_kind_counts": edge_kind_counts,
+                "edge_pair_counts": edge_pair_counts,
                 "total_property_beliefs": len(self._beliefs),
                 "unstable_property_count": sum(1 for b in self._beliefs.values() if b.get("unstable")),
                 "semantic": self.semantic_stats(),

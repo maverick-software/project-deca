@@ -1,0 +1,31 @@
+{
+  "scenario": "perception_object_files",
+  "description": "Evaluate discovered perception health, anonymous object files, and LTM growth.",
+  "cycles": 1500,
+  "seeds": [1],
+  "poll_interval_s": 1.0,
+  "timeout_s": 1800.0,
+  "gates": [
+    {
+      "name": "anonymous object files present",
+      "metric": "object_files",
+      "mode": "max",
+      "op": ">=",
+      "threshold": 2
+    },
+    {
+      "name": "LTM property beliefs emerge",
+      "metric": "ltm_property_beliefs",
+      "mode": "final",
+      "op": ">=",
+      "threshold": 1
+    },
+    {
+      "name": "no NaN recovery",
+      "metric": "nan_recovery_events",
+      "mode": "final",
+      "op": "<=",
+      "threshold": 0
+    }
+  ]
+}

@@ -272,7 +272,16 @@ def cycle_scheduler_mode() -> str:
 # integrates object files into an egocentric scene model before bounded attention
 # and global-workspace broadcast.
 DEFAULT_SCENE_ENTITY_TTL_CYCLES = 12
+DEFAULT_PERCEPTION_CANDIDATE_CAPACITY = 64
+DEFAULT_SCENE_ENTITY_CAPACITY = 128
 DEFAULT_ATTENTION_FOCUS_CAPACITY = 7
+DEFAULT_WM_FOCUS_CAPACITY = 7
+DEFAULT_LTM_CONSOLIDATE_FROM_SCENE = True
+DEFAULT_DRIVE_ATTENTION_ENABLED = True
+DEFAULT_DRIVE_ATTENTION_WEIGHT = 1.0
+DEFAULT_NOVELTY_ATTENTION_WEIGHT = 1.0
+DEFAULT_THREAT_ATTENTION_WEIGHT = 1.0
+DEFAULT_RELIEF_ATTENTION_WEIGHT = 1.0
 DEFAULT_SCENE_DYNAMICS_ENABLED = True
 DEFAULT_SCENE_DYNAMICS_WEIGHT = 0.05
 DEFAULT_SCENE_DYNAMICS_MAX_ENTITIES = 12
@@ -370,6 +379,14 @@ def scene_entity_ttl_cycles() -> int:
     return max(1, int(os.environ.get("DECADIC_SCENE_ENTITY_TTL_CYCLES", str(DEFAULT_SCENE_ENTITY_TTL_CYCLES))))
 
 
+def perception_candidate_capacity() -> int:
+    return max(1, int(os.environ.get("DECADIC_PERCEPTION_CANDIDATE_CAPACITY", str(DEFAULT_PERCEPTION_CANDIDATE_CAPACITY))))
+
+
+def scene_entity_capacity() -> int:
+    return max(1, int(os.environ.get("DECADIC_SCENE_ENTITY_CAPACITY", str(DEFAULT_SCENE_ENTITY_CAPACITY))))
+
+
 def scene_relation_enabled() -> bool:
     return _env_bool("DECADIC_SCENE_RELATION_ENABLED", True)
 
@@ -399,7 +416,41 @@ def scene_dynamics_uncertainty_weight() -> float:
 
 
 def attention_focus_capacity() -> int:
-    return max(1, int(os.environ.get("DECADIC_ATTENTION_FOCUS_CAPACITY", str(DEFAULT_ATTENTION_FOCUS_CAPACITY))))
+    legacy = os.environ.get("DECADIC_ATTENTION_FOCUS_CAPACITY")
+    return max(1, int(os.environ.get("DECADIC_WM_FOCUS_CAPACITY", legacy or str(DEFAULT_WM_FOCUS_CAPACITY))))
+
+
+def ltm_consolidate_from_scene() -> bool:
+    return _env_bool("DECADIC_LTM_CONSOLIDATE_FROM_SCENE", DEFAULT_LTM_CONSOLIDATE_FROM_SCENE)
+
+
+def drive_attention_enabled() -> bool:
+    return _env_bool("DECADIC_DRIVE_ATTENTION_ENABLED", DEFAULT_DRIVE_ATTENTION_ENABLED)
+
+
+def drive_attention_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_DRIVE_ATTENTION_WEIGHT", str(DEFAULT_DRIVE_ATTENTION_WEIGHT))))
+
+
+def novelty_attention_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_NOVELTY_ATTENTION_WEIGHT", str(DEFAULT_NOVELTY_ATTENTION_WEIGHT))))
+
+
+def threat_attention_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_THREAT_ATTENTION_WEIGHT", str(DEFAULT_THREAT_ATTENTION_WEIGHT))))
+
+
+def relief_attention_weight() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_RELIEF_ATTENTION_WEIGHT", str(DEFAULT_RELIEF_ATTENTION_WEIGHT))))
+
+
+def scene_attention_weights() -> dict[str, float]:
+    return {
+        "drive": drive_attention_weight(),
+        "novelty": novelty_attention_weight(),
+        "threat": threat_attention_weight(),
+        "relief": relief_attention_weight(),
+    }
 
 
 # --- Joint-brace guidance system (replaces the external support harness) -----
@@ -449,9 +500,32 @@ def curriculum_mode() -> str:
 # MLP blocks (stage1, stage3, risk_mlp, motor) are made plastic/sparse/growable;
 # external in/out dims never change.
 DEFAULT_PLASTICITY_ENABLED = True
-DEFAULT_PLASTICITY_ALPHA = 0.1  # max magnitude of the plastic (Hebbian) overlay on weights
+DEFAULT_PLASTICITY_ALPHA = 0.001  # configured ceiling for the Hebbian overlay gain
+DEFAULT_PLASTICITY_ALPHA_START = 0.0  # guardian-controlled effective alpha starts here
 DEFAULT_PLASTICITY_ETA = 0.1  # Hebbian trace blend rate per cycle
 DEFAULT_PLASTICITY_INSTABILITY_PCLOSS = 50.0  # pc-loss EMA above this auto-freezes plasticity
+DEFAULT_PLASTICITY_HEALTHY_PCEMA = 3.0
+DEFAULT_PLASTICITY_THROTTLE_PCEMA = 10.0
+DEFAULT_PLASTICITY_FREEZE_PCEMA = 50.0
+DEFAULT_PLASTICITY_THAW_PCEMA = 5.0
+DEFAULT_PLASTICITY_STABLE_CYCLES_TO_INCREASE = 50
+DEFAULT_PLASTICITY_STABLE_CYCLES_TO_THAW = 100
+DEFAULT_PLASTICITY_ALPHA_INCREASE_STEP = 0.00025
+DEFAULT_PLASTICITY_ALPHA_DECREASE_FACTOR = 0.5
+DEFAULT_PLASTICITY_OVERLAY_MAX_FRAC = 0.05
+DEFAULT_PLASTICITY_SLOPE_EMA_BETA = 0.9
+DEFAULT_PLASTICITY_RISING_SLOPE = 2.0
+
+# Live objective-health canary. This guards optimizer stability only: it never
+# adds reward, labels, or cognition inputs. Jump/non-finite detectors are active
+# immediately; EMA thresholds use the warmup window.
+DEFAULT_LOSS_CANARY_ENABLED = True
+DEFAULT_LOSS_CANARY_WARMUP_CYCLES = 20
+DEFAULT_LOSS_CANARY_WARN_JUMP_RATIO = 10.0
+DEFAULT_LOSS_CANARY_HARD_JUMP_RATIO = 25.0
+DEFAULT_LOSS_CANARY_WARN_PCEMA = 10.0
+DEFAULT_LOSS_CANARY_HARD_PCEMA = 50.0
+DEFAULT_LOSS_CANARY_WARNING_STEP_SCALE = 0.25
 
 DEFAULT_SPARSE_ENABLED = True
 DEFAULT_SPARSE_DENSITY = 0.5  # fraction of connections kept active (1.0 == dense parity)
@@ -487,6 +561,13 @@ def plasticity_alpha() -> float:
     return max(0.0, float(os.environ.get("DECADIC_PLASTICITY_ALPHA", str(DEFAULT_PLASTICITY_ALPHA))))
 
 
+def plasticity_alpha_start() -> float:
+    return max(
+        0.0,
+        float(os.environ.get("DECADIC_PLASTICITY_ALPHA_START", str(DEFAULT_PLASTICITY_ALPHA_START))),
+    )
+
+
 def plasticity_eta() -> float:
     return min(
         1.0, max(0.0, float(os.environ.get("DECADIC_PLASTICITY_ETA", str(DEFAULT_PLASTICITY_ETA))))
@@ -498,6 +579,147 @@ def plasticity_instability_pcloss() -> float:
         os.environ.get(
             "DECADIC_PLASTICITY_INSTABILITY_PCLOSS", str(DEFAULT_PLASTICITY_INSTABILITY_PCLOSS)
         )
+    )
+
+
+def plasticity_healthy_pcema() -> float:
+    return float(os.environ.get("DECADIC_PLASTICITY_HEALTHY_PCEMA", str(DEFAULT_PLASTICITY_HEALTHY_PCEMA)))
+
+
+def plasticity_throttle_pcema() -> float:
+    return float(os.environ.get("DECADIC_PLASTICITY_THROTTLE_PCEMA", str(DEFAULT_PLASTICITY_THROTTLE_PCEMA)))
+
+
+def plasticity_freeze_pcema() -> float:
+    return float(os.environ.get("DECADIC_PLASTICITY_FREEZE_PCEMA", str(DEFAULT_PLASTICITY_FREEZE_PCEMA)))
+
+
+def plasticity_thaw_pcema() -> float:
+    return float(os.environ.get("DECADIC_PLASTICITY_THAW_PCEMA", str(DEFAULT_PLASTICITY_THAW_PCEMA)))
+
+
+def plasticity_stable_cycles_to_increase() -> int:
+    return max(
+        1,
+        int(
+            os.environ.get(
+                "DECADIC_PLASTICITY_STABLE_CYCLES_TO_INCREASE",
+                str(DEFAULT_PLASTICITY_STABLE_CYCLES_TO_INCREASE),
+            )
+        ),
+    )
+
+
+def plasticity_stable_cycles_to_thaw() -> int:
+    return max(
+        1,
+        int(
+            os.environ.get(
+                "DECADIC_PLASTICITY_STABLE_CYCLES_TO_THAW",
+                str(DEFAULT_PLASTICITY_STABLE_CYCLES_TO_THAW),
+            )
+        ),
+    )
+
+
+def plasticity_alpha_increase_step() -> float:
+    return max(
+        0.0,
+        float(
+            os.environ.get(
+                "DECADIC_PLASTICITY_ALPHA_INCREASE_STEP",
+                str(DEFAULT_PLASTICITY_ALPHA_INCREASE_STEP),
+            )
+        ),
+    )
+
+
+def plasticity_alpha_decrease_factor() -> float:
+    return min(
+        1.0,
+        max(
+            0.0,
+            float(
+                os.environ.get(
+                    "DECADIC_PLASTICITY_ALPHA_DECREASE_FACTOR",
+                    str(DEFAULT_PLASTICITY_ALPHA_DECREASE_FACTOR),
+                )
+            ),
+        ),
+    )
+
+
+def plasticity_overlay_max_frac() -> float:
+    return max(
+        0.0,
+        float(
+            os.environ.get(
+                "DECADIC_PLASTICITY_OVERLAY_MAX_FRAC",
+                str(DEFAULT_PLASTICITY_OVERLAY_MAX_FRAC),
+            )
+        ),
+    )
+
+
+def plasticity_slope_ema_beta() -> float:
+    return min(
+        0.999,
+        max(
+            0.0,
+            float(os.environ.get("DECADIC_PLASTICITY_SLOPE_EMA_BETA", str(DEFAULT_PLASTICITY_SLOPE_EMA_BETA))),
+        ),
+    )
+
+
+def plasticity_rising_slope() -> float:
+    return float(os.environ.get("DECADIC_PLASTICITY_RISING_SLOPE", str(DEFAULT_PLASTICITY_RISING_SLOPE)))
+
+
+def loss_canary_enabled() -> bool:
+    return _env_bool("DECADIC_LOSS_CANARY_ENABLED", DEFAULT_LOSS_CANARY_ENABLED)
+
+
+def loss_canary_warmup_cycles() -> int:
+    return max(
+        1,
+        int(os.environ.get("DECADIC_LOSS_CANARY_WARMUP_CYCLES", str(DEFAULT_LOSS_CANARY_WARMUP_CYCLES))),
+    )
+
+
+def loss_canary_warn_jump_ratio() -> float:
+    return max(
+        1.0,
+        float(os.environ.get("DECADIC_LOSS_CANARY_WARN_JUMP_RATIO", str(DEFAULT_LOSS_CANARY_WARN_JUMP_RATIO))),
+    )
+
+
+def loss_canary_hard_jump_ratio() -> float:
+    return max(
+        1.0,
+        float(os.environ.get("DECADIC_LOSS_CANARY_HARD_JUMP_RATIO", str(DEFAULT_LOSS_CANARY_HARD_JUMP_RATIO))),
+    )
+
+
+def loss_canary_warn_pcema() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_LOSS_CANARY_WARN_PCEMA", str(DEFAULT_LOSS_CANARY_WARN_PCEMA))))
+
+
+def loss_canary_hard_pcema() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_LOSS_CANARY_HARD_PCEMA", str(DEFAULT_LOSS_CANARY_HARD_PCEMA))))
+
+
+def loss_canary_warning_step_scale() -> float:
+    return min(
+        1.0,
+        max(
+            0.0,
+            float(
+                os.environ.get(
+                    "DECADIC_LOSS_CANARY_WARNING_STEP_SCALE",
+                    str(DEFAULT_LOSS_CANARY_WARNING_STEP_SCALE),
+                )
+            ),
+        ),
     )
 
 
@@ -747,6 +969,8 @@ DEFAULT_DRIVE_PAIN_EXPONENT = 2.0  # convexity: >1 makes slight need faint and s
 DEFAULT_AI_INTERO_FWD_WEIGHT = 1.0  # weight of the interoceptive forward-model PE loss
 DEFAULT_AI_INTERO_PREF_WEIGHT = 0.5  # weight of the preferred-interoceptive-state (drive-reduction) loss
 DEFAULT_DRIVE_PRIORITY_GAIN = 2.0  # how strongly deprivation severity up-weights drive reduction
+DEFAULT_DRIVE_PRIORITY_GAIN_RAMP_CYCLES = 300
+DEFAULT_DRIVE_PRIORITY_GAIN_RAMP_FLOOR = 0.25
 
 # --- Tactile world model (full-body touch) ---------------------------------
 # The body streams a soft, normalized per-part contact load for every touch
@@ -813,6 +1037,43 @@ def drive_priority_gain() -> float:
     return max(
         0.0, float(os.environ.get("DECADIC_DRIVE_PRIORITY_GAIN", str(DEFAULT_DRIVE_PRIORITY_GAIN)))
     )
+
+
+def drive_priority_gain_ramp_cycles() -> int:
+    return max(
+        0,
+        int(
+            os.environ.get(
+                "DECADIC_DRIVE_PRIORITY_GAIN_RAMP_CYCLES",
+                str(DEFAULT_DRIVE_PRIORITY_GAIN_RAMP_CYCLES),
+            )
+        ),
+    )
+
+
+def drive_priority_gain_ramp_floor() -> float:
+    return min(
+        1.0,
+        max(
+            0.0,
+            float(
+                os.environ.get(
+                    "DECADIC_DRIVE_PRIORITY_GAIN_RAMP_FLOOR",
+                    str(DEFAULT_DRIVE_PRIORITY_GAIN_RAMP_FLOOR),
+                )
+            ),
+        ),
+    )
+
+
+def drive_priority_gain_effective(cycle_index: int, configured: float | None = None) -> float:
+    gain = drive_priority_gain() if configured is None else max(0.0, float(configured))
+    ramp_cycles = drive_priority_gain_ramp_cycles()
+    if ramp_cycles <= 0:
+        return gain
+    floor = drive_priority_gain_ramp_floor()
+    progress = min(1.0, max(0.0, float(cycle_index) / float(ramp_cycles)))
+    return gain * (floor + (1.0 - floor) * progress)
 
 
 def effort_drain_enabled() -> bool:
@@ -942,6 +1203,8 @@ DEFAULT_CONSOLIDATION_STEPS_PER_BURST = 4  # replay steps per wake-up before a s
 DEFAULT_CONSOLIDATION_SYNC_TAU = 0.05  # Polyak blend rate (live <- (1-tau)*live + tau*cons)
 DEFAULT_CONSOLIDATION_SYNC_INTERVAL_S = 30.0  # seconds between replay+sync bursts
 DEFAULT_CONSOLIDATION_PRUNE_MIN_SALIENCE = 0.0  # transitions below this are never stored
+DEFAULT_CONSOLIDATION_GRAD_CLIP = 1.0
+DEFAULT_CONSOLIDATION_SYNC_RESET_REL_EPS = 0.01
 
 
 def consolidation_enabled() -> bool:
@@ -986,6 +1249,25 @@ def consolidation_prune_min_salience() -> float:
     return max(
         0.0,
         float(os.environ.get("DECADIC_CONSOLIDATION_PRUNE_MIN_SALIENCE", str(DEFAULT_CONSOLIDATION_PRUNE_MIN_SALIENCE))),
+    )
+
+
+def consolidation_grad_clip() -> float:
+    return max(
+        0.0,
+        float(os.environ.get("DECADIC_CONSOLIDATION_GRAD_CLIP", str(DEFAULT_CONSOLIDATION_GRAD_CLIP))),
+    )
+
+
+def consolidation_sync_reset_rel_eps() -> float:
+    return max(
+        0.0,
+        float(
+            os.environ.get(
+                "DECADIC_CONSOLIDATION_SYNC_RESET_REL_EPS",
+                str(DEFAULT_CONSOLIDATION_SYNC_RESET_REL_EPS),
+            )
+        ),
     )
 
 

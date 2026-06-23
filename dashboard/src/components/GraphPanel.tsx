@@ -98,8 +98,8 @@ export default function GraphPanel(props: { state: AgentState }) {
   return (
     <div className="panel span-7">
       <h2>
-        Self-Indexed Graph
-        <Info tip="The agent's logical layer made visible: a relational graph centered on the SELF node. Spokes are spatial relations (brighter = closer), dashed blue links are entity-to-entity proximity, and red/green links are affective edges tying a thing to the self's survival concerns (red = threatening, green = rewarding). Node brightness = working-memory salience, so objects fade as they leave view rather than vanishing." />
+        Focused Self Graph
+        <Info tip="The currently attended working graph centered on SELF. This is the focus cache, not the whole scene workspace or long-term memory. Spokes are spatial relations, dashed blue links are entity proximity, and red/green links are affective edges tied to survival concerns." />
       </h2>
 
       <div className="strip-label">

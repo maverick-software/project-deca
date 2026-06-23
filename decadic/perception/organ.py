@@ -16,6 +16,8 @@ from typing import Any
 
 import numpy as np
 
+from decadic import config as C
+
 
 DEFAULT_GRID = 16
 LOW_CONTRAST = 0.035
@@ -404,7 +406,7 @@ class PerceptionOrgan:
             contrast,
             delta,
             proposals,
-            max_count=max(0, MAX_BOOTSTRAP_PROPOSALS - len(proposals)),
+            max_count=max(0, C.perception_candidate_capacity() - len(proposals)),
         )
         proposals = [dict(p) for p in proposals] + bootstrap
 
@@ -495,6 +497,8 @@ class PerceptionOrgan:
             foreground_count=foreground_count,
         ).to_dict()
         diag["bootstrap_proposal_count"] = len(bootstrap)
+        diag["candidate_count"] = len(enriched)
+        diag["candidate_capacity"] = C.perception_candidate_capacity()
         self.state.prev_gray = gray
         self.state.prev_timestamp = timestamp
         self.state.prev_spread_by_idx = next_spreads

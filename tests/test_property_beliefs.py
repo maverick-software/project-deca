@@ -4,7 +4,9 @@ from dataclasses import dataclass, field
 
 from decadic.memory.ltm_write_behind import WriteBehindLongTermGraph
 from decadic.memory.semantic_graph import LongTermGraph
+from decadic.cycle.stages.stage_10 import _scene_slots
 from decadic.perception.object_files import object_files_from_proposals
+from decadic.perception.scene_workspace import SceneWorkspace
 from decadic.state.working_memory import MemorySlot, WorkingMemory
 
 
@@ -157,3 +159,35 @@ def test_working_memory_event_updates_anonymous_consequence_evidence():
     assert slot.property_evidence["predicts_hydration_relief"] == 1.0
     assert "water" not in " ".join(slot.property_evidence.keys())
 
+
+def test_ltm_can_consolidate_stable_scene_entities_beyond_focus_cache():
+    ws = SceneWorkspace()
+    objects = []
+    for i in range(10):
+        app = [0.0] * 10
+        app[i] = 1.0
+        objects.append(
+            {
+                "object_id": f"obj-{i:04d}",
+                "idx": i,
+                "centroid_uv": [0.05 + i * 0.08, 0.5],
+                "relative": [float(i), 0.0, 1.0],
+                "appearance": app,
+                "confidence": 0.95,
+                "presence": 0.95,
+                "kind_hint": "object",
+                "property_evidence": {"roundness": 0.4 + i * 0.01},
+            }
+        )
+    ws.update(objects, focus_capacity=7, entity_capacity=32)
+    ws.update(objects, focus_capacity=7, entity_capacity=32)
+    slots = _scene_slots(ws)
+    assert len(slots) == 10
+    assert sum(1 for s in slots if getattr(s, "attention_focused", False)) == 7
+
+    g = LongTermGraph()
+    ids = g.consolidate(slots, cycle=2, min_seen=2)
+    assert len(ids) == 10
+    snap = g.snapshot()
+    assert snap["total_nodes"] == 10
+    assert snap["total_property_beliefs"] == 10

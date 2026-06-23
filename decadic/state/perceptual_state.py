@@ -186,6 +186,8 @@ class PerceptualState:
     def update_scene_workspace(
         self,
         *,
+        homeostasis: Any | None = None,
+        state_bus: Any | None = None,
         dynamics_predictions: list[dict[str, Any]] | None = None,
         dynamics_report: dict[str, Any] | None = None,
     ) -> None:
@@ -197,9 +199,14 @@ class PerceptualState:
             return
         self.scene_workspace.ttl_cycles = C.scene_entity_ttl_cycles()
         self.scene_workspace.relation_enabled = C.scene_relation_enabled()
+        from decadic.perception.scene_workspace import attention_context_from_state
+
         self.scene_workspace.update(
             list(self.object_files),
             focus_capacity=C.attention_focus_capacity(),
+            entity_capacity=C.scene_entity_capacity(),
+            attention_context=attention_context_from_state(homeostasis, state_bus),
+            attention_weights=C.scene_attention_weights(),
             predictions=dynamics_predictions,
             prediction_match_threshold=C.scene_dynamics_match_threshold(),
         )
@@ -219,6 +226,9 @@ class PerceptualState:
             "reidentified_count": snap.get("reidentified_count", 0),
             "prediction_assisted_count": snap.get("prediction_assisted_count", 0),
             "duplicate_prevention_count": snap.get("duplicate_prevention_count", 0),
+            "candidate_count": snap.get("candidate_count", 0),
+            "attention_top": list(snap.get("attention_top", [])),
+            "active_drive_deficits": dict(snap.get("active_drive_deficits", {})),
         }
         focused = [
             ent

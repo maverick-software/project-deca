@@ -163,6 +163,10 @@ export default function PerceptionPanel(props: {
               <span>focus</span>
             </div>
             <div>
+              <strong>{p.scene_health.candidate_count ?? 0}</strong>
+              <span>candidates</span>
+            </div>
+            <div>
               <strong>{p.scene_health.occluded_count}</strong>
               <span>occluded</span>
             </div>
@@ -196,6 +200,16 @@ export default function PerceptionPanel(props: {
                 {p.scene_prediction.prediction_count ?? 0} predicted · loss{" "}
                 {p.scene_prediction.loss != null ? p.scene_prediction.loss.toFixed(4) : "n/a"}
               </span>
+            </div>
+          )}
+          {p.scene_health.active_drive_deficits && (
+            <div className="strip-label" style={{ marginTop: 8 }}>
+              <span>
+                Drive attention: energy {Number(p.scene_health.active_drive_deficits.energy ?? 0).toFixed(2)} /
+                hydration {Number(p.scene_health.active_drive_deficits.hydration ?? 0).toFixed(2)} /
+                integrity {Number(p.scene_health.active_drive_deficits.integrity ?? 0).toFixed(2)}
+              </span>
+              <span>{String(p.scene_health.active_drive_deficits.priority ?? "explore")}</span>
             </div>
           )}
           {p.workspace_ignition && (

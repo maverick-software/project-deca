@@ -199,19 +199,178 @@ def pool_fused(
     return (pooled_old + fused_latest) / w_total
 
 
+def _plasticity_instability_reason(stack, pc_ema: float | None, threshold: float) -> str | None:
+    """Return the exact plasticity instability reason, or ``None`` if healthy."""
+    if pc_ema is not None and threshold > 0 and pc_ema > threshold:
+        return f"pc_ema>{threshold:g}:pc_ema={pc_ema:.6g}"
+    return _plasticity_tensor_instability_reason(stack)
+
+
+def _plasticity_tensor_instability_reason(stack) -> str | None:
+    for i, blk in enumerate(stack.plastic_blocks()):
+        for name, t in (
+            ("l1_weight", blk.l1_weight),
+            ("l2_weight", blk.l2_weight),
+            ("hebb1", blk.hebb1),
+            ("hebb2", blk.hebb2),
+            ("alpha", blk.alpha),
+        ):
+            if not torch.isfinite(t).all():
+                finite = torch.isfinite(t)
+                bad = int((~finite).sum().item())
+                return f"nonfinite:block={i}:tensor={name}:bad={bad}"
+    return None
+
+
 def _plasticity_instability(stack, pc_ema: float | None, threshold: float) -> bool:
     """True if any plastic tensor is non-finite or the pc-loss EMA has diverged."""
-    if pc_ema is not None and threshold > 0 and pc_ema > threshold:
-        return True
-    for blk in stack.plastic_blocks():
-        for t in (blk.l1_weight, blk.l2_weight, blk.hebb1, blk.hebb2, blk.alpha):
-            if not torch.isfinite(t).all():
-                return True
-    return False
+    return _plasticity_instability_reason(stack, pc_ema, threshold) is not None
+
+
+def _run_plasticity_guardian(
+    ctx: CycleContext,
+    bundle: NeuralBundle,
+    pc_loss: float,
+    *,
+    canary_state: str = "healthy",
+    canary_pressure: float = 0.0,
+) -> tuple[bool, str | None]:
+    """Adaptive metaplasticity controller; returns (froze_this_cycle, freeze_reason)."""
+    stack = bundle.stack
+    st = bundle.plasticity_state
+    if st is None:
+        return False, None
+
+    configured = max(0.0, float(stack.plastic_alpha_mean()))
+    st.configured_alpha = configured
+    st.effective_alpha = min(max(0.0, float(st.effective_alpha)), configured)
+
+    prev_ema = st.pc_ema
+    st.pc_ema = pc_loss if st.pc_ema is None else (0.98 * st.pc_ema + 0.02 * pc_loss)
+    if prev_ema is not None:
+        raw_slope = float(st.pc_ema - prev_ema)
+        beta = C.plasticity_slope_ema_beta()
+        st.pc_slope_ema = beta * float(st.pc_slope_ema) + (1.0 - beta) * raw_slope
+    st.prev_pc_ema = prev_ema
+
+    tensor_reason = _plasticity_tensor_instability_reason(stack)
+    canary_diverging = str(canary_state) == "diverging" or float(canary_pressure) >= 1.0
+    froze = False
+    freeze_reason = None
+
+    if tensor_reason is not None or (not st.frozen and canary_diverging):
+        reason = tensor_reason or f"loss_canary_diverging:state={canary_state}"
+        if not st.frozen:
+            st.freeze_count += 1
+            st.frozen_since_cycle = int(ctx.state_bus.cycle_index)
+            froze = True
+        st.frozen = True
+        st.last_action = "freeze"
+        st.guardian_state = "frozen"
+        st.blocked_reason = reason
+        st.effective_alpha = 0.0
+        st.pc_ema = None
+        st.pc_slope_ema = 0.0
+        st.stable_cycles = 0
+        stack.set_effective_alpha_all(0.0)
+        with torch.no_grad():
+            for blk in stack.plastic_blocks():
+                blk.reset_plastic_trace()
+            if tensor_reason is not None:
+                for p in stack.parameters():
+                    p.copy_(torch.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0))
+                for buf in stack.buffers():
+                    if buf.dtype.is_floating_point:
+                        buf.copy_(torch.nan_to_num(buf, nan=0.0, posinf=0.0, neginf=0.0))
+                for p in bundle.encoders.parameters():
+                    p.copy_(torch.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0))
+                bundle.optimizer.state.clear()
+                bundle.prev_state = None
+                bundle.prev_motor = None
+                bundle.prev_intero = None
+                bundle.prev_scene_features = None
+                bundle.prev_scene_entity_ids = []
+        return froze, reason
+
+    if st.frozen:
+        if tensor_reason is None and st.pc_ema is not None and st.pc_ema <= C.plasticity_thaw_pcema():
+            st.stable_cycles += 1
+            remaining = C.plasticity_stable_cycles_to_thaw() - st.stable_cycles
+            if remaining <= 0:
+                st.frozen = False
+                st.thaw_count += 1
+                st.last_thaw_cycle = int(ctx.state_bus.cycle_index)
+                st.frozen_since_cycle = None
+                st.stable_cycles = 0
+                st.effective_alpha = 0.0
+                st.last_action = "thaw"
+                st.guardian_state = "thawing"
+                st.blocked_reason = "warming_from_zero"
+                stack.set_effective_alpha_all(0.0)
+            else:
+                st.last_action = "hold"
+                st.guardian_state = "frozen"
+                st.blocked_reason = f"thaw_stability_dwell:{remaining}"
+        else:
+            st.stable_cycles = 0
+            st.last_action = "hold"
+            st.guardian_state = "frozen"
+            st.blocked_reason = "awaiting_thaw_pc_loss"
+        return False, None
+
+    if configured <= 0.0:
+        st.effective_alpha = 0.0
+        st.stable_cycles = 0
+        st.last_action = "hold"
+        st.guardian_state = "active"
+        st.blocked_reason = "configured_alpha_zero"
+        stack.set_effective_alpha_all(0.0)
+        return False, None
+
+    rising = st.pc_slope_ema >= C.plasticity_rising_slope()
+    elevated = (
+        str(canary_state) == "warning"
+        or float(canary_pressure) >= 0.5
+        or (st.pc_ema is not None and st.pc_ema >= C.plasticity_throttle_pcema())
+    )
+    healthy = st.pc_ema is not None and st.pc_ema <= C.plasticity_healthy_pcema()
+    if elevated or rising:
+        old = st.effective_alpha
+        st.effective_alpha = max(0.0, st.effective_alpha * C.plasticity_alpha_decrease_factor())
+        st.stable_cycles = 0
+        st.last_action = "throttle" if st.effective_alpha < old else "hold"
+        st.guardian_state = "throttled"
+        st.blocked_reason = "pc_loss_rising" if rising else "pc_loss_elevated"
+    elif healthy:
+        st.stable_cycles += 1
+        if st.stable_cycles >= C.plasticity_stable_cycles_to_increase():
+            old = st.effective_alpha
+            st.effective_alpha = min(configured, st.effective_alpha + C.plasticity_alpha_increase_step())
+            st.stable_cycles = 0
+            st.last_action = "warm" if st.effective_alpha > old else "hold"
+        else:
+            st.last_action = "hold"
+        st.guardian_state = "active" if st.effective_alpha >= configured else "warming"
+        st.blocked_reason = "" if st.guardian_state == "active" else "stable_dwell_pending"
+    else:
+        st.stable_cycles = 0
+        st.last_action = "hold"
+        st.guardian_state = "warming" if st.effective_alpha < configured else "active"
+        st.blocked_reason = "pc_loss_not_healthy"
+
+    st.effective_alpha = min(max(0.0, st.effective_alpha), configured)
+    stack.set_effective_alpha_all(st.effective_alpha)
+    return False, None
 
 
 def apply_plasticity_step(
-    ctx: CycleContext, bundle: NeuralBundle, *, pc_loss: float, modulation: float
+    ctx: CycleContext,
+    bundle: NeuralBundle,
+    *,
+    pc_loss: float,
+    modulation: float,
+    canary_state: str = "healthy",
+    canary_pressure: float = 0.0,
 ) -> dict:
     """Post-optimizer A/B/C updates + instability guard; returns telemetry.
 
@@ -226,34 +385,13 @@ def apply_plasticity_step(
     if st is None:
         return {}
 
-    st.pc_ema = pc_loss if st.pc_ema is None else (0.98 * st.pc_ema + 0.02 * pc_loss)
-
-    # Instability guard: freeze further plastic updates and sanitize the whole
-    # stack to finite values (NaN/inf -> 0), then drop the optimizer moments so
-    # learning restarts cleanly. Plasticity stays frozen until the next reset().
-    froze = False
-    if not st.frozen and _plasticity_instability(stack, st.pc_ema, C.plasticity_instability_pcloss()):
-        st.frozen = True
-        froze = True
-        st.pc_ema = None
-        with torch.no_grad():
-            for blk in stack.plastic_blocks():
-                blk.reset_plastic_trace()
-            for p in stack.parameters():
-                p.copy_(torch.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0))
-            for buf in stack.buffers():
-                if buf.dtype.is_floating_point:
-                    buf.copy_(torch.nan_to_num(buf, nan=0.0, posinf=0.0, neginf=0.0))
-            for p in bundle.encoders.parameters():
-                p.copy_(torch.nan_to_num(p, nan=0.0, posinf=0.0, neginf=0.0))
-        bundle.optimizer.state.clear()
-        # Drop the cross-cycle transition buffers so a poisoned state can't feed
-        # the next forward model step.
-        bundle.prev_state = None
-        bundle.prev_motor = None
-        bundle.prev_intero = None
-        bundle.prev_scene_features = None
-        bundle.prev_scene_entity_ids = []
+    froze, freeze_reason = _run_plasticity_guardian(
+        ctx,
+        bundle,
+        pc_loss,
+        canary_state=canary_state,
+        canary_pressure=canary_pressure,
+    )
 
     structural = False
     # Per-cycle edge counts (non-zero only on the cycle the event fires).
@@ -261,7 +399,7 @@ def apply_plasticity_step(
     neurons_woken = 0
     if not st.frozen:
         # A — neuromodulated Hebbian trace update (gated by pleasure - pain).
-        if C.plasticity_enabled():
+        if C.plasticity_enabled() and st.effective_alpha > 0.0:
             stack.hebbian_update_all(modulation, C.plasticity_eta())
 
         # B — keep pruned/dormant weights pinned at 0; periodic prune+grow rewire.
@@ -299,6 +437,8 @@ def apply_plasticity_step(
 
     return {
         "plasticity_alpha": round(stack.plastic_alpha_mean(), 6),
+        "plasticity_alpha_configured": round(float(st.configured_alpha), 6),
+        "plasticity_alpha_effective": round(stack.plastic_effective_alpha_mean(), 6),
         "sparse_density": round(stack.connection_density(), 6),
         "awake_neurons": stack.awake_neurons(),
         "allocated_neurons": stack.allocated_neurons(),
@@ -306,6 +446,28 @@ def apply_plasticity_step(
         "rewire_events": st.rewire_events,
         "growth_events": st.growth_events,
         "plasticity_frozen": st.frozen,
+        "plasticity_freeze_reason": freeze_reason if froze else "",
+        "plasticity_pc_ema": None if st.pc_ema is None else float(st.pc_ema),
+        "plasticity_pc_slope_ema": float(st.pc_slope_ema),
+        "plasticity_guardian_state": st.guardian_state,
+        "plasticity_guardian_action": st.last_action,
+        "plasticity_warmup_blocked_reason": st.blocked_reason,
+        "plasticity_stable_cycles": int(st.stable_cycles),
+        "plasticity_freeze_count": int(st.freeze_count),
+        "plasticity_thaw_count": int(st.thaw_count),
+        "plasticity_frozen_since_cycle": st.frozen_since_cycle,
+        "plasticity_last_thaw_cycle": st.last_thaw_cycle,
+        "plasticity_thaw_eligible": bool(
+            st.frozen and st.pc_ema is not None and st.pc_ema <= C.plasticity_thaw_pcema()
+        ),
+        "plasticity_thaw_cycles_remaining": max(
+            0,
+            C.plasticity_stable_cycles_to_thaw() - int(st.stable_cycles),
+        )
+        if st.frozen
+        else 0,
+        "plasticity_overlay_ratio_mean": round(stack.plastic_overlay_ratio_stats()[0], 6),
+        "plasticity_overlay_ratio_max": round(stack.plastic_overlay_ratio_stats()[1], 6),
         "structural_change": structural,
         "structural_version": st.structural_version,
         # Per-cycle edge events (True only on the cycle they fire) + counts, for
@@ -577,8 +739,12 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     l_fwd = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_fwd_tactile = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_fwd_effort = torch.zeros((), device=z0.device, dtype=z0.dtype)
+    l_effort_cost = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_fwd_intero = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_pref_intero = torch.zeros((), device=z0.device, dtype=z0.dtype)
+    intero_pref_weight_effective = 0.0
+    drive_gain_configured = 0.0
+    drive_gain_effective = 0.0
     # Successor-features value shaping (Layer-2). sf_value_last: scalar value of the
     # chosen action; sf_value_w: the (ramped) shaping weight actually applied. 0 until
     # the SF head has learned and the ramp has opened, so behavior starts identical.
@@ -652,7 +818,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             pred_effort_pref = bundle.stack.forward_predict_effort(
                 z5_t, motor_u, detach_params=True
             )
-            loss = loss + C.ai_effort_cost_weight() * pred_effort_pref.pow(2).mean()
+            l_effort_cost = pred_effort_pref.pow(2).mean()
+            loss = loss + C.ai_effort_cost_weight() * l_effort_cost
 
         # Interoceptive active inference: the root survival drive. The world model
         # learns reservoir dynamics from realized transitions; the policy is pulled
@@ -699,12 +866,17 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 if ctx.ai_intero_pref_weight is not None
                 else C.ai_intero_pref_weight()
             )
-            drive_gain = (
+            drive_gain_configured = (
                 ctx.drive_priority_gain
                 if ctx.drive_priority_gain is not None
                 else C.drive_priority_gain()
             )
-            pref_w = pref_w_base * (1.0 + drive_gain * severity)
+            drive_gain_effective = C.drive_priority_gain_effective(
+                int(ctx.state_bus.cycle_index),
+                configured=drive_gain_configured,
+            )
+            pref_w = pref_w_base * (1.0 + drive_gain_effective * severity)
+            intero_pref_weight_effective = float(pref_w)
             loss = (
                 loss
                 + C.ai_intero_fwd_weight() * l_fwd_intero
@@ -767,7 +939,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # agency (self-vs-other) learning. All gated by discovered mode + a real
     # camera frame, so the oracle path is byte-identical.
     l_slot = torch.zeros((), device=z0.device, dtype=z0.dtype)
+    div_loss = torch.zeros((), device=z0.device, dtype=z0.dtype)
+    ent_loss = torch.zeros((), device=z0.device, dtype=z0.dtype)
+    sep_loss = torch.zeros((), device=z0.device, dtype=z0.dtype)
     l_agency = torch.zeros((), device=z0.device, dtype=z0.dtype)
+    l_scene_dyn = torch.zeros((), device=z0.device, dtype=z0.dtype)
     discovery_diag: dict = {}
     agency_scores: dict[str, float] = {}
     scene_replay_prev_features: torch.Tensor | None = None
@@ -823,7 +999,6 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         scene_dyn_raw: torch.Tensor | None = None
         scene_dyn_prev_features: torch.Tensor | None = None
         scene_dyn_entity_ids: list[str] = []
-        l_scene_dyn = torch.zeros((), device=z0.device, dtype=z0.dtype)
         if (
             C.scene_workspace_enabled()
             and C.scene_dynamics_enabled()
@@ -867,6 +1042,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         scene_focus_proposals = None
         if C.scene_workspace_enabled() and hasattr(ctx.perceptual, "update_scene_workspace"):
             ctx.perceptual.update_scene_workspace(
+                homeostasis=ctx.homeostasis,
+                state_bus=ctx.state_bus,
                 dynamics_predictions=scene_dynamics_predictions,
                 dynamics_report=scene_dynamics_report,
             )
@@ -931,7 +1108,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             if C.scene_workspace_enabled() and hasattr(ctx.perceptual, "update_scene_workspace"):
                 # Re-run the scene snapshot from the stable WM ids when available
                 # so dashboard object ids, focus ids, and LTM ids stay aligned.
-                ctx.perceptual.update_scene_workspace(dynamics_report=scene_dynamics_report)
+                ctx.perceptual.update_scene_workspace(
+                    homeostasis=ctx.homeostasis,
+                    state_bus=ctx.state_bus,
+                    dynamics_report=scene_dynamics_report,
+                )
                 scene_ws_final = getattr(ctx.perceptual, "scene_workspace", None)
                 ids, feats = _scene_feature_snapshot(
                     scene_ws_final,
@@ -983,6 +1164,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 agency_scores[str(m["entity_id"])] = float(r)
         discovery_diag = {
             "slots_present": len(proposals),
+            "perception_candidate_capacity": C.perception_candidate_capacity(),
+            "perception_candidate_count": int((organ_diag or {}).get("candidate_count", len(proposals))),
             "slot_recon_error": round(float(l_slot.detach().cpu().item()), 6),
             "slot_diversity_loss": round(float(div_loss.detach().cpu().item()), 6),
             "slot_entropy_loss": round(float(ent_loss.detach().cpu().item()), 6),
@@ -1008,6 +1191,18 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 int((getattr(ctx.perceptual, "scene_health", {}) or {}).get("focus_count", 0))
                 if C.scene_workspace_enabled()
                 else 0
+            ),
+            "wm_focus_capacity": C.attention_focus_capacity(),
+            "scene_entity_capacity": C.scene_entity_capacity(),
+            "attention_top": (
+                list((getattr(ctx.perceptual, "scene_health", {}) or {}).get("attention_top", []))
+                if C.scene_workspace_enabled()
+                else []
+            ),
+            "active_drive_deficits": (
+                dict((getattr(ctx.perceptual, "scene_health", {}) or {}).get("active_drive_deficits", {}))
+                if C.scene_workspace_enabled()
+                else {}
             ),
             "scene_prediction_error": (
                 (getattr(ctx.perceptual, "scene_health", {}) or {}).get("prediction_error")
@@ -1045,6 +1240,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             ctx.perceptual.object_files = [f.to_dict() for f in object_files]
         if C.scene_workspace_enabled() and hasattr(ctx.perceptual, "update_scene_workspace"):
             ctx.perceptual.update_scene_workspace(
+                homeostasis=ctx.homeostasis,
+                state_bus=ctx.state_bus,
                 dynamics_report=scene_dynamics_report
             )
         scene_focus_proposals = None
@@ -1081,7 +1278,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 else [f.to_dict() for f in object_files]
             )
             if C.scene_workspace_enabled() and hasattr(ctx.perceptual, "update_scene_workspace"):
-                ctx.perceptual.update_scene_workspace(dynamics_report=scene_dynamics_report)
+                ctx.perceptual.update_scene_workspace(
+                    homeostasis=ctx.homeostasis,
+                    state_bus=ctx.state_bus,
+                    dynamics_report=scene_dynamics_report,
+                )
                 scene_ws_final = getattr(ctx.perceptual, "scene_workspace", None)
                 ids, feats = _scene_feature_snapshot(
                     scene_ws_final,
@@ -1105,6 +1306,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             ctx.perceptual.retinotopic_map = ret_map
         discovery_diag = {
             "slots_present": len(proposals),
+            "perception_candidate_capacity": C.perception_candidate_capacity(),
+            "perception_candidate_count": int((organ_diag or {}).get("candidate_count", len(proposals))),
             "slot_recon_error": 0.0,
             "slot_diversity_loss": 0.0,
             "slot_entropy_loss": 0.0,
@@ -1131,6 +1334,18 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 if C.scene_workspace_enabled()
                 else 0
             ),
+            "wm_focus_capacity": C.attention_focus_capacity(),
+            "scene_entity_capacity": C.scene_entity_capacity(),
+            "attention_top": (
+                list((getattr(ctx.perceptual, "scene_health", {}) or {}).get("attention_top", []))
+                if C.scene_workspace_enabled()
+                else []
+            ),
+            "active_drive_deficits": (
+                dict((getattr(ctx.perceptual, "scene_health", {}) or {}).get("active_drive_deficits", {}))
+                if C.scene_workspace_enabled()
+                else {}
+            ),
             "scene_prediction_error": (
                 (getattr(ctx.perceptual, "scene_health", {}) or {}).get("prediction_error")
                 if C.scene_workspace_enabled()
@@ -1144,6 +1359,20 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             "scene_dynamics_matches": 0,
         }
 
+    raw_loss_val = float(loss.detach().float().cpu().item())
+    raw_pc_val = float(out["pc_loss"].detach().float().cpu().item())
+    canary = getattr(bundle, "objective_health", None)
+    if canary is None:
+        from decadic.cycle.objective_health import ObjectiveHealthCanary
+
+        canary = ObjectiveHealthCanary()
+        bundle.objective_health = canary
+    objective_health = canary.update(
+        total_loss=raw_loss_val,
+        pc_loss=raw_pc_val,
+        forward_finite=forward_finite,
+    )
+
     tb0 = time.perf_counter()
     bundle.optimizer.zero_grad(set_to_none=True)
     # Backstop: never apply a non-finite update. A non-finite forward pass, a
@@ -1153,11 +1382,20 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # leaves weights finite; grads stay None, which the plasticity step already
     # tolerates (rewire falls back to random scoring, Hebbian uses cached
     # activations).
-    if forward_finite and torch.isfinite(loss):
+    if (
+        forward_finite
+        and torch.isfinite(loss)
+        and objective_health.optimizer_action != "skipped"
+    ):
         loss.backward()
         train_params = list(bundle.stack.parameters()) + list(bundle.encoders.parameters())
         total_norm = torch.nn.utils.clip_grad_norm_(train_params, max_norm=1.0)
         if torch.isfinite(total_norm):
+            if objective_health.step_scale < 1.0:
+                scale = float(objective_health.step_scale)
+                for p in train_params:
+                    if p.grad is not None:
+                        p.grad.mul_(scale)
             bundle.optimizer.step()
             bundle.after_optimization_step()
     if not forward_finite:
@@ -1177,7 +1415,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     def _finite(x: float, default: float = 0.0) -> float:
         return x if math.isfinite(x) else default
 
-    pc_val = _finite(float(out["pc_loss"].detach().cpu().item()))
+    pc_val = _finite(raw_pc_val)
+    loss_total_val = _finite(raw_loss_val)
     l_fwd_val = _finite(float(l_fwd.detach().cpu().item()))
     tactile_pe_val = _finite(float(l_fwd_tactile.detach().cpu().item()))
     effort_pe_val = _finite(float(l_fwd_effort.detach().cpu().item()))
@@ -1252,6 +1491,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         bundle,
         pc_loss=pc_val,
         modulation=float(ctx.state_bus.pleasure_scalar - ctx.state_bus.pain_scalar),
+        canary_state=objective_health.state,
+        canary_pressure=objective_health.pressure,
     )
 
     # Sanitize every value pulled out of the forward pass: if the network just
@@ -1705,6 +1946,53 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     if bundle.device.type == "cuda":
         gpu_mem = int(torch.cuda.max_memory_allocated(bundle.device))
 
+    def _loss_float(t: torch.Tensor | float) -> float:
+        try:
+            v = float(t.detach().float().cpu().item()) if isinstance(t, torch.Tensor) else float(t)
+        except Exception:
+            return 0.0
+        return v if math.isfinite(v) else 0.0
+
+    loss_terms_raw = {
+        "pc": _loss_float(out["pc_loss"]),
+        "perceptual_prediction": _loss_float(l_percept),
+        "proprio_forward": _loss_float(l_fwd),
+        "tactile_forward": _loss_float(l_fwd_tactile),
+        "effort_forward": _loss_float(l_fwd_effort),
+        "effort_cost": _loss_float(l_effort_cost),
+        "intero_forward": _loss_float(l_fwd_intero),
+        "intero_preference": _loss_float(l_pref_intero),
+        "slot_reconstruction": _loss_float(l_slot),
+        "slot_diversity": _loss_float(div_loss),
+        "slot_entropy": _loss_float(ent_loss),
+        "slot_spatial_separation": _loss_float(sep_loss),
+        "scene_dynamics": _loss_float(l_scene_dyn),
+        "agency": _loss_float(l_agency),
+        "successor_value": float(sf_value_last),
+    }
+    loss_terms_weighted = {
+        "pc": loss_terms_raw["pc"] * float(pain_w),
+        "perceptual_prediction": loss_terms_raw["perceptual_prediction"] * C.perception_pred_weight(),
+        "proprio_forward": loss_terms_raw["proprio_forward"] * ai_fwd_weight(),
+        "tactile_forward": loss_terms_raw["tactile_forward"] * C.ai_tactile_fwd_weight(),
+        "effort_forward": loss_terms_raw["effort_forward"] * C.ai_effort_fwd_weight(),
+        "effort_cost": loss_terms_raw["effort_cost"] * C.ai_effort_cost_weight(),
+        "intero_forward": loss_terms_raw["intero_forward"] * C.ai_intero_fwd_weight(),
+        "intero_preference": loss_terms_raw["intero_preference"] * intero_pref_weight_effective,
+        "slot_reconstruction": loss_terms_raw["slot_reconstruction"] * C.slot_recon_weight(),
+        "slot_diversity": loss_terms_raw["slot_diversity"] * C.slot_diversity_weight(),
+        "slot_entropy": loss_terms_raw["slot_entropy"] * C.slot_entropy_weight(),
+        "slot_spatial_separation": loss_terms_raw["slot_spatial_separation"] * C.slot_spatial_separation_weight(),
+        "scene_dynamics": loss_terms_raw["scene_dynamics"] * C.scene_dynamics_weight(),
+        "agency": loss_terms_raw["agency"] * C.agency_weight(),
+        "successor_value": -float(sf_value_w) * float(sf_value_last),
+    }
+    dominant_term, dominant_value = max(
+        loss_terms_weighted.items(),
+        key=lambda kv: abs(float(kv[1])),
+    )
+    dominant_fraction = abs(float(dominant_value)) / max(1e-8, sum(abs(float(v)) for v in loss_terms_weighted.values()))
+
     diagnostics = {
         "prediction_error_delta": pe_delta,
         "drive_reward_delta": reward_delta,
@@ -1715,6 +2003,31 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         "viability_value": ctx.viability.value,
         "salience_hint": float(tr10.payload.get("salience", 0.0)),
         "neural_pc_loss": pc_val,
+        "loss_total": loss_total_val,
+        "loss_terms": {
+            k: {"raw": round(float(loss_terms_raw[k]), 6), "weighted": round(float(loss_terms_weighted[k]), 6)}
+            for k in loss_terms_raw
+        },
+        "loss_dominant_term": dominant_term,
+        "loss_dominant_fraction": round(float(dominant_fraction), 6),
+        "loss_canary_state": objective_health.state,
+        "loss_canary_reason": objective_health.reason,
+        "loss_canary_pressure": round(float(objective_health.pressure), 6),
+        "loss_canary_optimizer_action": objective_health.optimizer_action,
+        "loss_canary_step_scale": round(float(objective_health.step_scale), 6),
+        "loss_canary_ema": (
+            round(float(objective_health.loss_ema), 6)
+            if objective_health.loss_ema is not None
+            else None
+        ),
+        "loss_canary_pc_ema": (
+            round(float(objective_health.pc_ema), 6)
+            if objective_health.pc_ema is not None
+            else None
+        ),
+        "loss_canary_slope_ema": round(float(objective_health.loss_slope_ema), 6),
+        "loss_canary_pc_slope_ema": round(float(objective_health.pc_slope_ema), 6),
+        "loss_canary_jump_ratio": round(float(objective_health.loss_jump_ratio), 6),
         "neural_pc_parts": pc_parts,
         "neural_forward_ms": round(fwd_ms, 4),
         "neural_backward_ms": round(bwd_ms, 4),
@@ -1745,6 +2058,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         "homeostatic_drive": bool(drive_on),
         "intero_drive": (round(drive_pain, 6) if drive_on else None),
         "intero_pred_error": (round(intero_pe_val, 6) if drive_on else None),
+        "drive_priority_gain_configured": round(float(drive_gain_configured), 6),
+        "drive_priority_gain_effective": round(float(drive_gain_effective), 6),
         # Successor-features value of the chosen action and the active (ramped)
         # value-shaping weight (None until the homeostatic drive is on).
         "sf_value": (round(sf_value_last, 6) if drive_on else None),
