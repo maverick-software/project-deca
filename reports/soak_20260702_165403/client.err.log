@@ -1,0 +1,36 @@
+Traceback (most recent call last):
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 131, in <module>
+    main()
+    ~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 117, in main
+    asyncio.run(
+    ~~~~~~~~~~~^
+        _run(
+        ^^^^^
+    ...<7 lines>...
+        )
+        ^
+    )
+    ^
+  File "C:\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 88, in _run
+    await _sender()
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 81, in _sender
+    await ws.send(json.dumps(_observation(i)))
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 478, in send
+    async with self.send_context():
+               ~~~~~~~~~~~~~~~~~^^
+  File "C:\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 965, in send_context
+    raise self.protocol.close_exc from original_exc
+websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received

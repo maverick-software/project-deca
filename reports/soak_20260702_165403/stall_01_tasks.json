@@ -1,0 +1,328 @@
+{
+ "tasks": [
+  {
+   "name": "Task-2",
+   "coro": "LifespanOn.main",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "on.py",
+     "line": 86,
+     "func": "main"
+    }
+   ]
+  },
+  {
+   "name": "decadic-cycle-160ba23f-63b3-4752-bb90-0bd52e51480a",
+   "coro": "AgentRuntime._cycle_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 2780,
+     "func": "_cycle_loop"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-6",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-8",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "decadic-consolidation-160ba23f-63b3-4752-bb90-0bd52e51480a",
+   "coro": "AgentRuntime._consolidation_runner",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 1320,
+     "func": "_consolidation_runner"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-1",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "Task-1",
+   "coro": "Server.serve",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "server.py",
+     "line": 79,
+     "func": "serve"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-7",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "Task-1567",
+   "coro": "IocpProactor.accept.<locals>.accept_coro",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "windows_events.py",
+     "line": 567,
+     "func": "accept_coro"
+    }
+   ]
+  },
+  {
+   "name": "decadic-metabolic-160ba23f-63b3-4752-bb90-0bd52e51480a",
+   "coro": "AgentRuntime._metabolic_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 1414,
+     "func": "_metabolic_loop"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-0",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "Task-1568",
+   "coro": "RequestResponseCycle.run_asgi",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "httptools_impl.py",
+     "line": 421,
+     "func": "run_asgi"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-2",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-9",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-3",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-4",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "decadic-perception-160ba23f-63b3-4752-bb90-0bd52e51480a-5",
+   "coro": "AgentRuntime._perception_worker_loop",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "runtime.py",
+     "line": 953,
+     "func": "_perception_worker_loop"
+    }
+   ]
+  },
+  {
+   "name": "starlette.middleware.base.BaseHTTPMiddleware.__call__.<locals>.call_next.<locals>.coro",
+   "coro": "TaskHandle._run_coro",
+   "done": false,
+   "exception": null,
+   "stack": [
+    {
+     "file": "core.py",
+     "line": 1308,
+     "func": "invoke"
+    },
+    {
+     "file": "core.py",
+     "line": 877,
+     "func": "invoke"
+    },
+    {
+     "file": "main.py",
+     "line": 441,
+     "func": "main"
+    },
+    {
+     "file": "main.py",
+     "line": 620,
+     "func": "run"
+    },
+    {
+     "file": "server.py",
+     "line": 75,
+     "func": "run"
+    },
+    {
+     "file": "runners.py",
+     "line": 195,
+     "func": "run"
+    },
+    {
+     "file": "runners.py",
+     "line": 118,
+     "func": "run"
+    },
+    {
+     "file": "base_events.py",
+     "line": 712,
+     "func": "run_until_complete"
+    },
+    {
+     "file": "base_events.py",
+     "line": 683,
+     "func": "run_forever"
+    },
+    {
+     "file": "base_events.py",
+     "line": 2040,
+     "func": "_run_once"
+    },
+    {
+     "file": "events.py",
+     "line": 89,
+     "func": "_run"
+    },
+    {
+     "file": "_tasks.py",
+     "line": 278,
+     "func": "_run_coro"
+    }
+   ]
+  }
+ ],
+ "agents": {
+  "160ba23f-63b3-4752-bb90-0bd52e51480a": {
+   "cycles_completed": 833,
+   "status": "alive",
+   "paused": false,
+   "perception_queue_size": 0,
+   "perception_queue_maxsize": 32,
+   "stage_pipeline": {
+    "active_sessions": 0,
+    "ready_sessions": 0,
+    "committed_sessions": 822,
+    "committed_sessions_per_s": 3.8979742789606955,
+    "dropped_sessions": 0,
+    "stale_sessions": 0,
+    "failed_sessions": 73,
+    "coalesced_sessions": 112,
+    "information_loss": 73,
+    "frames_received": 1007,
+    "frames_prefetched": 934,
+    "frames_folded": 934,
+    "frames_deep_processed": 822,
+    "producer_overlap_ratio": 1.0,
+    "decode_on_consume_ms": 157.9834000149276,
+    "consume_wait_ms": 1419.1723999974784,
+    "ready_queue_depth": 0,
+    "ready_coalesce_policy": "freshest",
+    "prefetch_backpressure_events": 0,
+    "prefetch_backpressure_ms": 0.0,
+    "oldest_unfolded_age_ms": 0.0,
+    "commit_lag_ms": 60212.895300006494,
+    "fold_lag_ms": 61848.26900000917,
+    "fold_ratio": 0.9275074478649454
+   }
+  }
+ }
+}

@@ -29,10 +29,7 @@ $env:DECADIC_SELF_PORT = "$Port"
 $env:DECADIC_NEURAL_PRESET = "full"
 $env:DECADIC_PLASTICITY_ENABLED = "1"
 $env:DECADIC_SPARSE_ENABLED = "1"
-# WS1 finding: growth evaluation (every 500 cycles) hangs the cycle loop on the
-# 10GB 3080 with the full preset - suspected CUDA alloc stall in grow_step /
-# reset_optimizer_state. Disabled for verification; growth needs its own fix.
-$env:DECADIC_GROWTH_ENABLED = "0"
+$env:DECADIC_GROWTH_ENABLED = "1"
 $env:DECADIC_ENCODER_MODE = "hf"
 $env:DECADIC_DEVICE = "cuda"
 $env:DECADIC_EPISODIC_ASYNC = "1"
