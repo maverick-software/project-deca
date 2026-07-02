@@ -302,6 +302,73 @@ def create_app() -> FastAPI:
             )
         return JSONResponse({"agents": agents})
 
+    @application.get("/debug/tasks")
+    async def debug_tasks() -> JSONResponse:
+        """Dump every asyncio task's current stack — for diagnosing cycle-loop
+        stalls where the event loop stays healthy but a coroutine is parked on
+        an await that never resolves (or the cycle task died silently)."""
+        import asyncio
+        import traceback
+
+        tasks_out = []
+        for task in asyncio.all_tasks():
+            frames = task.get_stack(limit=12)
+            stack = []
+            for f in frames:
+                stack.append(
+                    {
+                        "file": f.f_code.co_filename.split("\\")[-1].split("/")[-1],
+                        "line": f.f_lineno,
+                        "func": f.f_code.co_name,
+                    }
+                )
+            exc = None
+            if task.done():
+                try:
+                    e = task.exception()
+                    if e is not None:
+                        exc = "".join(traceback.format_exception(type(e), e, e.__traceback__))[-2000:]
+                except asyncio.CancelledError:
+                    exc = "cancelled"
+            tasks_out.append(
+                {
+                    "name": task.get_name(),
+                    "coro": getattr(task.get_coro(), "__qualname__", str(task.get_coro()))[:120],
+                    "done": task.done(),
+                    "exception": exc,
+                    "stack": stack,
+                }
+            )
+
+        registry: AgentRegistry = application.state.registry
+        agents_out = {}
+        for aid in registry.ids():
+            agent = registry.get(aid)
+            if agent is None:
+                continue
+            info: dict = {
+                "cycles_completed": int(agent.metrics.get("cycles_completed", 0)),
+                "status": agent.status,
+                "paused": agent.paused,
+            }
+            try:
+                q = getattr(agent, "_perception_queue", None)
+                if q is not None:
+                    info["perception_queue_size"] = q.qsize()
+                    info["perception_queue_maxsize"] = q.maxsize
+                sp = getattr(agent, "stage_pipeline", None)
+                if sp is not None:
+                    info["stage_pipeline"] = {
+                        k: v
+                        for k, v in sp.metrics().items()
+                        if isinstance(v, (int, float, str))
+                    }
+            except Exception as e:  # diagnostics must never fail the dump
+                info["introspection_error"] = repr(e)
+            agents_out[aid] = info
+
+        return JSONResponse({"tasks": tasks_out, "agents": agents_out})
+
     @application.post("/agent/{agent_id}/pause")
     async def pause_agent(agent_id: str) -> JSONResponse:
         registry: AgentRegistry = application.state.registry

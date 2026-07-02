@@ -1,0 +1,16 @@
+# Normalize line endings so cross-platform checkouts don't produce
+# whole-repo false diffs (LF in blobs, CRLF only where Windows needs it).
+* text=auto
+*.py text
+*.md text
+*.json text
+*.ts text
+*.tsx text
+*.html text
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.stl binary
+*.skn binary

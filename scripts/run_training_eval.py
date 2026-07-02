@@ -128,6 +128,12 @@ def main() -> int:
     ap.add_argument("--poll-interval", type=float, default=None)
     ap.add_argument("--timeout", type=float, default=None)
     ap.add_argument("--out-dir", default="reports")
+    ap.add_argument(
+        "--agent-id",
+        default=None,
+        help="Attach to an existing agent instead of creating a new one "
+        "(the eval is read-only; an observation stream must already be driving the agent)",
+    )
     args = ap.parse_args()
 
     spec = load_eval_spec(args.scenario)
@@ -147,7 +153,7 @@ def main() -> int:
         spec.timeout_s = float(args.timeout)
 
     client = HttpClient(args.base_url)
-    agent_id = _create_agent(client, spec.agent_preset)
+    agent_id = args.agent_id or _create_agent(client, spec.agent_preset)
     if spec.dojo_skill_id:
         _start_dojo(client, agent_id, spec.dojo_skill_id)
 

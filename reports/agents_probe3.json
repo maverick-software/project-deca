@@ -1,0 +1,15 @@
+{
+    "agents":  [
+                   {
+                       "agent_id":  "4018fa3f-76ff-47e9-8633-0d5fdeaf4e18",
+                       "neural_enabled":  true,
+                       "cycles_completed":  2127,
+                       "paused":  false,
+                       "status":  "alive",
+                       "died_at_cycle":  null,
+                       "encoder_mode":  "hf",
+                       "has_body":  true,
+                       "preset":  "full"
+                   }
+               ]
+}

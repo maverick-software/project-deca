@@ -1,0 +1,26 @@
+{
+    "agents":  [
+                   {
+                       "agent_id":  "230b9354-8358-42bc-ba3e-418a49a46b79",
+                       "neural_enabled":  true,
+                       "cycles_completed":  582,
+                       "paused":  false,
+                       "status":  "alive",
+                       "died_at_cycle":  null,
+                       "encoder_mode":  "hf",
+                       "has_body":  true,
+                       "preset":  "full"
+                   },
+                   {
+                       "agent_id":  "7eb0efee-6668-443b-9950-ced231615849",
+                       "neural_enabled":  true,
+                       "cycles_completed":  1114,
+                       "paused":  false,
+                       "status":  "alive",
+                       "died_at_cycle":  null,
+                       "encoder_mode":  "hf",
+                       "has_body":  true,
+                       "preset":  "full"
+                   }
+               ]
+}

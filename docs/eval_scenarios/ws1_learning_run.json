@@ -1,0 +1,32 @@
+{
+  "scenario": "ws1_learning_run",
+  "description": "WS1 neural-path verification: 3000-cycle learning run post-bf16-fix. Passes when cycles advance, neural PC loss decreases end-to-end, and no sustained loss divergence occurs.",
+  "cycles": 3000,
+  "seeds": [1],
+  "poll_interval_s": 0.5,
+  "timeout_s": 5400.0,
+  "gates": [
+    {
+      "name": "cycles advance",
+      "metric": "cycles_completed",
+      "mode": "delta",
+      "op": ">=",
+      "threshold": 3000
+    },
+    {
+      "name": "neural pc loss decreases",
+      "metric": "neural_pc_loss_last",
+      "mode": "delta",
+      "op": "<",
+      "threshold": 0.0
+    },
+    {
+      "name": "no sustained divergence",
+      "metric": "loss_canary_jump_ratio",
+      "mode": "fraction<=",
+      "op": "<",
+      "threshold": 25,
+      "fraction": 0.99
+    }
+  ]
+}

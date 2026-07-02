@@ -1,0 +1,42 @@
+Traceback (most recent call last):
+  File "C:\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 63, in _run
+    raw = await ws.recv()
+          ^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 305, in recv
+    return await self.recv_messages.get(decode)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\messages.py", line 158, in get
+    frame = await self.frames.get(not self.closed)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\messages.py", line 51, in get
+    await self.get_waiter
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 109, in <module>
+    main()
+    ~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 95, in main
+    asyncio.run(
+    ~~~~~~~~~~~^
+        _run(
+        ^^^^^
+    ...<7 lines>...
+        )
+        ^
+    )
+    ^
+  File "C:\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt

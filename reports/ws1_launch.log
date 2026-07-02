@@ -1,0 +1,29 @@
+=== [1/4] pytest SKIPPED ===
+=== [2/4] starting server on port 8765 ===
+server ready.
+=== [3/4] smoke SKIPPED ===
+=== [4/4] ws1_learning_run eval (3000 cycles) ===
+agent (learning): 4018fa3f-76ff-47e9-8633-0d5fdeaf4e18
+FAIL ws1_learning_run agent=4018fa3f-76ff-47e9-8633-0d5fdeaf4e18 report=D:\Users\charl\software\Self-Determination Model\reports\ws1_20260702_081152\training_eval_ws1_learning_run_20260702_082701.json
+  - gate failed: cycles advance (gate_failed)
+  - dominant loss fraction healthy for only 0.0% of samples
+  - target cycles not reached: observed 2301/3000
+samples:            406 (cycles 10 -> 2311)
+pc_loss first/last: 1.996154 -> 0.235814  (delta -1.760340)
+half means:         0.482682 -> 0.371394  (delta -0.111288)
+lsq slope/cycle:    -9.132e-05
+nonfinite samples:  0
+csv:                D:\Users\charl\software\Self-Determination Model\reports\ws1_20260702_081152\training_eval_ws1_learning_run_20260702_082701.pc_trend.csv
+png:                skipped (matplotlib not installed)
+verdict:            PASS — PC loss trending down
+
+=== WS1 complete - artifacts in D:\Users\charl\software\Self-Determination Model\reports\ws1_20260702_081152 ===
+{
+    "started":  "2026-07-02T08:11:52.1138068-07:00",
+    "git_sha":  "9079da0",
+    "pytest_exit":  "skipped",
+    "smoke_exit":  "skipped",
+    "learning_exit":  1,
+    "trend_exit":  0,
+    "finished":  "2026-07-02T08:27:02.2220387-07:00"
+}

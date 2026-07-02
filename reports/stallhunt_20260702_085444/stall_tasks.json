@@ -1,0 +1,432 @@
+{
+    "tasks":  [
+                  {
+                      "name":  "ws-sender-d6734de1-05e8-437e-928d-7eaa6f9927c8",
+                      "coro":  "create_app.\u003clocals\u003e.agent_cycle_socket.\u003clocals\u003e.sender",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "app.py",
+                                        "line":  1109,
+                                        "func":  "sender"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-20418",
+                      "coro":  "Queue.get",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "queues.py",
+                                        "line":  186,
+                                        "func":  "get"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-9",
+                      "coro":  "WebSocketServerProtocol.handler",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "server.py",
+                                        "line":  235,
+                                        "func":  "handler"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-6",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-2",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-7",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-3",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-0",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-4",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-20444",
+                      "coro":  "IocpProactor.accept.\u003clocals\u003e.accept_coro",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "windows_events.py",
+                                        "line":  567,
+                                        "func":  "accept_coro"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-8",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "starlette.middleware.base.BaseHTTPMiddleware.__call__.\u003clocals\u003e.call_next.\u003clocals\u003e.coro",
+                      "coro":  "TaskHandle._run_coro",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "core.py",
+                                        "line":  1308,
+                                        "func":  "invoke"
+                                    },
+                                    {
+                                        "file":  "core.py",
+                                        "line":  877,
+                                        "func":  "invoke"
+                                    },
+                                    {
+                                        "file":  "main.py",
+                                        "line":  441,
+                                        "func":  "main"
+                                    },
+                                    {
+                                        "file":  "main.py",
+                                        "line":  620,
+                                        "func":  "run"
+                                    },
+                                    {
+                                        "file":  "server.py",
+                                        "line":  75,
+                                        "func":  "run"
+                                    },
+                                    {
+                                        "file":  "runners.py",
+                                        "line":  195,
+                                        "func":  "run"
+                                    },
+                                    {
+                                        "file":  "runners.py",
+                                        "line":  118,
+                                        "func":  "run"
+                                    },
+                                    {
+                                        "file":  "base_events.py",
+                                        "line":  712,
+                                        "func":  "run_until_complete"
+                                    },
+                                    {
+                                        "file":  "base_events.py",
+                                        "line":  683,
+                                        "func":  "run_forever"
+                                    },
+                                    {
+                                        "file":  "base_events.py",
+                                        "line":  2040,
+                                        "func":  "_run_once"
+                                    },
+                                    {
+                                        "file":  "events.py",
+                                        "line":  89,
+                                        "func":  "_run"
+                                    },
+                                    {
+                                        "file":  "_tasks.py",
+                                        "line":  278,
+                                        "func":  "_run_coro"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-5",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-9",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-1",
+                      "coro":  "Server.serve",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "server.py",
+                                        "line":  79,
+                                        "func":  "serve"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-consolidation-d6734de1-05e8-437e-928d-7eaa6f9927c8",
+                      "coro":  "AgentRuntime._consolidation_runner",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  1309,
+                                        "func":  "_consolidation_runner"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-metabolic-d6734de1-05e8-437e-928d-7eaa6f9927c8",
+                      "coro":  "AgentRuntime._metabolic_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  1403,
+                                        "func":  "_metabolic_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-10",
+                      "coro":  "WebSocketProtocol.run_asgi",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "websockets_impl.py",
+                                        "line":  239,
+                                        "func":  "run_asgi"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-2",
+                      "coro":  "LifespanOn.main",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "on.py",
+                                        "line":  86,
+                                        "func":  "main"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-20419",
+                      "coro":  "Queue.get",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "queues.py",
+                                        "line":  186,
+                                        "func":  "get"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-13",
+                      "coro":  "WebSocketCommonProtocol.close_connection",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "protocol.py",
+                                        "line":  1276,
+                                        "func":  "close_connection"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-cycle-d6734de1-05e8-437e-928d-7eaa6f9927c8",
+                      "coro":  "AgentRuntime._cycle_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  2769,
+                                        "func":  "_cycle_loop"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-12",
+                      "coro":  "WebSocketCommonProtocol.keepalive_ping",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "protocol.py",
+                                        "line":  1229,
+                                        "func":  "keepalive_ping"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-20446",
+                      "coro":  "RequestResponseCycle.run_asgi",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "httptools_impl.py",
+                                        "line":  421,
+                                        "func":  "run_asgi"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "Task-11",
+                      "coro":  "WebSocketCommonProtocol.transfer_data",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "protocol.py",
+                                        "line":  940,
+                                        "func":  "transfer_data"
+                                    }
+                                ]
+                  },
+                  {
+                      "name":  "decadic-perception-d6734de1-05e8-437e-928d-7eaa6f9927c8-1",
+                      "coro":  "AgentRuntime._perception_worker_loop",
+                      "done":  false,
+                      "exception":  null,
+                      "stack":  [
+                                    {
+                                        "file":  "runtime.py",
+                                        "line":  942,
+                                        "func":  "_perception_worker_loop"
+                                    }
+                                ]
+                  }
+              ],
+    "agents":  {
+                   "d6734de1-05e8-437e-928d-7eaa6f9927c8":  {
+                                                                "cycles_completed":  10200,
+                                                                "status":  "alive",
+                                                                "paused":  false,
+                                                                "perception_queue_size":  0,
+                                                                "perception_queue_maxsize":  32,
+                                                                "stage_pipeline":  {
+                                                                                       "active_sessions":  596,
+                                                                                       "ready_sessions":  0,
+                                                                                       "committed_sessions":  10183,
+                                                                                       "committed_sessions_per_s":  8.503506070792707,
+                                                                                       "dropped_sessions":  0,
+                                                                                       "stale_sessions":  0,
+                                                                                       "failed_sessions":  4,
+                                                                                       "coalesced_sessions":  144,
+                                                                                       "information_loss":  4,
+                                                                                       "frames_received":  10927,
+                                                                                       "frames_prefetched":  10923,
+                                                                                       "frames_folded":  10327,
+                                                                                       "frames_deep_processed":  10183,
+                                                                                       "producer_overlap_ratio":  0.8948323183155875,
+                                                                                       "decode_on_consume_ms":  12.51209998736158,
+                                                                                       "consume_wait_ms":  939.7996000188868,
+                                                                                       "ready_queue_depth":  0,
+                                                                                       "ready_coalesce_policy":  "freshest",
+                                                                                       "prefetch_backpressure_events":  0,
+                                                                                       "prefetch_backpressure_ms":  0.0,
+                                                                                       "oldest_unfolded_age_ms":  65055.00480000046,
+                                                                                       "commit_lag_ms":  60695.15149999643,
+                                                                                       "fold_lag_ms":  61737.17590002343,
+                                                                                       "fold_ratio":  0.9450901436807907
+                                                                                   }
+                                                            }
+               }
+}

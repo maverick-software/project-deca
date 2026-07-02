@@ -86,6 +86,9 @@ def test_default_perceptual_pipeline_capacity_is_ten(monkeypatch, tmp_path):
     monkeypatch.delenv("DECADIC_STAGE_PIPELINING_ENABLED", raising=False)
     monkeypatch.delenv("DECADIC_PERCEPTUAL_PROCESSING_MODE", raising=False)
     monkeypatch.delenv("DECADIC_PERSISTENT_PARALLEL_PERCEPTION", raising=False)
+    # Hermetic default check: runner scripts (e.g. run_ws1.ps1) export this
+    # override, and this test asserts the code default.
+    monkeypatch.delenv("DECADIC_PREFETCH_OVERLOAD_POLICY", raising=False)
     monkeypatch.setenv("DECADIC_USE_NEURAL", "0")
     monkeypatch.setenv("DECADIC_BACKUPS_DIR", str(tmp_path))
     monkeypatch.setenv("DECADIC_CONSOLIDATION_STUB_INTERVAL_S", "0")

@@ -1,0 +1,889 @@
+{
+  "agent_id": "230b9354-8358-42bc-ba3e-418a49a46b79",
+  "baseline_comparison": {},
+  "behavior": {
+    "consume_events": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "consume_events",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "cycles_completed": {
+      "count": 18,
+      "delta": 510.0,
+      "first": 11.0,
+      "last": 521.0,
+      "max": 521.0,
+      "metric": "cycles_completed",
+      "min": 11.0,
+      "nonfinite": 0,
+      "slope": 30.338493292053663
+    },
+    "distance_traveled": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "distance_traveled",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "energy": {
+      "count": 18,
+      "delta": -0.002899999999996794,
+      "first": 100.0,
+      "last": 99.9971,
+      "max": 100.0,
+      "metric": "energy",
+      "min": 99.9971,
+      "nonfinite": 0,
+      "slope": -0.00017750257997897582
+    },
+    "fall_rate": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "fall_rate",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "gates": [
+      {
+        "metric": "cycles_completed",
+        "mode": "final",
+        "name": "cycles advance",
+        "op": ">=",
+        "reason": "ok",
+        "satisfied": true,
+        "threshold": 500.0,
+        "trend": {
+          "count": 18,
+          "delta": 510.0,
+          "first": 11.0,
+          "last": 521.0,
+          "max": 521.0,
+          "metric": "cycles_completed",
+          "min": 11.0,
+          "nonfinite": 0,
+          "slope": 30.338493292053663
+        },
+        "value": 521.0
+      },
+      {
+        "metric": "nan_recovery_events",
+        "mode": "final",
+        "name": "no NaN recovery",
+        "op": "<=",
+        "reason": "ok",
+        "satisfied": true,
+        "threshold": 0.0,
+        "trend": {
+          "count": 18,
+          "delta": 0.0,
+          "first": 0.0,
+          "last": 0.0,
+          "max": 0.0,
+          "metric": "nan_recovery_events",
+          "min": 0.0,
+          "nonfinite": 0,
+          "slope": 0.0
+        },
+        "value": 0.0
+      },
+      {
+        "metric": "loss_dominant_fraction",
+        "mode": "fraction<=",
+        "name": "dominant loss usually bounded",
+        "op": "<=",
+        "reason": "gate_failed",
+        "satisfied": false,
+        "threshold": 0.7,
+        "trend": {
+          "count": 18,
+          "delta": -0.10470299999999999,
+          "first": 0.999912,
+          "last": 0.895209,
+          "max": 0.999912,
+          "metric": "loss_dominant_fraction",
+          "min": 0.731281,
+          "nonfinite": 0,
+          "slope": -0.0004133353973168224
+        },
+        "value": 0.0
+      }
+    ],
+    "hydration": {
+      "count": 18,
+      "delta": -0.020600000000001728,
+      "first": 100.0,
+      "last": 99.9794,
+      "max": 100.0,
+      "metric": "hydration",
+      "min": 99.9794,
+      "nonfinite": 0,
+      "slope": -0.0012378740970071071
+    },
+    "integrity": {
+      "count": 18,
+      "delta": -21.238600000000005,
+      "first": 100.0,
+      "last": 78.7614,
+      "max": 100.0,
+      "metric": "integrity",
+      "min": 78.75,
+      "nonfinite": 0,
+      "slope": -0.37211382868937054
+    },
+    "net_energy_return": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "net_energy_return",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "resource_relief_events": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "resource_relief_events",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "root_height": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "root_height",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "teacher_override_fraction": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "teacher_override_fraction",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "torso_tilt": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "torso_tilt",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    }
+  },
+  "eval_window": {
+    "end_cycle": 521,
+    "observed_cycles": 510,
+    "start_cycle": 11,
+    "target_cycles": 500
+  },
+  "failures": [
+    "gate failed: dominant loss usually bounded (gate_failed)",
+    "dominant loss fraction healthy for only 0.0% of samples"
+  ],
+  "health": {
+    "canary_diverging_fraction": 0.0,
+    "dominant_loss_ok_fraction": 0.0,
+    "loss_total": {
+      "count": 18,
+      "delta": -1.7200405597686768,
+      "first": 1.9943797588348389,
+      "last": 0.2743391990661621,
+      "max": 2.0498857498168945,
+      "metric": "loss_total",
+      "min": 0.2743391990661621,
+      "nonfinite": 0,
+      "slope": -0.07131920574988374
+    },
+    "max_loss_jump_after_startup": 1.219467,
+    "nan_recovery_events": 0,
+    "neural_pc_loss": {
+      "count": 18,
+      "delta": -1.7483799457550049,
+      "first": 1.9901537895202637,
+      "last": 0.2417738437652588,
+      "max": 1.9901537895202637,
+      "metric": "neural_pc_loss_last",
+      "min": 0.2417738437652588,
+      "nonfinite": 0,
+      "slope": -0.061755498434860015
+    },
+    "plasticity_freeze_count": 0,
+    "plasticity_frozen_final": false,
+    "plasticity_thaw_count": 0,
+    "samples": 18
+  },
+  "learning": {
+    "consolidator_loss": {
+      "count": 18,
+      "delta": 2.526397466659546,
+      "first": 0.0,
+      "last": 2.526397466659546,
+      "max": 2.526397466659546,
+      "metric": "consolidator_loss",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.08343108249030493
+    },
+    "effort_pred_error": {
+      "count": 18,
+      "delta": 0.003966,
+      "first": 0.0,
+      "last": 0.003966,
+      "max": 0.007281,
+      "metric": "effort_pred_error",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": -3.009287925696607e-06
+    },
+    "forward_model_error": {
+      "count": 18,
+      "delta": 0.003253,
+      "first": 0.0,
+      "last": 0.003253,
+      "max": 0.006651,
+      "metric": "forward_model_error",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": -6.0197110423116614e-05
+    },
+    "intero_pred_error": {
+      "count": 18,
+      "delta": 0.014615,
+      "first": 0.0,
+      "last": 0.014615,
+      "max": 0.087551,
+      "metric": "intero_pred_error",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": -0.0007871754385964912
+    },
+    "tactile_pred_error": {
+      "count": 18,
+      "delta": 0.002567,
+      "first": 0.0,
+      "last": 0.002567,
+      "max": 0.007249,
+      "metric": "tactile_pred_error",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": -5.585758513931888e-05
+    }
+  },
+  "mechanical": {
+    "available": false,
+    "reason": "mechanical module-gradient checks are covered by in-process tests in v1"
+  },
+  "perception": {
+    "discovered_objects": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "discovered_objects",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "latest_discovery": {
+      "agent_id": "230b9354-8358-42bc-ba3e-418a49a46b79",
+      "discovery": {
+        "body_part_accuracy": 0.0,
+        "id_churn": 0.0,
+        "id_stability": 1.0,
+        "last_body_parts_found": 0,
+        "last_body_parts_truth": 0,
+        "last_detected": 0,
+        "last_matched": 0,
+        "last_oracle": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "updates": 1142
+      },
+      "discovery_health": {
+        "active_proposals": 0,
+        "appearance_cosine_max": null,
+        "appearance_cosine_mean": null,
+        "body_candidate_count": 0,
+        "centroid_spread": 0.0,
+        "collapsed": false,
+        "flow_confidence": 0.0,
+        "looming_count": 0,
+        "low_confidence_count": 0,
+        "ltm_write": "skipped_no_percepts",
+        "mask_entropy_mean": null,
+        "object_files": 0,
+        "reason": "skipped_no_objects",
+        "stable_tracked_objects": 0,
+        "status": "no_objects",
+        "stuff_count": 0
+      },
+      "egocentric_graph": {
+        "edges": [],
+        "nodes": [
+          {
+            "id": "self",
+            "orientation": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "position": [
+              11.41,
+              0.0,
+              0.0
+            ],
+            "role": "self",
+            "self_model": {
+              "affect": {
+                "pain": 0.0451,
+                "pleasure": 0.1572,
+                "priority": 0.489
+              },
+              "capability": 0.0,
+              "intero": {
+                "energy": 1.0,
+                "hydration": 0.9998,
+                "integrity": 0.7876,
+                "viability": 0.7876
+              },
+              "n_parts": 0
+            }
+          }
+        ]
+      },
+      "focus": {
+        "entities": [],
+        "ids": []
+      },
+      "ltm_consolidation": {
+        "accepted_ids": [],
+        "avg_property_confidence": 0.0,
+        "identity_refresh": false,
+        "ltm_scene_consolidation_enabled": true,
+        "property_update": false,
+        "reason": "skipped_no_percepts",
+        "relationship_update": false,
+        "relationship_updates_skipped": 0,
+        "scene_slots_considered": 0,
+        "semantic_conclusions": 0,
+        "semantic_correlations": 0,
+        "semantic_entities": 0,
+        "semantic_events": 0,
+        "semantic_relationships": 0,
+        "semantic_update": {},
+        "semantic_values": 0,
+        "source": "working_memory",
+        "status": "skipped_no_percepts",
+        "total_property_beliefs": 0,
+        "unstable_property_count": 0,
+        "wm_focus_slots_considered": 0
+      },
+      "ltm_metrics": {
+        "episodic_db_pruned_rows": 0,
+        "episodic_db_rows": 529,
+        "episodic_write_batch_size_last": 4,
+        "ltm_consolidation_jobs_completed": 0,
+        "ltm_consolidation_jobs_enqueued": 0,
+        "ltm_consolidation_queue_depth": 0,
+        "ltm_consolidation_sync_fallbacks": 0,
+        "ltm_consolidation_worker_ms": 0.0,
+        "ltm_match_cache_hits": 0,
+        "ltm_match_cache_misses": 0,
+        "ltm_match_cache_size": 0,
+        "ltm_match_ms": 0.0,
+        "ltm_pruned_edges": 0,
+        "ltm_pruned_nodes": 0,
+        "ltm_pruned_semantic_records": 0,
+        "ltm_semantic_jobs_skipped_by_interval": 0,
+        "ltm_write_batch_size_last": 1,
+        "memory_db_bytes": 8192,
+        "memory_wal_bytes": 2875824,
+        "sqlite_batch_commit_count": 138,
+        "sqlite_commit_count": 139,
+        "sqlite_last_commit_ms": 0.09190000128000975,
+        "sqlite_wal_checkpoint_count": 0
+      },
+      "object_files": [],
+      "oracle_truth_count": 0,
+      "perception_mode": "discovered",
+      "perception_organ": {
+        "body_candidate_count": 0,
+        "checkpoint_status": "online_lightweight",
+        "flow_confidence": 0.0,
+        "foreground_count": 0,
+        "frame_seen": false,
+        "global_motion": 0.0,
+        "grid_size": 16,
+        "local_motion_max": 0.0,
+        "local_motion_mean": 0.0,
+        "looming_count": 0,
+        "stale_frame": false,
+        "stuff_count": 0
+      },
+      "perceptual_processing": {
+        "batching_fallback": false,
+        "commit_hz": 27.159852486803043,
+        "commit_lag_ms": 0.05089998012408614,
+        "frames_committed": 1142,
+        "frames_dropped": 0,
+        "inflight": 10,
+        "ingest_hz": 28.016029973252177,
+        "mode": "serial_prefetch",
+        "oldest_unfolded_age_ms": 2839.159399998607,
+        "pipeline_sessions": 10,
+        "prefetch_backpressure_events": 36,
+        "prefetch_backpressure_ms": 7782.822800014401,
+        "prefetch_overload_policy": "block",
+        "prefetch_queue_depth": 31,
+        "prefetch_queue_max": 32,
+        "queue_depth": 31,
+        "ready_coalesce_policy": "freshest",
+        "sample_age_ms": 68.73430000268854,
+        "stage_pipeline_enabled": true
+      },
+      "retinotopic_map": null,
+      "scene_health": {
+        "active_drive_deficits": {
+          "energy": 0.0,
+          "hydration": 0.0002,
+          "integrity": 0.2124,
+          "pain": 0.0451,
+          "priority": "investigate"
+        },
+        "attention_top": [],
+        "body_candidate_count": 0,
+        "candidate_count": 0,
+        "duplicate_identity_count": 0,
+        "duplicate_prevention_count": 0,
+        "entity_count": 0,
+        "focus_count": 0,
+        "occluded_count": 0,
+        "prediction_assisted_count": 0,
+        "prediction_count": 0,
+        "prediction_error": null,
+        "prediction_unstable_count": 0,
+        "reidentified_count": 0,
+        "stable_count": 0,
+        "stuff_count": 0,
+        "visible_count": 0
+      },
+      "scene_prediction": {
+        "duplicate_prevention_count": 0,
+        "dynamics_enabled": true,
+        "enabled": true,
+        "error": null,
+        "loss": null,
+        "model_active": false,
+        "prediction_assisted_count": 0,
+        "prediction_count": 0,
+        "reidentified_count": 0,
+        "target": "centroid_uv_constant_velocity",
+        "uncertainty": null,
+        "unstable_count": 0
+      },
+      "scene_workspace": {
+        "active_drive_deficits": {
+          "energy": 0.0,
+          "hydration": 0.0002,
+          "integrity": 0.2124,
+          "pain": 0.0451,
+          "priority": "investigate"
+        },
+        "attention_top": [],
+        "body_candidate_count": 0,
+        "candidate_count": 0,
+        "cycle": 2284,
+        "duplicate_identity_count": 0,
+        "duplicate_prevention_count": 0,
+        "entities": [],
+        "entity_count": 0,
+        "focus_capacity": 0,
+        "focus_ids": [],
+        "occluded_count": 0,
+        "prediction_assisted_count": 0,
+        "prediction_count": 0,
+        "prediction_error": null,
+        "prediction_unstable_count": 0,
+        "reidentified_count": 0,
+        "relations": [],
+        "stable_count": 0,
+        "stuff_count": 0,
+        "visible_count": 0
+      },
+      "stage_pipeline": {
+        "active_sessions": 42,
+        "coalesced_sessions": 625,
+        "commit_lag_ms": 0.4298999847378582,
+        "committed_sessions": 512,
+        "committed_sessions_per_s": 12.176445591130031,
+        "consume_wait_ms": 388.11999998870306,
+        "decode_on_consume_ms": 173.15940000116825,
+        "dropped_sessions": 0,
+        "failed_sessions": 0,
+        "fold_lag_ms": 69.7904999833554,
+        "fold_ratio": 0.9686174724342663,
+        "frames_deep_processed": 512,
+        "frames_folded": 1142,
+        "frames_prefetched": 1145,
+        "frames_received": 1179,
+        "information_loss": 0,
+        "oldest_unfolded_age_ms": 2839.540200016927,
+        "prefetch_backpressure_events": 36,
+        "prefetch_backpressure_ms": 7782.822800014401,
+        "producer_overlap_ratio": 1.0,
+        "ready_coalesce_policy": "freshest",
+        "ready_queue_depth": 5,
+        "ready_sessions": 5,
+        "recent_sessions": [
+          {
+            "action_type": "motor",
+            "age_ms": 3298.79,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1137,
+            "session_id": "sess-00001137-7069c9eb",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:56:00Z",
+            "timings_ms": {
+              "consume_wait": 388.12,
+              "deep_process": 69.2111,
+              "fold": 0.2198,
+              "prefetch": 173.1594
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3229.39,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1136,
+            "session_id": "sess-00001136-9cedc83e",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:55:00Z",
+            "timings_ms": {
+              "consume_wait": 390.0985,
+              "deep_process": 71.2096,
+              "fold": 0.2154,
+              "prefetch": 165.1659
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3297.06,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1135,
+            "session_id": "sess-00001135-0b88b09a",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:54:00Z",
+            "timings_ms": {
+              "consume_wait": 378.337,
+              "deep_process": 88.4041,
+              "fold": 0.2042,
+              "prefetch": 138.495
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3208.23,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1134,
+            "session_id": "sess-00001134-bd479d87",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:53:00Z",
+            "timings_ms": {
+              "consume_wait": 375.9859,
+              "deep_process": 74.8837,
+              "fold": 0.2469,
+              "prefetch": 139.7155
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3269.94,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1133,
+            "session_id": "sess-00001133-df1903d0",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:52:00Z",
+            "timings_ms": {
+              "consume_wait": 381.7056,
+              "deep_process": 71.288,
+              "fold": 0.1887,
+              "prefetch": 139.3963
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3198.52,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1132,
+            "session_id": "sess-00001132-2804ee4f",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:51:00Z",
+            "timings_ms": {
+              "consume_wait": 401.12,
+              "deep_process": 73.2523,
+              "fold": 0.4064,
+              "prefetch": 144.6347
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3263.67,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1131,
+            "session_id": "sess-00001131-1c89b8f2",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:50:00Z",
+            "timings_ms": {
+              "consume_wait": 396.2742,
+              "deep_process": 73.0431,
+              "fold": 0.2116,
+              "prefetch": 143.3366
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3190.16,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1130,
+            "session_id": "sess-00001130-8cbce775",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:49:00Z",
+            "timings_ms": {
+              "consume_wait": 386.8456,
+              "deep_process": 76.2872,
+              "fold": 0.1917,
+              "prefetch": 140.0633
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3267.93,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1129,
+            "session_id": "sess-00001129-556b2ab7",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:48:00Z",
+            "timings_ms": {
+              "consume_wait": 382.0849,
+              "deep_process": 72.9325,
+              "fold": 0.1896,
+              "prefetch": 161.5992
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3332.09,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1128,
+            "session_id": "sess-00001128-b40b002b",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:47:00Z",
+            "timings_ms": {
+              "consume_wait": 372.5153,
+              "deep_process": 74.7094,
+              "fold": 0.1961,
+              "prefetch": 164.4812
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3325.82,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1127,
+            "session_id": "sess-00001127-bf6d7da4",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:46:00Z",
+            "timings_ms": {
+              "consume_wait": 352.3004,
+              "deep_process": 92.3538,
+              "fold": 0.2156,
+              "prefetch": 140.2202
+            }
+          },
+          {
+            "action_type": "motor",
+            "age_ms": 3302.9,
+            "current_stage": 10,
+            "failure_reason": null,
+            "frame_seq": 1126,
+            "session_id": "sess-00001126-f1d32bc2",
+            "status": "deep_processed",
+            "timestamp": "2026-05-07T12:45:00Z",
+            "timings_ms": {
+              "consume_wait": 352.2548,
+              "deep_process": 68.0394,
+              "fold": 0.1863,
+              "prefetch": 143.771
+            }
+          }
+        ],
+        "selected_session": {
+          "action_candidate": null,
+          "arbitration_reason": "fifo",
+          "frame_seq": 1137,
+          "memory_candidate": null,
+          "salience": 0.0,
+          "session_id": "sess-00001137-7069c9eb",
+          "urgency": 0.0,
+          "workspace_candidate": null
+        },
+        "stage_inflight": {
+          "commit": 0,
+          "prefetch": 37
+        },
+        "stage_latency_ms": {},
+        "stage_queue_depths": {
+          "prefetch": 37,
+          "ready": 5
+        },
+        "stale_sessions": 0
+      },
+      "working_memory": {
+        "capacity": 12,
+        "cycle": 1142,
+        "decay": 0.9,
+        "scene_latent_rms": 0.0434,
+        "scene_preview": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          -0.0132,
+          0.0081
+        ],
+        "slots": []
+      },
+      "workspace_ignition": {
+        "enabled": true,
+        "focus_ids": [],
+        "ignited": true,
+        "n_candidates": 1,
+        "scene_entity_count": 0,
+        "scene_relation_count": 0,
+        "share": 1.0,
+        "threshold": 0.5,
+        "winners": [
+          0
+        ]
+      }
+    },
+    "latest_discovery_health": {
+      "active_proposals": 0,
+      "appearance_cosine_max": null,
+      "appearance_cosine_mean": null,
+      "body_candidate_count": 0,
+      "centroid_spread": 0.0,
+      "collapsed": false,
+      "flow_confidence": 0.0,
+      "looming_count": 0,
+      "low_confidence_count": 0,
+      "ltm_write": "skipped_no_percepts",
+      "mask_entropy_mean": null,
+      "object_files": 0,
+      "reason": "skipped_no_objects",
+      "stable_tracked_objects": 0,
+      "status": "no_objects",
+      "stuff_count": 0
+    },
+    "ltm_property_beliefs": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "ltm_property_beliefs",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "object_files": {
+      "count": 18,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "object_files",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    }
+  },
+  "probes": {
+    "available": false,
+    "reason": "no_probe_bank"
+  },
+  "samples_path": "D:\\Users\\charl\\software\\Self-Determination Model\\reports\\ws1_20260702_074554\\training_eval_health_smoke_20260702_074702.jsonl",
+  "scenario": "health_smoke",
+  "seeds": [
+    1
+  ],
+  "status": "fail"
+}

@@ -834,6 +834,17 @@ class AgentRuntime:
                         dropped_seq,
                         "prefetch_queue_drop_oldest",
                     )
+                    # CRITICAL: the fold drain is strictly in-order on seq
+                    # (_perception_next_commit). A dropped frame must leave a
+                    # tombstone (obs=None, skipped by the drain) or the drain
+                    # waits on the missing seq forever and every later frame
+                    # piles up unprocessed -- the cycle loop then starves with
+                    # sessions stuck in "prefetched" (stall reproduced at
+                    # cycle 10,200 on 2026-07-02; see
+                    # reports/stallhunt_20260702_085444/stall_tasks.json).
+                    now_s = time.perf_counter()
+                    self._perception_ready[dropped_seq] = (None, _dropped_s, now_s, None)
+                    await self._drain_ready_perception()
                 except asyncio.QueueEmpty:
                     pass
             put_started = time.perf_counter()
