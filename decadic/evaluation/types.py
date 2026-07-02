@@ -105,9 +105,9 @@ class EvalReport:
     probes: dict[str, Any] = field(default_factory=dict)
     behavior: dict[str, Any] = field(default_factory=dict)
     baseline_comparison: dict[str, Any] = field(default_factory=dict)
+    eval_window: dict[str, Any] = field(default_factory=dict)
     failures: list[str] = field(default_factory=list)
     samples_path: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-

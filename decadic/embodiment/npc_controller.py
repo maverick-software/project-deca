@@ -91,7 +91,11 @@ class CrowdController:
         self.reservoirs: dict[str, float] | None = None
         self.habitats = active_habitats()
         self.npcs: list[NPCRuntime] = []
-        self._gift_addr: dict[str, tuple[int, int]] = {"food": (-1, -1), "water": (-1, -1)}
+        self._gift_addr: dict[str, tuple[int, int]] = {
+            "food": (-1, -1),
+            "water": (-1, -1),
+            "medical_kit": (-1, -1),
+        }
         self.last_offer_item = ""
         self.delivery_count = 0
         self.requested_item: str | None = None
@@ -174,8 +178,7 @@ class CrowdController:
         elif request == "food":
             item = "food"
         elif request == "care":
-            res = self.reservoirs or {}
-            item = "water" if float(res.get("hydration", 1.0)) < float(res.get("energy", 1.0)) else "food"
+            item = "medical_kit"
         else:
             return False
         if self._gift_addr.get(item, (-1, -1))[0] < 0:
@@ -348,7 +351,11 @@ class CrowdController:
         return self._nearest_in_zone(npc, self._bodies("food" if seek_water else "water"))
 
     def _bodies(self, item: str) -> dict[str, int]:
-        return self._sim.water_bodies if item == "water" else self._sim.food_bodies
+        if item == "water":
+            return self._sim.water_bodies
+        if item == "medical_kit":
+            return self._sim.medical_bodies
+        return self._sim.food_bodies
 
     def _nearest_in_zone(self, npc: NPCRuntime, bodies: dict[str, int]) -> tuple[float, float] | None:
         cx, cy = npc.habitat.center
@@ -405,6 +412,7 @@ class CrowdController:
                 npc.phase = "seek_food" if kind == "water" else "seek_water"
             if npc.is_parent and self._delivery_due(now, npc):
                 npc.carry = False
+                npc.item = self._needed_item()
                 npc.phase = "pickup"
         elif phase == "pickup":
             src = self._nearest_in_zone(npc, self._bodies(npc.item))
@@ -451,6 +459,20 @@ class CrowdController:
             return False
         thr = parent_effective_threshold(npc.offers)
         return min(res.values()) <= thr
+
+    def _needed_item(self) -> str:
+        res = self.reservoirs or {}
+        vals = {
+            "hydration": float(res.get("hydration", 100.0)),
+            "energy": float(res.get("energy", 100.0)),
+            "integrity": float(res.get("integrity", 100.0)),
+        }
+        need = min(vals, key=vals.get)
+        if need == "hydration":
+            return "water"
+        if need == "integrity":
+            return "medical_kit"
+        return "food"
 
     def _pick_up(self, npc: NPCRuntime) -> None:
         gname = GIFT_NAMES.get(npc.item, "")

@@ -16,6 +16,11 @@ the dashboard Skill Dojo tab or by calling `POST /dojo/skills/upload`.
   - Uses live teacher support for foot loading and first steps.
   - Adds nearby resource targets so walking has a purpose.
   - Finishes with autonomous walking/foraging and teacher weight `0`.
+- `crawl_to_food.json`
+  - Starts from all-fours and crawl motion scaffold practice.
+  - Gates on stance phase, distance, net displacement, and fall rate.
+  - Uses `give_food_near` to place food ahead of the torso.
+  - Finishes with autonomous crawl-forage while teacher, braces, and hold are off.
 
 Each phase includes:
 

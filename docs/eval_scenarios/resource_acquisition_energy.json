@@ -1,6 +1,6 @@
 {
   "scenario": "resource_acquisition_energy",
-  "description": "Evaluate whether survival behavior improves through anonymous resource acquisition.",
+  "description": "Evaluate whether survival behavior improves through anonymous resource acquisition. Requires a parent/caregiver-capable body scene such as village/NPC/parent with food props.",
   "cycles": 5000,
   "seeds": [1, 2, 3],
   "dojo_skill_id": "resource_acquisition_energy",

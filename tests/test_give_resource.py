@@ -2,7 +2,7 @@
 
 The explicit "admin" credit mirrors a real drink/meal (reservoir + pleasure)
 minus the body. The normal "direct" route now queues a body-side visual delivery
-so the agent sees the object before the usual food/water event provides relief.
+so the agent sees the object before the usual resource event provides relief.
 """
 
 import asyncio
@@ -12,14 +12,18 @@ from fastapi.testclient import TestClient
 
 
 class _FakeEnvironment:
-    def __init__(self, agent_id: str) -> None:
+    def __init__(self, agent_id: str, elements: list[str] | None = None) -> None:
         self.agent_id = agent_id
+        self.elements = elements
 
     def is_running(self) -> bool:
         return True
 
     def status(self) -> dict:
-        return {"agent_id": self.agent_id}
+        out = {"agent_id": self.agent_id}
+        if self.elements is not None:
+            out["elements"] = self.elements
+        return out
 
 
 def _runtime(tmp_path, monkeypatch, agent_id="give"):
@@ -60,6 +64,19 @@ def test_give_food_credits_energy(tmp_path, monkeypatch):
         rt.homeostasis.energy = 40.0
         await rt.give_resource("food")
         assert rt.homeostasis.energy > 40.0
+        await rt.stop()
+
+    asyncio.run(go())
+
+
+def test_give_medical_kit_credits_integrity(tmp_path, monkeypatch):
+    async def go():
+        rt = _runtime(tmp_path, monkeypatch)
+        rt.homeostasis.integrity = 40.0
+        out = await rt.give_resource("medical_kit")
+        assert rt.homeostasis.integrity > 40.0
+        assert out["resource"] == "medical_kit"
+        assert out["integrity"] == pytest.approx(rt.homeostasis.integrity, abs=1e-6)
         await rt.stop()
 
     asyncio.run(go())
@@ -106,11 +123,11 @@ def test_give_resource_rejects_unknown_resource(tmp_path, monkeypatch):
 def test_give_endpoint_admin_ok(api_app):
     with TestClient(api_app) as client:
         aid = client.post("/agent").json()["agent_id"]
-        r = client.post(f"/agent/{aid}/give?resource=water&mode=admin")
+        r = client.post(f"/agent/{aid}/give?resource=medical_kit&mode=admin")
         assert r.status_code == 200
         body = r.json()
-        assert body["status"] == "water_admin"
-        assert "hydration" in body
+        assert body["status"] == "medical_kit_admin"
+        assert "integrity" in body
 
 
 def test_give_endpoint_direct_queues_visual_delivery(api_app):
@@ -127,6 +144,47 @@ def test_give_endpoint_direct_queues_visual_delivery(api_app):
             msg = ws.receive_json()
         assert msg["type"] == "body_command"
         assert msg["command"] == "give_food_direct_visual"
+
+
+def test_give_endpoint_medical_direct_command(api_app):
+    with TestClient(api_app) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        client.post(f"/agent/{aid}/pause")
+        api_app.state.environment = _FakeEnvironment(aid)
+
+        r = client.post(f"/agent/{aid}/give?resource=medical_kit&mode=direct")
+        assert r.status_code == 200
+        assert r.json()["status"] == "medical_kit_direct_visual_queued"
+        with client.websocket_connect(f"/agent/{aid}/cycle") as ws:
+            msg = ws.receive_json()
+        assert msg["type"] == "body_command"
+        assert msg["command"] == "give_medical_kit_direct_visual"
+
+
+def test_give_endpoint_medical_near_command(api_app):
+    with TestClient(api_app) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        client.post(f"/agent/{aid}/pause")
+        api_app.state.environment = _FakeEnvironment(aid)
+
+        r = client.post(f"/agent/{aid}/give?resource=medical_kit&mode=near")
+        assert r.status_code == 200
+        assert r.json()["status"] == "medical_kit_near_queued"
+        with client.websocket_connect(f"/agent/{aid}/cycle") as ws:
+            msg = ws.receive_json()
+        assert msg["type"] == "body_command"
+        assert msg["command"] == "give_medical_kit_near"
+
+
+def test_give_endpoint_missing_resource_in_running_scenario_409(api_app):
+    with TestClient(api_app) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        client.post(f"/agent/{aid}/pause")
+        api_app.state.environment = _FakeEnvironment(aid, elements=["house", "food", "water"])
+
+        r = client.post(f"/agent/{aid}/give?resource=medical_kit&mode=near")
+        assert r.status_code == 409
+        assert "not in the running scenario" in r.json()["detail"]
 
 
 def test_give_endpoint_unknown_agent_404(api_app):

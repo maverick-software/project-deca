@@ -19,6 +19,7 @@ const ELEMENT_LABELS: Record<string, string> = {
   house: "House",
   food: "Food",
   water: "Water",
+  medical_kit: "Medical kit",
   bear: "Bear (threat)",
   ball: "Ball",
   obstacles: "Obstacles",

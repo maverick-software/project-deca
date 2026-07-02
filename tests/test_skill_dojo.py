@@ -9,6 +9,7 @@ from decadic.training.store import SkillValidationError, UploadedSkillStore, par
 from decadic.training.supervisor import SkillDojoError, SkillDojoSupervisor
 from decadic.training.teachers import StandTeacher
 from decadic.training.gates import Criterion
+from decadic.training.gates import evaluate_criterion
 from decadic.training.types import SkillGate, SkillPhase, SkillSpec, TeacherAdaptation
 from decadic.agents.runtime import AgentRuntime
 
@@ -164,10 +165,17 @@ def test_skill_catalog_contains_stand_and_recover():
     assert any(s["skill_id"] == "stand_and_recover" for s in list_skills())
     assert get_skill("developmental_locomotion") is not None
     assert get_skill("affective_locomotion") is not None
+    assert get_skill("resource_acquisition_energy").caregiver_enabled is True
 
 
 def test_stand_teacher_is_deterministic_neutral_target():
     assert StandTeacher().motor_target(n_actuators=4, metrics={}) == [0.0, 0.0, 0.0, 0.0]
+
+
+def test_boolean_gate_metrics_are_numeric():
+    crit = Criterion("braces_enabled", "<=", 0.0, "braces off")
+    assert evaluate_criterion(crit, [{"braces_enabled": False}]).satisfied is True
+    assert evaluate_criterion(crit, [{"braces_enabled": True}]).satisfied is False
 
 
 def test_uploaded_skill_store_roundtrip_and_validation(tmp_path):
@@ -204,6 +212,18 @@ def test_uploaded_skill_store_roundtrip_and_validation(tmp_path):
 
     assert store.delete("mini_recover") is True
     assert store.get("mini_recover") is None
+
+
+def test_uploaded_skill_allows_food_ahead_periodic_command(tmp_path):
+    raw = sample_uploaded_skill("crawl_food_test")
+    raw["phases"][0]["periodic_body_commands"] = [
+        {"command": "give_food_near", "period_s": 10.0}
+    ]
+    store = UploadedSkillStore(tmp_path)
+    store.save(raw)
+    spec = store.get("crawl_food_test")
+    assert spec is not None
+    assert spec.phases[0].periodic_body_commands[0].command == "give_food_near"
 
 
 def test_uploaded_skill_store_migrates_legacy_scaffold_commands(tmp_path):
@@ -406,6 +426,56 @@ def test_manual_scaffold_blocks_graduation_without_retry(tmp_path, monkeypatch):
         agent.metrics["braces_enabled"] = False
         await asyncio.sleep(0.03)
         assert sup.status()["state"] == "graduated"
+
+    asyncio.run(go())
+
+
+def test_manual_scaffold_can_pass_practice_but_not_terminal(tmp_path, monkeypatch):
+    monkeypatch.setenv("DECADIC_DOJO_POLL_S", "0.01")
+    agent = FakeAgent()
+    agent.metrics["braces_enabled"] = True
+    spec = SkillSpec(
+        skill_id="manual_practice",
+        version="1.0",
+        name="Manual Practice",
+        description="Practice may use manual scaffold; terminal may not.",
+        target_behavior="Do not graduate scaffolded.",
+        teacher="stand_teacher",
+        checkpoint_on_graduate=False,
+        phases=(
+            SkillPhase(
+                index=0,
+                name="Practice",
+                description="Non-terminal scaffolded practice.",
+                teacher_weight=0.0,
+                gate=SkillGate((Criterion("root_height", ">=", 1.0, "root high", "m"),), min_samples=1),
+                min_dwell_s=0.0,
+            ),
+            SkillPhase(
+                index=1,
+                name="Autonomous",
+                description="Terminal must be clean.",
+                teacher_weight=0.0,
+                gate=SkillGate((Criterion("root_height", ">=", 1.0, "root high", "m"),), min_samples=1),
+                min_dwell_s=0.0,
+                is_terminal=True,
+            ),
+        ),
+    )
+    sup = SkillDojoSupervisor(
+        FakeRegistry(agent),
+        backups_dir=tmp_path / "backups",
+        skill_loader=lambda sid: spec,
+    )
+
+    async def go():
+        await sup.start("A", "manual_practice")
+        await asyncio.sleep(0.04)
+        st = sup.status()
+        assert st["phase_index"] == 1
+        assert st["state"] == "running"
+        assert st["manual_scaffold_active"] is True
+        await sup.stop()
 
     asyncio.run(go())
 
@@ -803,13 +873,14 @@ def test_caregiver_monitor_reports_missing_parent_and_blocks_graduation(tmp_path
 
     async def go():
         await sup.start("A", "caregiver_skill")
-        await asyncio.sleep(0.03)
+        await asyncio.sleep(0.05)
         st = sup.status()
         assert st["caregiver_missing_parent"] is True
         assert st["caregiver_status"] == "caregiver_missing_parent"
-        assert st["state"] == "running"
+        assert st["state"] == "failed"
+        assert st["last_attempt_outcome"] == "setup_failed"
+        assert st["failure_reason"] == "setup_failed_missing_parent"
         assert "parent_request:water" not in agent.body_commands
-        await sup.stop()
 
     asyncio.run(go())
 

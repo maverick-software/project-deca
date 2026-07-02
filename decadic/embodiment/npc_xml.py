@@ -13,10 +13,10 @@ to splice into the worldbody. The clones:
 - are **collisionless** (``contype=0 conaffinity=0``): 8 extra bodies cost render
   but not contact solving, and they never push the learner's own physical body.
 
-Exactly one clone (the parent) carries two movable "gift" props it can drop for
-the learner; the gift names contain ``food``/``water`` (so the shared consumable
-machinery credits the *agent* when it eats them) and ``gift`` (so NPC foraging
-skips them).
+Exactly one clone (the parent) carries movable "gift" props it can drop for
+the learner; the gift names contain ``food``/``water``/``medical`` (so the
+shared resource machinery credits the *agent* when it uses them) and ``gift``
+(so NPC foraging skips them).
 """
 
 from __future__ import annotations
@@ -30,7 +30,11 @@ from decadic.embodiment.habitats import Habitat, active_habitats
 
 # Movable parent gifts (distinct from the legacy single-parent "prop_*_gift" so
 # the crowd and the legacy "npc" element can never collide on a body name).
-GIFT_NAMES: dict[str, str] = {"food": "prop_food_gift_c", "water": "prop_water_gift_c"}
+GIFT_NAMES: dict[str, str] = {
+    "food": "prop_food_gift_c",
+    "water": "prop_water_gift_c",
+    "medical_kit": "prop_medical_gift_c",
+}
 
 
 def _load_torso(asset_path: Path) -> ET.Element:
@@ -88,7 +92,7 @@ def clone_humanoid_xml(
 
 
 def parent_gifts_xml(pos: tuple[float, float]) -> str:
-    """The parent's two movable (collidable) gift props near ``pos``."""
+    """The parent's movable (collidable) gift props near ``pos``."""
     gx, gy = pos
     food = (
         f'\n    <body name="{GIFT_NAMES["food"]}" pos="{gx} {gy} 0.12">'
@@ -106,7 +110,21 @@ def parent_gifts_xml(pos: tuple[float, float]) -> str:
         f' rgba="0.2 0.5 0.95 1" condim="3" mass="0.2"/>'
         f"\n    </body>"
     )
-    return food + water + "\n"
+    medical = (
+        f'\n    <body name="{GIFT_NAMES["medical_kit"]}" pos="{gx + 0.8} {gy} 0.13">'
+        f'\n      <joint name="{GIFT_NAMES["medical_kit"]}_free" type="free" limited="false"'
+        f' armature="0" damping="0.4"/>'
+        f'\n      <geom name="{GIFT_NAMES["medical_kit"]}_box" type="box" size="0.18 0.11 0.065"'
+        f' rgba="0.96 0.96 0.92 1" condim="3" mass="0.2"/>'
+        f'\n      <geom name="{GIFT_NAMES["medical_kit"]}_handle" type="box" pos="0 0 0.12"'
+        f' size="0.11 0.018 0.025" rgba="0.08 0.10 0.12 1" contype="0" conaffinity="0"/>'
+        f'\n      <geom name="{GIFT_NAMES["medical_kit"]}_cross_a" type="box" pos="0 0 0.07"'
+        f' size="0.035 0.088 0.011" rgba="0.88 0.03 0.07 1" contype="0" conaffinity="0"/>'
+        f'\n      <geom name="{GIFT_NAMES["medical_kit"]}_cross_b" type="box" pos="0 0 0.084"'
+        f' size="0.09 0.035 0.011" rgba="0.88 0.03 0.07 1" contype="0" conaffinity="0"/>'
+        f"\n    </body>"
+    )
+    return food + water + medical + "\n"
 
 
 def _ring_offsets(n: int, radius: float, phase: float = 0.0) -> list[tuple[float, float]]:

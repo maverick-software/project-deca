@@ -53,6 +53,71 @@ def test_gate_evaluator_reports_pass_and_fail():
     assert bad["reason"] == "gate_failed"
 
 
+def test_gate_evaluator_identifies_discovery_namespace_mismatch():
+    from decadic.evaluation.metrics import evaluate_gate
+    from decadic.evaluation.types import EvalSample, MetricGate
+
+    sample = EvalSample(
+        cycle=1,
+        t_s=0.0,
+        metrics={},
+        discovery={"discovery_health": {"object_files": 3}},
+    )
+    bad = evaluate_gate(
+        MetricGate(name="objects", metric="object_files", mode="max", op=">=", threshold=2),
+        [sample],
+    )
+    assert bad["satisfied"] is False
+    assert bad["reason"] == "metric_present_in_discovery_not_metrics"
+
+
+def test_normalize_eval_metrics_flattens_discovery_for_gates():
+    from decadic.evaluation.metrics import evaluate_gate
+    from decadic.evaluation.sampling import normalize_eval_metrics
+    from decadic.evaluation.types import EvalSample, MetricGate
+
+    discovery = {
+        "discovery_health": {
+            "object_files": 3,
+            "active_proposals": 5,
+            "stable_tracked_objects": 4,
+            "centroid_spread": 0.12,
+            "collapsed": False,
+            "flow_confidence": 0.2,
+            "looming_count": 1,
+            "stuff_count": 2,
+            "body_candidate_count": 1,
+        },
+        "ltm_consolidation": {"status": "accepted"},
+    }
+    sample = EvalSample(
+        cycle=1,
+        t_s=0.0,
+        metrics=normalize_eval_metrics({}, discovery),
+        discovery=discovery,
+    )
+    ok = evaluate_gate(
+        MetricGate(name="objects", metric="object_files", mode="max", op=">=", threshold=2),
+        [sample],
+    )
+    assert ok["satisfied"] is True
+    assert sample.metrics["perception_collapsed"] == 0.0
+    assert sample.metrics["ltm_write_accepted"] == 1.0
+
+
+def test_eval_window_uses_relative_observed_cycles():
+    from decadic.evaluation.sampling import eval_window, target_end_cycle
+
+    samples = [_sample(3900), _sample(5400)]
+    assert target_end_cycle(3900, 1500) == 5400
+    assert eval_window(samples, 1500) == {
+        "target_cycles": 1500,
+        "start_cycle": 3900,
+        "end_cycle": 5400,
+        "observed_cycles": 1500,
+    }
+
+
 def test_build_report_passes_resource_like_stream():
     from decadic.evaluation.runner import build_report
     from decadic.evaluation.types import EvalSpec, MetricGate
@@ -72,6 +137,7 @@ def test_build_report_passes_resource_like_stream():
     assert report.status == "pass"
     assert report.failures == []
     assert report.behavior["consume_events"]["delta"] == 1
+    assert report.eval_window["observed_cycles"] == 1
 
 
 def test_build_report_fails_dominant_loss_and_canary():
@@ -131,4 +197,3 @@ def test_holdout_split_never_samples_holdout_for_train():
         assert split.push(t) == "holdout"
     assert split.sample_train(4) == []
     assert split.sample_holdout(4)
-

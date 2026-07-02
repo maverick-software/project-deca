@@ -199,6 +199,7 @@ def test_crowd_resources_register_and_respawn():
         # Net-additive habitat resources are registered as consumables.
         assert any(n.startswith("prop_food_h") for n in sim.food_bodies)
         assert any(n.startswith("prop_water_h") for n in sim.water_bodies)
+        assert "prop_medical_gift_c" in sim.medical_bodies
         assert len(sim.food_bodies) >= 8
         name = next(n for n in sim.food_bodies if n.startswith("prop_food_h"))
         sim._consume(name)
@@ -232,6 +233,24 @@ def test_crowd_credit_isolation():
         assert any(e["type"] == "npc_eat" for e in evs)
         out = classify_events(evs, threshold=0.0)
         assert out["energy_gain"] == 0.0 and out["hydration_gain"] == 0.0
+    finally:
+        sim.close()
+
+
+def test_habitat_resources_do_not_credit_learner():
+    """Village pantry resources are for NPC ecology unless visibly gifted/manual."""
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = _crowd_sim(mod)
+    try:
+        food = next(n for n in sim.food_bodies if n.startswith("prop_food_h"))
+        fp = sim.data.xpos[sim.food_bodies[food]]
+        rj = sim._mj.mj_name2id(sim.model, sim._mj.mjtObj.mjOBJ_JOINT, "root")
+        qa = int(sim.model.jnt_qposadr[rj])
+        sim.data.qpos[qa : qa + 3] = (float(fp[0]), float(fp[1]), mod.STAND_ROOT_HEIGHT)
+        sim._mj.mj_forward(sim.model, sim.data)
+        evs = sim.scene_events(0)
+        assert not any(e.get("source") == food and e["type"] == "food" for e in evs)
     finally:
         sim.close()
 
@@ -285,6 +304,15 @@ def test_crowd_parent_delivers_on_need_not_timer():
         _place(sim, parent, cx, cy)  # re-park (events may have nudged nothing, be safe)
         sim.crowd.events(3, 6.0)
         assert parent.phase == "pickup"
+        assert parent.item == "water"
+
+        parent.phase = "seek_food"
+        parent.next_deliver = 0.0
+        sim.crowd.set_reservoirs({"hydration": 0.95, "energy": 0.95, "integrity": 0.2})
+        _place(sim, parent, cx, cy)
+        sim.crowd.events(4, 7.0)
+        assert parent.phase == "pickup"
+        assert parent.item == "medical_kit"
     finally:
         sim.close()
 
@@ -338,6 +366,11 @@ def test_crowd_parent_counts_as_caregiver_and_accepts_request():
         assert sim.crowd.requested_item == "water"
         assert sim._caregiver_status() == "requested"
         assert sim._caregiver_pending_request() is True
+
+        assert sim._request_parent("care") is True
+        assert parent.item == "medical_kit"
+        assert sim.crowd.requested_item == "medical_kit"
+        assert sim.crowd.request_kind == "care"
     finally:
         sim.close()
 

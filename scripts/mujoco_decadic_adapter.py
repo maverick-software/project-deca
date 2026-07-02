@@ -110,6 +110,22 @@ _WATER_XML = """
     </body>
 """
 
+_MEDICAL_XML = """
+    <!-- Medical kits: integrity-restoring supplies the learner can discover and use -->
+    <body name="prop_medical_m1" pos="1.6 1.6 0.13">
+      <geom name="prop_medical_m1_box" type="box" size="0.18 0.11 0.065" rgba="0.96 0.96 0.92 1" condim="3"/>
+      <geom name="prop_medical_m1_handle" type="box" pos="0 0 0.12" size="0.11 0.018 0.025" rgba="0.08 0.10 0.12 1" contype="0" conaffinity="0"/>
+      <geom name="prop_medical_m1_cross_a" type="box" pos="0 0 0.07" size="0.035 0.088 0.011" rgba="0.88 0.03 0.07 1" contype="0" conaffinity="0"/>
+      <geom name="prop_medical_m1_cross_b" type="box" pos="0 0 0.084" size="0.09 0.035 0.011" rgba="0.88 0.03 0.07 1" contype="0" conaffinity="0"/>
+    </body>
+    <body name="prop_medical_m2" pos="-1.7 1.6 0.13">
+      <geom name="prop_medical_m2_box" type="box" size="0.18 0.11 0.065" rgba="0.96 0.96 0.92 1" condim="3"/>
+      <geom name="prop_medical_m2_handle" type="box" pos="0 0 0.12" size="0.11 0.018 0.025" rgba="0.08 0.10 0.12 1" contype="0" conaffinity="0"/>
+      <geom name="prop_medical_m2_cross_a" type="box" pos="0 0 0.07" size="0.035 0.088 0.011" rgba="0.88 0.03 0.07 1" contype="0" conaffinity="0"/>
+      <geom name="prop_medical_m2_cross_b" type="box" pos="0 0 0.084" size="0.09 0.035 0.011" rgba="0.88 0.03 0.07 1" contype="0" conaffinity="0"/>
+    </body>
+"""
+
 _BEAR_XML = """
     <!-- Threat: low-friction free body driven toward the humanoid each step -->
     <body name="prop_bear" pos="6.0 0.0 0.55">
@@ -175,10 +191,11 @@ def _npc_humanoid_xml(
       while the root is force-driven (no ragdoll; an active gait can be added
       later via qfrc on the npc hinges).
 
-    Two movable "gifts" (free joints) ride along so the parent can carry and
-    drop a morsel for the agent: ``prop_food_gift`` (edible) and
-    ``prop_water_gift`` (drinkable). They are named so the shared food/water
-    machinery credits the *agent* (not the parent) when the agent consumes them.
+    Three movable "gifts" (free joints) ride along so the parent can carry and
+    drop supplies for the agent: ``prop_food_gift`` (edible),
+    ``prop_water_gift`` (drinkable), and ``prop_medical_gift`` (healing). They
+    are named so the shared resource machinery credits the *agent* (not the
+    parent) when the agent consumes them.
     """
     import re
     import xml.etree.ElementTree as ET
@@ -226,11 +243,26 @@ def _npc_humanoid_xml(
         f' rgba="0.2 0.5 0.95 1" condim="3" mass="0.2"/>'
         f"\n    </body>\n"
     )
+    medical_gift = (
+        f'\n    <body name="prop_medical_gift" pos="{gx + 0.8} {gy} 0.13">'
+        f'\n      <joint name="prop_medical_gift_free" type="free" limited="false"'
+        f' armature="0" damping="0.4"/>'
+        f'\n      <geom name="prop_medical_gift_box" type="box" size="0.18 0.11 0.065"'
+        f' rgba="0.96 0.96 0.92 1" condim="3" mass="0.2"/>'
+        f'\n      <geom name="prop_medical_gift_handle" type="box" pos="0 0 0.12"'
+        f' size="0.11 0.018 0.025" rgba="0.08 0.10 0.12 1" contype="0" conaffinity="0"/>'
+        f'\n      <geom name="prop_medical_gift_cross_a" type="box" pos="0 0 0.07"'
+        f' size="0.035 0.088 0.011" rgba="0.88 0.03 0.07 1" contype="0" conaffinity="0"/>'
+        f'\n      <geom name="prop_medical_gift_cross_b" type="box" pos="0 0 0.084"'
+        f' size="0.09 0.035 0.011" rgba="0.88 0.03 0.07 1" contype="0" conaffinity="0"/>'
+        f"\n    </body>\n"
+    )
     return (
-        "\n    <!-- Parent NPC: scripted humanoid + movable food & water gifts -->\n    "
+        "\n    <!-- Parent NPC: scripted humanoid + movable food, water & medical gifts -->\n    "
         + humanoid
         + food_gift
         + water_gift
+        + medical_gift
     )
 
 
@@ -240,6 +272,7 @@ SCENE_ELEMENTS: dict[str, str] = {
     "house": _HOUSE_XML,
     "food": _FOOD_XML,
     "water": _WATER_XML,
+    "medical_kit": _MEDICAL_XML,
     "bear": _BEAR_XML,
     "ball": _BALL_XML,
     "obstacles": _OBSTACLES_XML,
@@ -256,6 +289,7 @@ SELECTABLE_ELEMENTS: list[str] = [
     "house",
     "food",
     "water",
+    "medical_kit",
     "bear",
     "ball",
     "obstacles",
@@ -263,12 +297,32 @@ SELECTABLE_ELEMENTS: list[str] = [
     "crowd",
 ]
 
+ALWAYS_ON_ELEMENTS: tuple[str, ...] = ("medical_kit",)
+
+
+def normalize_scene_elements(elements: list[str]) -> list[str]:
+    """De-duplicate scene elements and force always-on survival props."""
+    chosen: list[str] = []
+    seen: set[str] = set()
+    for el in elements:
+        key = str(el).strip().lower()
+        if key and key in SCENE_ELEMENTS and key not in seen:
+            seen.add(key)
+            chosen.append(key)
+    if chosen:
+        for key in ALWAYS_ON_ELEMENTS:
+            if key not in seen:
+                seen.add(key)
+                chosen.append(key)
+    return chosen
+
+
 # Legacy named scenes (CLI --scene / manual runs) expressed as element sets so
 # existing commands and tests keep working after the move to composable scenes.
 LEGACY_SCENES: dict[str, list[str]] = {
-    "default": ["obstacles", "house", "food", "water"],
-    "bear": ["bear", "house", "food", "water"],
-    "food": ["food_ring", "house", "food", "water"],
+    "default": ["obstacles", "house", "food", "water", "medical_kit"],
+    "bear": ["bear", "house", "food", "water", "medical_kit"],
+    "food": ["food_ring", "house", "food", "water", "medical_kit"],
     # One-command crowd run: the village plus shelter.
     "village": ["crowd", "house"],
 }
@@ -330,10 +384,12 @@ NPC_PICKUP_RADIUS = 1.0  # reach a source within this distance to pick it up (m)
 # Food / water scenes
 EAT_RADIUS = 1.0  # root within this distance of a morsel consumes it (arm's reach, m)
 DRINK_RADIUS = 1.0  # root within this distance of a glass drinks it (m)
+MEDICAL_RADIUS = 1.0  # root within this distance of a kit uses it (m)
 # Consumables respawn so the agent can sustain itself indefinitely. Wall-clock
 # seconds; tuned for watchable replenishment (not the metabolic survival clock).
 FOOD_RESPAWN_S = 30.0
 WATER_RESPAWN_S = 25.0
+MEDICAL_RESPAWN_S = 40.0
 DIRECT_PROVISION_START_M = 2.4
 DIRECT_PROVISION_TARGET_M = 0.18
 DIRECT_PROVISION_DURATION_S = 2.4
@@ -446,13 +502,9 @@ def compose_scene(elements: list[str]) -> str:
     preserving the first-seen order.
     """
     base = ASSETS_XML.read_text(encoding="utf-8")
-    seen: set[str] = set()
     parts: list[str] = []
-    for el in elements:
-        key = str(el).strip().lower()
-        if key and key in SCENE_ELEMENTS and key not in seen:
-            seen.add(key)
-            parts.append(SCENE_ELEMENTS[key])
+    for key in normalize_scene_elements(elements):
+        parts.append(SCENE_ELEMENTS[key])
     snippet = "".join(parts)
     return base.replace("</worldbody>", f"{snippet}  </worldbody>")
 
@@ -466,9 +518,9 @@ def scene_xml(scene: str) -> str:
 
 def prop_kind(name: str) -> str:
     """Infer an entity kind label from a prop body name."""
-    for kind in ("bear", "food", "water", "house", "ball", "box", "sphere", "npc"):
+    for kind in ("bear", "food", "water", "medical", "house", "ball", "box", "sphere", "npc"):
         if kind in name:
-            return kind
+            return "medical_kit" if kind == "medical" else kind
     return "pillar"
 
 
@@ -597,6 +649,7 @@ class BodySnapshot:
     stance: str = "stand"  # active braced posture/motion (stance library name)
     stance_phase: float = 0.0  # motion-stance phase in [0, 1] (0 for static stances)
     movement_hold: bool = False  # hold mode: welded + looping until disabled
+    manual_auto_reset: bool = False  # manual scaffold safety: reset a motion stance after falls
     foot_load_l: float = 0.0  # left foot load / body weight
     foot_load_r: float = 0.0  # right foot load / body weight
     hand_load_l: float = 0.0  # left hand load / body weight
@@ -762,6 +815,7 @@ def build_body_observation(
                 "stance": str(snap.stance),
                 "stance_phase": round(float(snap.stance_phase), 5),
                 "movement_hold": bool(snap.movement_hold),
+                "manual_auto_reset": bool(snap.manual_auto_reset),
                 "foot_load_l": round(float(snap.foot_load_l), 5),
                 "foot_load_r": round(float(snap.foot_load_r), 5),
                 "hand_load_l": round(float(snap.hand_load_l), 5),
@@ -900,10 +954,10 @@ class HumanoidSim:
         # An explicit element list (composable scenario) wins over the legacy
         # named scene; otherwise resolve the named scene to its element set.
         if elements is not None:
-            self.elements = [str(e).strip().lower() for e in elements if str(e).strip()]
+            self.elements = normalize_scene_elements(elements)
             xml = compose_scene(self.elements)
         else:
-            self.elements = list(LEGACY_SCENES.get(scene, []))
+            self.elements = normalize_scene_elements(list(LEGACY_SCENES.get(scene, [])))
             xml = scene_xml(scene)
         self.model = mujoco.MjModel.from_xml_string(xml)
         self.data = mujoco.MjData(self.model)
@@ -1043,6 +1097,7 @@ class HumanoidSim:
         # one-shot Rise), until the operator disables it. Off (default): the ROM
         # ratchet runs as usual. Only takes effect while the master braces are on.
         self._movement_hold = False
+        self._manual_auto_reset = False
         # Seed the model's spring reference so the body stands as a braced statue
         # from t=0 when braced (before any brain command); apply the matching
         # gains, or relax to native springs when the braces start disabled.
@@ -1094,6 +1149,7 @@ class HumanoidSim:
         self.bear_body: int | None = None
         self.food_bodies: dict[str, int] = {}
         self.water_bodies: dict[str, int] = {}
+        self.medical_bodies: dict[str, int] = {}
         for name, b in self.prop_bodies:
             if "bear" in name:
                 self.bear_body = b
@@ -1101,6 +1157,8 @@ class HumanoidSim:
                 self.food_bodies[name] = b
             elif "water" in name:
                 self.water_bodies[name] = b
+            elif "medical" in name or "medkit" in name:
+                self.medical_bodies[name] = b
         self.eaten: set[str] = set()
         self._direct_delivery: DirectProvision | None = None
         self._direct_delivery_events: list[dict[str, Any]] = []
@@ -1130,8 +1188,16 @@ class HumanoidSim:
         self.npc_hinges: list[tuple[int, int, float]] = []
         self._npc_anim: dict[str, tuple[int, int, float]] = {}
         # item -> (qpos_adr, dof_adr) of each gift's free joint (-1 when absent).
-        self._gift_names = {"food": "prop_food_gift", "water": "prop_water_gift"}
-        self._gift_addr: dict[str, tuple[int, int]] = {"food": (-1, -1), "water": (-1, -1)}
+        self._gift_names = {
+            "food": "prop_food_gift",
+            "water": "prop_water_gift",
+            "medical_kit": "prop_medical_gift",
+        }
+        self._gift_addr: dict[str, tuple[int, int]] = {
+            "food": (-1, -1),
+            "water": (-1, -1),
+            "medical_kit": (-1, -1),
+        }
         self._npc_phase = "seek_food"  # foraging FSM state (distinct from gait phase)
         self._npc_item = "food"  # which gift the parent currently fetches/carries
         self._npc_next_deliver = NPC_DELIVER_PERIOD_S  # earliest sim-time of next offer (refractory)
@@ -1347,6 +1413,24 @@ class HumanoidSim:
                   else "[body] movement hold OFF (ROM curriculum resumes)", flush=True)
         self._movement_hold = value
 
+    def set_manual_auto_reset(self, value: bool) -> None:
+        """Toggle manual scaffold safety reset for motion stances.
+
+        This is operator scaffolding, not Skill Dojo progression. When enabled,
+        a fall while a motion stance is selected re-applies that stance pose after
+        a short cooldown without touching the brain, replay memory, or earned
+        brace ROM.
+        """
+        value = bool(value)
+        if value != self._manual_auto_reset:
+            print(
+                "[body] manual motion auto-reset ON"
+                if value
+                else "[body] manual motion auto-reset OFF",
+                flush=True,
+            )
+        self._manual_auto_reset = value
+
     def _seed_stance_spring(self) -> None:
         """Push the current ``_q_ref`` into MuJoCo's per-hinge spring reference."""
         for h in range(len(self.hinge_qpos_adr)):
@@ -1533,12 +1617,63 @@ class HumanoidSim:
         t = self.data.xpos[self.torso_id]
         return (float(t[0]), float(t[1]))
 
+    @staticmethod
+    def _resource_kind(kind: str) -> str:
+        key = str(kind or "").strip().lower()
+        if key in {"medical_kit", "medical-kit", "medical", "medkit", "kit", "care"}:
+            return "medical_kit"
+        return "water" if key == "water" else "food"
+
+    def _resource_bodies(self, kind: str) -> dict[str, int]:
+        k = self._resource_kind(kind)
+        if k == "water":
+            return self.water_bodies
+        if k == "medical_kit":
+            return self.medical_bodies
+        return self.food_bodies
+
+    @staticmethod
+    def _is_habitat_resource(name: str) -> bool:
+        return "_h" in name
+
+    @staticmethod
+    def _is_learner_consumable(name: str) -> bool:
+        # Learner-open props (arena resources) and parent/manual gifts can credit
+        # the learner. Habitat resources are NPC ecology and must not magically
+        # relieve the agent just because it falls near a village pantry.
+        return "gift" in name or not HumanoidSim._is_habitat_resource(name)
+
     def _resource_candidates(self, kind: str) -> list[str]:
-        bodies = self.water_bodies if kind == "water" else self.food_bodies
-        return sorted(name for name in bodies if "gift" not in name)
+        bodies = self._resource_bodies(kind)
+        open_props = sorted(
+            name for name in bodies if "gift" not in name and not self._is_habitat_resource(name)
+        )
+        if open_props:
+            return open_props
+        # Explicit manual/debug provisioning may reuse a gift body when the
+        # current scenario has only caregiver supplies (e.g. crowd + house).
+        return sorted(name for name in bodies if "gift" in name)
+
+    def _free_joint_addr_for_body(self, name: str) -> tuple[int, int] | None:
+        jid = self._mj.mj_name2id(self.model, self._mj.mjtObj.mjOBJ_JOINT, f"{name}_free")
+        if jid < 0:
+            return None
+        qadr = int(self.model.jnt_qposadr[jid])
+        dadr = int(self.model.jnt_dofadr[jid])
+        return qadr, dadr
+
+    def _place_resource_body(self, name: str, body_id: int, pos: list[float] | tuple[float, float, float]) -> None:
+        joint_addr = self._free_joint_addr_for_body(name)
+        if joint_addr is None:
+            self.model.body_pos[body_id][:3] = pos
+            return
+        qadr, dadr = joint_addr
+        self.data.qpos[qadr : qadr + 3] = pos
+        self.data.qpos[qadr + 3 : qadr + 7] = [1.0, 0.0, 0.0, 0.0]
+        self.data.qvel[dadr : dadr + 6] = 0.0
 
     def give_near(self, kind: str) -> bool:
-        """Admin provisioning: relocate a food/water prop a step ahead of the agent.
+        """Admin provisioning: relocate a resource prop a step ahead of the agent.
 
         Reuses an existing static scene prop (never an NPC gift body) by editing
         its world position so it lands ~1.6 m in front of the torso - just outside
@@ -1548,7 +1683,8 @@ class HumanoidSim:
         Works only when the running scenario includes that element; returns False
         otherwise.
         """
-        bodies = self.water_bodies if kind == "water" else self.food_bodies
+        kind = self._resource_kind(kind)
+        bodies = self._resource_bodies(kind)
         candidates = self._resource_candidates(kind)
         if not candidates:
             return False
@@ -1558,8 +1694,12 @@ class HumanoidSim:
         xmat = self.data.xmat[self.torso_id].reshape(3, 3)
         yaw = math.atan2(float(xmat[1, 0]), float(xmat[0, 0]))
         dist = 1.6
-        self.model.body_pos[bid][0] = ax + math.cos(yaw) * dist
-        self.model.body_pos[bid][1] = ay + math.sin(yaw) * dist
+        base_z = float(self.data.xpos[bid][2])
+        self._place_resource_body(
+            name,
+            bid,
+            [ax + math.cos(yaw) * dist, ay + math.sin(yaw) * dist, base_z],
+        )
         # Reappear (un-hide + recollide) and cancel any pending auto-respawn.
         self._respawn(name)
         self._respawn_at.pop(name, None)
@@ -1601,10 +1741,10 @@ class HumanoidSim:
         brain first sees the object, then the normal food/water event fires only
         when the object reaches the head/mouth zone.
         """
-        kind = "water" if kind == "water" else "food"
+        kind = self._resource_kind(kind)
         if self._direct_delivery is not None:
             return False
-        bodies = self.water_bodies if kind == "water" else self.food_bodies
+        bodies = self._resource_bodies(kind)
         candidates = self._resource_candidates(kind)
         if not candidates:
             return False
@@ -1616,7 +1756,7 @@ class HumanoidSim:
         self._respawn(name)
         self._respawn_at.pop(name, None)
         self._set_resource_delivery_contact(bid, enabled=False)
-        self.model.body_pos[bid][:3] = start
+        self._place_resource_body(name, bid, start)
         self._direct_delivery = DirectProvision(
             kind=kind,
             name=name,
@@ -1645,7 +1785,7 @@ class HumanoidSim:
             delivery.start[i] * (1.0 - a) + delivery.target[i] * a
             for i in range(3)
         ]
-        self.model.body_pos[delivery.body_id][:3] = pos
+        self._place_resource_body(delivery.name, delivery.body_id, pos)
         self._mj.mj_forward(self.model, self.data)
         if t >= 1.0:
             self._consume(delivery.name)
@@ -1681,7 +1821,7 @@ class HumanoidSim:
         if not randomize_resources_enabled():
             return -1
         name_to_bid: dict[str, int] = {}
-        for nm, bid in {**self.food_bodies, **self.water_bodies}.items():
+        for nm, bid in {**self.food_bodies, **self.water_bodies, **self.medical_bodies}.items():
             if self._is_scatterable_prop(nm):
                 name_to_bid[nm] = bid
         if not name_to_bid:
@@ -1712,7 +1852,7 @@ class HumanoidSim:
         return used_seed
 
     def _npc_source_bodies(self, item: str) -> dict[str, int]:
-        return self.water_bodies if item == "water" else self.food_bodies
+        return self._resource_bodies(item)
 
     def _parent_delivery_due(self, now: float) -> bool:
         """Need-threshold trigger for parental provisioning (was a fixed timer).
@@ -1728,6 +1868,20 @@ class HumanoidSim:
             return False
         return min(res.values()) <= _parent_effective_threshold(self._npc_offers)
 
+    def _needed_resource_item(self) -> str:
+        res = self._agent_reservoirs or {}
+        vals = {
+            "hydration": float(res.get("hydration", 100.0)),
+            "energy": float(res.get("energy", 100.0)),
+            "integrity": float(res.get("integrity", 100.0)),
+        }
+        need = min(vals, key=vals.get)
+        if need == "hydration":
+            return "water"
+        if need == "integrity":
+            return "medical_kit"
+        return "food"
+
     def _request_legacy_parent(self, kind: str) -> bool:
         """Explicit dojo caregiver request through the legacy parent."""
         if self.npc_torso is None or self.npc_root_qadr < 0:
@@ -1738,10 +1892,7 @@ class HumanoidSim:
         elif request == "food":
             item = "food"
         elif request == "care":
-            res = self._agent_reservoirs or {}
-            # Integrity has no direct visible healing object in v1. The parent
-            # approaches and offers the most useful visible consumable.
-            item = "water" if float(res.get("hydration", 100.0)) < float(res.get("energy", 100.0)) else "food"
+            item = "medical_kit"
         else:
             return False
         if self._gift_addr.get(item, (-1, -1))[0] < 0:
@@ -2001,7 +2152,11 @@ class HumanoidSim:
         return total
 
     def _consumable_body(self, name: str) -> int | None:
-        return self.food_bodies.get(name) or self.water_bodies.get(name)
+        return (
+            self.food_bodies.get(name)
+            or self.water_bodies.get(name)
+            or self.medical_bodies.get(name)
+        )
 
     def _consume(self, name: str) -> None:
         """Mark a consumable used: hide + disable contact, and schedule respawn."""
@@ -2020,7 +2175,12 @@ class HumanoidSim:
                 self.model.geom_rgba[g, 3] = 0.0
                 self.model.geom_contype[g] = 0
                 self.model.geom_conaffinity[g] = 0
-        delay = WATER_RESPAWN_S if name in self.water_bodies else FOOD_RESPAWN_S
+        if name in self.water_bodies:
+            delay = WATER_RESPAWN_S
+        elif name in self.medical_bodies:
+            delay = MEDICAL_RESPAWN_S
+        else:
+            delay = FOOD_RESPAWN_S
         self._respawn_at[name] = time.monotonic() + delay
 
     def _respawn(self, name: str) -> None:
@@ -2083,7 +2243,9 @@ class HumanoidSim:
             live = {
                 name: [float(x) for x in self.data.xpos[b][:3]]
                 for name, b in self.food_bodies.items()
-                if name not in self.eaten and name not in active_direct
+                if name not in self.eaten
+                and name not in active_direct
+                and self._is_learner_consumable(name)
             }
             for name in eaten_now(root, live):
                 self._consume(name)
@@ -2093,11 +2255,25 @@ class HumanoidSim:
             live_w = {
                 name: [float(x) for x in self.data.xpos[b][:3]]
                 for name, b in self.water_bodies.items()
-                if name not in self.eaten and name not in active_direct
+                if name not in self.eaten
+                and name not in active_direct
+                and self._is_learner_consumable(name)
             }
             for name in drunk_now(root, live_w):
                 self._consume(name)
                 events.append({"type": "water", "intensity": 1.0, "source": name})
+
+        if self.medical_bodies:
+            live_m = {
+                name: [float(x) for x in self.data.xpos[b][:3]]
+                for name, b in self.medical_bodies.items()
+                if name not in self.eaten
+                and name not in active_direct
+                and self._is_learner_consumable(name)
+            }
+            for name in eaten_now(root, live_m, MEDICAL_RADIUS):
+                self._consume(name)
+                events.append({"type": "medical_kit", "intensity": 1.0, "source": name})
 
         # Parent NPC behaviour: forage for itself most of the time, and only
         # occasionally fetch a morsel and drop it far from the agent (so the
@@ -2123,6 +2299,7 @@ class HumanoidSim:
                 elif not live_n:
                     self._npc_phase = "seek_water"
                 if self._parent_delivery_due(now):
+                    self._npc_item = self._needed_resource_item()
                     self._npc_begin_delivery()
             elif phase == "seek_water":
                 live_nw = {
@@ -2138,6 +2315,7 @@ class HumanoidSim:
                 elif not live_nw:
                     self._npc_phase = "seek_food"
                 if self._parent_delivery_due(now):
+                    self._npc_item = self._needed_resource_item()
                     self._npc_begin_delivery()
             elif phase == "pickup":
                 # Walk to the nearest source of the chosen item, then carry it.
@@ -2611,6 +2789,7 @@ class HumanoidSim:
             stance=str(self._stance_name),
             stance_phase=float(self._stance_phase),
             movement_hold=bool(self._movement_hold),
+            manual_auto_reset=bool(self._manual_auto_reset),
             foot_load_l=float(self._foot_load_l),
             foot_load_r=float(self._foot_load_r),
             hand_load_l=float(self._hand_load_l),
@@ -2838,6 +3017,7 @@ async def _run(
                 )
             was_fallen = False
             env_paused = False
+            manual_reset_cooldown_until = 0.0
             prev_contacts: dict[str, float] = {}
             impact_cooldown: dict[str, int] = {}
             i = 0
@@ -2859,6 +3039,10 @@ async def _run(
                         sim.set_movement_hold(True)
                     elif cmd == "hold_off":
                         sim.set_movement_hold(False)
+                    elif cmd == "manual_auto_reset_on":
+                        sim.set_manual_auto_reset(True)
+                    elif cmd == "manual_auto_reset_off":
+                        sim.set_manual_auto_reset(False)
                     elif cmd.startswith("set_stance:"):
                         sim.set_stance(cmd.split(":", 1)[1])
                     elif cmd.startswith("perturb:"):
@@ -2880,8 +3064,13 @@ async def _run(
                     elif cmd == "close_viewer":
                         sim.close()
                         print("[body] live viewer closed by request", flush=True)
-                    elif cmd in ("give_water_near", "give_food_near"):
-                        kind = "water" if cmd == "give_water_near" else "food"
+                    elif cmd in ("give_water_near", "give_food_near", "give_medical_kit_near"):
+                        if cmd == "give_water_near":
+                            kind = "water"
+                        elif cmd == "give_medical_kit_near":
+                            kind = "medical_kit"
+                        else:
+                            kind = "food"
                         if sim.give_near(kind):
                             print(f"[body] placed {kind} near the agent", flush=True)
                         else:
@@ -2889,8 +3078,17 @@ async def _run(
                                 f"[body] no {kind} prop in this scenario to place",
                                 flush=True,
                             )
-                    elif cmd in ("give_water_direct_visual", "give_food_direct_visual"):
-                        kind = "water" if cmd == "give_water_direct_visual" else "food"
+                    elif cmd in (
+                        "give_water_direct_visual",
+                        "give_food_direct_visual",
+                        "give_medical_kit_direct_visual",
+                    ):
+                        if cmd == "give_water_direct_visual":
+                            kind = "water"
+                        elif cmd == "give_medical_kit_direct_visual":
+                            kind = "medical_kit"
+                        else:
+                            kind = "food"
                         if sim.give_direct_visual(kind):
                             print(
                                 f"[body] delivering {kind} through egocentric view",
@@ -2974,6 +3172,32 @@ async def _run(
                     cooldown_until=impact_cooldown,
                     fall_height=sim._stance_fall_z,
                 )
+                fell_this_step = any(
+                    isinstance(ev, dict) and ev.get("type") == "fall" for ev in events
+                )
+                if (
+                    fell_this_step
+                    and sim._manual_auto_reset
+                    and stance_lib.get_stance(sim._stance_name).is_motion
+                    and time.perf_counter() >= manual_reset_cooldown_until
+                ):
+                    stance_name = sim._stance_name
+                    sim.set_stance(stance_name)
+                    snap = sim.snapshot()
+                    prev_contacts = {}
+                    was_fallen = False
+                    manual_reset_cooldown_until = time.perf_counter() + 2.0
+                    events.append(
+                        {
+                            "type": "manual_scaffold_reset",
+                            "intensity": 0.4,
+                            "source": stance_name,
+                        }
+                    )
+                    print(
+                        f"[body] manual auto-reset reapplied motion stance {stance_name}",
+                        flush=True,
+                    )
                 prev_contacts = {k: float(v) for k, v in snap.contacts.items()}
                 events.extend(sim.scene_events(i))
                 obs = build_body_observation(

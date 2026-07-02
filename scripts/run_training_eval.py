@@ -27,6 +27,7 @@ from decadic.evaluation.runner import (  # noqa: E402
     report_path_for,
     write_samples_jsonl,
 )
+from decadic.evaluation.sampling import normalize_eval_metrics, target_end_cycle  # noqa: E402
 from decadic.evaluation.types import EvalSample  # noqa: E402
 
 
@@ -85,13 +86,19 @@ def _collect_live(
     t0 = time.perf_counter()
     deadline = t0 + timeout_s
     last_cycle = -1
+    start_cycle: int | None = None
+    end_cycle: int | None = None
     while time.perf_counter() < deadline:
         metrics_resp = client.get(f"/agent/{agent_id}/metrics")
         metrics = dict(metrics_resp.get("metrics") or {})
         cycle = int(metrics.get("cycles_completed", 0) or 0)
         discovery = _try_get(client, f"/agent/{agent_id}/discovery")
         dojo = _try_get(client, "/dojo/status") if include_dojo else None
+        metrics = normalize_eval_metrics(metrics, discovery, dojo)
         if cycle != last_cycle or not samples:
+            if start_cycle is None:
+                start_cycle = cycle
+                end_cycle = target_end_cycle(start_cycle, cycles)
             samples.append(
                 EvalSample(
                     cycle=cycle,
@@ -102,7 +109,7 @@ def _collect_live(
                 )
             )
             last_cycle = cycle
-        if cycle >= cycles:
+        if end_cycle is not None and cycle >= end_cycle:
             break
         time.sleep(max(0.05, poll_interval_s))
     return samples
@@ -163,10 +170,12 @@ def main() -> int:
         samples_path=str(sample_path),
         probe_bank=args.probe_bank,
     )
-    if samples and samples[-1].cycle < spec.cycles:
+    start_cycle = samples[0].cycle if samples else 0
+    observed = max(0, samples[-1].cycle - start_cycle) if samples else 0
+    if samples and observed < spec.cycles:
         report.status = "fail"
         report.failures.append(
-            f"target cycles not reached: {samples[-1].cycle}/{spec.cycles}"
+            f"target cycles not reached: observed {observed}/{spec.cycles}"
         )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
@@ -178,4 +187,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

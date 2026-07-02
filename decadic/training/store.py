@@ -30,7 +30,7 @@ BODY_COMMAND_RE = re.compile(
     r"^(recenter|perturb:small|set_stance:[a-zA-Z0-9_]+)$"
 )
 PERIODIC_BODY_COMMAND_RE = re.compile(
-    r"^(perturb:small|parent_request:(food|water)|randomize_resources)$"
+    r"^(perturb:small|parent_request:(food|water|care)|give_food_near|randomize_resources)$"
 )
 SKILL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
 LEGACY_SCAFFOLD_COMMANDS = {"braces_on", "braces_off", "hold_on", "hold_off", "reset_braces"}

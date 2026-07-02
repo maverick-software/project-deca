@@ -76,8 +76,8 @@ class Homeostasis:
 def classify_events(events: list[dict], threshold: float) -> dict[str, float]:
     """Split observation events into per-reservoir effects.
 
-    Returns non-negative ``integrity_damage``, ``energy_gain``,
-    ``hydration_gain`` and a ``stress`` term (anticipatory threat). This
+    Returns non-negative ``integrity_damage``, ``integrity_gain``,
+    ``energy_gain``, ``hydration_gain`` and a ``stress`` term (anticipatory threat). This
     generalizes :func:`damage_from_events` / :func:`nourishment_from_events`.
 
     Injury is human-superficial: a ``collision`` carries an impact-energy
@@ -92,11 +92,13 @@ def classify_events(events: list[dict], threshold: float) -> dict[str, float]:
         food_credit,
         game_damage_scale,
         max_integrity_damage_per_obs,
+        medical_kit_credit,
         water_credit,
     )
 
     fc = food_credit()
     wc = water_credit()
+    mc = medical_kit_credit()
     cds = collision_damage_scale()
     fds = fall_damage_scale()
     gds = game_damage_scale()
@@ -110,6 +112,7 @@ def classify_events(events: list[dict], threshold: float) -> dict[str, float]:
         "threat_damage": 0.0,
         "energy_gain": 0.0,
         "hydration_gain": 0.0,
+        "integrity_gain": 0.0,
         "stress": 0.0,
     }
     for ev in events:
@@ -136,6 +139,8 @@ def classify_events(events: list[dict], threshold: float) -> dict[str, float]:
             out["energy_gain"] += intensity * fc
         elif et in ("water", "drink"):
             out["hydration_gain"] += intensity * wc
+        elif et in ("medical", "medical_kit", "medkit", "heal", "care"):
+            out["integrity_gain"] += intensity * mc
     out["integrity_damage"] = min(out["integrity_damage"], max_integrity_damage_per_obs())
     # Never let the exempt threat portion exceed the (capped) total.
     out["threat_damage"] = min(out["threat_damage"], out["integrity_damage"])

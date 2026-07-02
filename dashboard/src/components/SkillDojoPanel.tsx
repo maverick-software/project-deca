@@ -9,6 +9,7 @@ import {
   resetBraces,
   setBracesEnabled,
   setDojoPhase,
+  setManualAutoReset,
   setMovementHold,
   setStance,
   startDojo,
@@ -27,7 +28,7 @@ import { heavyPresetWarning } from "../neuralPresets";
 import { usePolling } from "../usePolling";
 import Info from "./Info";
 
-const DOJO_SCENE = ["house", "food", "water", "npc"];
+const DOJO_SCENE = ["house", "food", "water", "medical_kit", "npc"];
 
 type BannerKind = "info" | "warning" | "error" | "success";
 
@@ -429,6 +430,29 @@ function AttemptPanel(props: { status: DojoStatus }) {
   );
 }
 
+function ForwardProgressPanel(props: { status: DojoStatus }) {
+  const s = props.status;
+  const distance = Math.max(0, s.distance_traveled ?? 0);
+  const displacement = Math.max(0, s.net_displacement ?? 0);
+  return (
+    <section className="dojo-subpanel">
+      <h4>Forward Progress</h4>
+      <Meter label="Path distance" value={clamp01(distance / 2.0)} detail={`${distance.toFixed(2)}m`} tone="confidence" />
+      <Meter label="Net displacement" value={clamp01(displacement / 1.0)} detail={`${displacement.toFixed(2)}m`} tone="confidence" />
+      <div className="dojo-kv-grid compact">
+        <span>Stance phase</span>
+        <b>{((s.stance_phase ?? 0) * 100).toFixed(0)}%</b>
+        <span>Fall rate</span>
+        <b>{((s.fall_rate ?? 0) * 100).toFixed(0)}%</b>
+        <span>Food events</span>
+        <b>{(s.consume_events ?? 0).toFixed(0)}</b>
+        <span>Relief events</span>
+        <b>{(s.resource_relief_events ?? 0).toFixed(0)}</b>
+      </div>
+    </section>
+  );
+}
+
 function CaregiverPanel(props: { status: DojoStatus }) {
   const s = props.status;
   const activeNeed = s.caregiver_need && s.caregiver_need !== "none";
@@ -560,6 +584,7 @@ function LiveTrainingPanel(props: {
       <div className="dojo-live-grid">
         <TeacherAssistPanel status={s} />
         <AttemptPanel status={s} />
+        <ForwardProgressPanel status={s} />
         <CaregiverPanel status={s} />
       </div>
       <div className="dojo-live-warning">
@@ -604,6 +629,7 @@ function ManualScaffoldPanel(props: {
   const m = props.metrics;
   const bracesEnabled = m?.braces_enabled ?? false;
   const movementHold = m?.movement_hold ?? false;
+  const manualAutoReset = m?.manual_auto_reset ?? false;
   const romMean = m?.rom_mean ?? 0;
   const braceEngaged = m?.brace_engaged ?? 0;
   const stance = m?.stance ?? "stand";
@@ -640,7 +666,7 @@ function ManualScaffoldPanel(props: {
         <span>manual only</span>
       </div>
       <p className="dojo-context-copy">
-        Braces and hold are operator tools for setup/debugging. Skill Dojo teacher support is separate.
+        Braces, hold, and fall reset are operator tools for setup/debugging. Skill Dojo teacher support is separate.
       </p>
       {contaminated && <Banner kind="warning">Manual scaffold blocks phase graduation while training is running.</Banner>}
       <ToggleSwitch
@@ -657,6 +683,13 @@ function ManualScaffoldPanel(props: {
         onChange={() => props.agentId && call(setMovementHold(props.agentId, !movementHold))}
         hint="locks/replays stance motion"
       />
+      <ToggleSwitch
+        label="Auto reset on fall"
+        checked={manualAutoReset}
+        disabled={disabled}
+        onChange={() => props.agentId && call(setManualAutoReset(props.agentId, !manualAutoReset))}
+        hint="manual motion safety"
+      />
       <button className="btn dojo-full-btn" disabled={disabled || !bracesEnabled} onClick={() => props.agentId && call(resetBraces(props.agentId))}>
         Reset Brace ROM
       </button>
@@ -668,7 +701,10 @@ function ManualScaffoldPanel(props: {
         <div className="dojo-stance-grid">{staticStances.map(stanceButton)}</div>
       </div>
       <div className="dojo-stance-group">
-        <div className="dojo-context-label">Motion stance</div>
+        <div className="dojo-context-label">
+          Motion scaffold
+          <Info tip="Motion stances replay a body scaffold. Use Skill Dojo skills for measured training, attempts, gates, and graduation." />
+        </div>
         <div className="dojo-stance-grid">{motionStances.map(stanceButton)}</div>
       </div>
       <Meter

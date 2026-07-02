@@ -74,25 +74,36 @@ def _clamp01(x: float) -> float:
 
 
 def mean_metric(window: list[dict], key: str) -> float:
-    vals = [
-        float(s[key])
-        for s in window
-        if key in s and isinstance(s[key], (int, float)) and not isinstance(s[key], bool)
-    ]
+    vals = _metric_values(window, key)
     if not vals:
         return 0.0
     return sum(vals) / len(vals)
 
 
 def delta_metric(window: list[dict], key: str) -> float:
-    vals = [
-        float(s[key])
-        for s in window
-        if key in s and isinstance(s[key], (int, float)) and not isinstance(s[key], bool)
-    ]
+    vals = _metric_values(window, key)
     if len(vals) < 2:
         return 0.0
     return vals[-1] - vals[0]
+
+
+def _metric_values(window: list[dict], key: str) -> list[float]:
+    vals: list[float] = []
+    for sample in window:
+        if key not in sample:
+            continue
+        value = _metric_value(sample[key])
+        if value is not None:
+            vals.append(value)
+    return vals
+
+
+def _metric_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 def evaluate_criterion(criterion: Criterion, window: list[dict]) -> CriterionResult:

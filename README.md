@@ -241,73 +241,213 @@ powershell -ExecutionPolicy Bypass -File "scripts\install_desktop_shortcut.ps1"
 duplicates, and installs the dashboard's npm deps on first run. The body viewer is a
 separate, optional process — start it with the command below when you want a body.)
 
-### Starting, stopping, and restarting the local processes
+### Starting, stopping, and restarting the local system
 
-Preferred start path:
+The local system has three layers:
+
+1. Backend API: `127.0.0.1:8765`
+2. Web UI / Vite dashboard: `127.0.0.1:5173`
+3. Optional managed MuJoCo body/environment, started from the dashboard or
+   `POST /environment`
+
+The commands below are the exact Windows PowerShell commands that have been used
+successfully on this repo.
+
+#### Start backend and UI
+
+From the repository root:
+
+```powershell
+$repo = (Get-Location).Path
+$logs = Join-Path $repo 'logs'
+New-Item -ItemType Directory -Force -Path $logs | Out-Null
+$python = Join-Path $repo '.venv\Scripts\python.exe'
+
+$server = Start-Process -FilePath $python `
+  -ArgumentList @('-m','uvicorn','decadic.api.app:app','--host','127.0.0.1','--port','8765') `
+  -WorkingDirectory $repo `
+  -WindowStyle Hidden `
+  -RedirectStandardOutput (Join-Path $logs 'decadic_server_stdout.log') `
+  -RedirectStandardError (Join-Path $logs 'decadic_server_stderr.log') `
+  -PassThru
+
+$ui = Start-Process -FilePath 'npm.cmd' `
+  -ArgumentList @('run','dev','--','--host','127.0.0.1','--port','5173','--strictPort') `
+  -WorkingDirectory (Join-Path $repo 'dashboard') `
+  -WindowStyle Hidden `
+  -RedirectStandardOutput (Join-Path $logs 'decadic_ui_stdout.log') `
+  -RedirectStandardError (Join-Path $logs 'decadic_ui_stderr.log') `
+  -PassThru
+
+Write-Output "Started server PID $($server.Id)"
+Write-Output "Started UI PID $($ui.Id)"
+```
+
+Verify:
+
+```powershell
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/agents
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173
+Get-NetTCPConnection -LocalPort 8765,5173 -ErrorAction SilentlyContinue |
+  Select-Object LocalAddress,LocalPort,State,OwningProcess
+```
+
+The backend may take a few seconds on first startup because the neural stack may
+initialize CUDA and load weights. If `/agents` times out once, wait 5-10 seconds
+and try again.
+
+#### Start a body/environment
+
+Usually use the dashboard Environment tab. To start one from PowerShell:
+
+```powershell
+$body = @{
+  elements = @('house','food','water','medical_kit')
+  vision = $true
+  audio = $false
+  braces = $false
+  preset = '10m'
+} | ConvertTo-Json
+
+Invoke-WebRequest -UseBasicParsing `
+  -Method POST `
+  -Uri http://127.0.0.1:8765/environment `
+  -ContentType 'application/json' `
+  -Body $body
+```
+
+`medical_kit` is always forced into real managed scenarios by the server/body
+normalization, but including it explicitly keeps the request self-documenting.
+
+Open the native viewer for the running body:
+
+```powershell
+$aid = (Invoke-RestMethod -Uri http://127.0.0.1:8765/environment).agent_id
+Invoke-WebRequest -UseBasicParsing `
+  -Method POST `
+  -Uri "http://127.0.0.1:8765/agent/$aid/body/viewer?open=true"
+```
+
+#### Stop the whole local system
+
+First ask the backend to stop the managed body/environment. This is preferred
+because it lets the server terminate the MuJoCo subprocess it owns:
+
+```powershell
+try {
+  Invoke-WebRequest -UseBasicParsing `
+    -Method POST `
+    -Uri http://127.0.0.1:8765/environment/stop `
+    -TimeoutSec 10
+} catch {
+  Write-Output $_.Exception.Message
+}
+```
+
+Then kill the backend and UI listeners:
+
+```powershell
+$ports = @(8765, 5173)
+$listeners = Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue
+$pids = $listeners | Select-Object -ExpandProperty OwningProcess -Unique
+
+foreach ($pidValue in $pids) {
+  $proc = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+  if ($proc) {
+    Write-Output "Stopping PID $pidValue ($($proc.ProcessName))"
+    Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
+  }
+}
+
+Start-Sleep -Seconds 2
+Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue
+```
+
+The final command should print nothing. `TimeWait` connections are normal and do
+not mean the server/UI are still running; only `Listen` matters.
+
+#### Clean restart
+
+Use the stop sequence above, then the start sequence above. The short version:
+
+```powershell
+# 1. Stop managed body if the backend is reachable.
+try { Invoke-WebRequest -UseBasicParsing -Method POST http://127.0.0.1:8765/environment/stop -TimeoutSec 10 } catch {}
+
+# 2. Kill backend/UI listeners.
+$ports = @(8765, 5173)
+Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 2
+
+# 3. Start backend/UI fresh.
+$repo = (Get-Location).Path
+$logs = Join-Path $repo 'logs'
+New-Item -ItemType Directory -Force -Path $logs | Out-Null
+$python = Join-Path $repo '.venv\Scripts\python.exe'
+Start-Process -FilePath $python -ArgumentList @('-m','uvicorn','decadic.api.app:app','--host','127.0.0.1','--port','8765') -WorkingDirectory $repo -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'decadic_server_stdout.log') -RedirectStandardError (Join-Path $logs 'decadic_server_stderr.log')
+Start-Process -FilePath 'npm.cmd' -ArgumentList @('run','dev','--','--host','127.0.0.1','--port','5173','--strictPort') -WorkingDirectory (Join-Path $repo 'dashboard') -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'decadic_ui_stdout.log') -RedirectStandardError (Join-Path $logs 'decadic_ui_stderr.log')
+
+# 4. Verify.
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/agents
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173
+```
+
+#### Desktop/launcher path
+
+For normal interactive use, this still works:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "scripts\launch_decadic.ps1"
 ```
 
-That starts the backend on `127.0.0.1:8765` and the web UI on
-`127.0.0.1:5173`. If the ports are already occupied, the launcher reuses those
-processes.
+Known caveat: in a non-interactive shell, such as Codex/tool execution, the
+launcher can start the backend and UI successfully and then fail at its final
+`ReadKey` prompt with:
 
-To stop only the Decadic backend and web UI, kill the processes listening on
-those two ports:
-
-```powershell
-$listeners = netstat -ano |
-  Select-String -Pattern 'LISTENING' |
-  Select-String -Pattern ':8765|:5173'
-
-$pids = foreach ($line in $listeners) {
-  $parts = ($line.ToString() -split '\s+') | Where-Object { $_ }
-  if ($parts.Length -ge 5) { [int]$parts[-1] }
-}
-
-$pids | Select-Object -Unique | ForEach-Object {
-  Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
-}
+```text
+Cannot read keys when either application does not have a console or when console input has been redirected
 ```
 
-Clean restart sequence: stop listeners on `8765` and `5173`, wait a second or
-two, then run `scripts\launch_decadic.ps1` again.
+That error happens after process launch. It is not a server startup failure, but
+it is noisy and makes automation ambiguous. For automated restarts, use the
+explicit `Start-Process` commands above instead of the launcher.
 
-If the launcher cannot find `uvicorn`, create/update the local environment once:
+#### Known working / not working
 
-```powershell
-$env:UV_CACHE_DIR = "$PWD\.uv-cache"
-uv run --extra body python -m uvicorn --version
-```
+Known working:
 
-After that, manual backend starts can use the project virtual environment:
+- Stopping the managed body with `POST /environment/stop` before killing ports.
+- Killing only listener PIDs on `8765` and `5173`.
+- Starting backend and UI with `Start-Process` and log redirection.
+- Verifying with `/agents`, the Vite root page, and `Get-NetTCPConnection`.
+- Starting a new body through `POST /environment` or the dashboard Environment tab.
 
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn decadic.api.app:app --host 127.0.0.1 --port 8765
-```
+Known not to rely on:
 
-Manual web UI starts:
+- Killing random `python` or `node` processes by name. Other tools may be using
+  those runtimes; kill the listener PIDs for `8765` and `5173` instead.
+- Assuming `TimeWait` means a process is still alive. It is just TCP cleanup.
+- Running `scripts\launch_decadic.ps1` from a non-interactive automation context.
+  Its final keypress prompt can throw even when startup worked.
+- Expecting code changes to alter an already-running MuJoCo model. If scenario
+  bodies/resources changed, stop and recreate the environment; MuJoCo bodies are
+  compiled into the model at spawn time.
 
-```powershell
-cd dashboard
-npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
-```
+#### Manual foreground processes
 
-If a background start is needed, send output to the repo logs:
-`logs\decadic_server_stderr.log`, `logs\decadic_server_stdout.log`,
-`logs\decadic_ui_stdout.log`, and `logs\decadic_ui_stderr.log`.
-
-Or start the three processes by hand:
+For debugging, it is still useful to start the pieces by hand in visible
+terminals:
 
 ```powershell
 # 1. Server
 .\.venv\Scripts\python.exe -m uvicorn decadic.api.app:app --host 127.0.0.1 --port 8765
 
-# 2. Body — native 3D viewer window + egocentric vision + soundscape
+# 2. Body - native 3D viewer window + egocentric vision + soundscape
 .\.venv\Scripts\python.exe scripts\mujoco_decadic_adapter.py --steps 0 --vision --audio --view --port 8765
 
-# 3. Mind — React dashboard (first run: npm install)
+# 3. Mind - React dashboard (first run: npm install)
 cd dashboard
 npm.cmd run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```

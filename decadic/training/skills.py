@@ -579,6 +579,7 @@ RESOURCE_ACQUISITION_ENERGY = SkillSpec(
     target_behavior="Acquire unlabeled resource affordances with positive net energy return and teacher disabled.",
     teacher="none",
     required_sensors=("vision", "proprioception", "contacts"),
+    caregiver_enabled=True,
     phases=(
         SkillPhase(
             index=0,

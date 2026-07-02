@@ -3,6 +3,14 @@ import type { CapacityConfig, Metrics } from "../api";
 import { configureAgent, giveResource } from "../api";
 import Info from "./Info";
 
+type ProvisionResource = "water" | "food" | "medical_kit";
+
+const PROVISION_RESOURCES: Array<{ id: ProvisionResource; label: string; relief: string }> = [
+  { id: "water", label: "Water", relief: "hydration" },
+  { id: "food", label: "Food", relief: "energy" },
+  { id: "medical_kit", label: "Medical kit", relief: "integrity" },
+];
+
 function Gauge(props: { value: number; max: number; color: string }) {
   const pct = Math.max(0, Math.min(100, (props.value / props.max) * 100));
   return (
@@ -75,7 +83,7 @@ export default function HomeostasisPanel(props: {
     }
   };
 
-  const give = async (resource: "water" | "food", giveMode: "near" | "direct") => {
+  const give = async (resource: ProvisionResource, giveMode: "near" | "direct") => {
     setProvBusy(true);
     setProvError(null);
     try {
@@ -118,21 +126,21 @@ export default function HomeostasisPanel(props: {
       <div className="strip-label" style={{ marginTop: 14 }}>
         <span>
           Provisions
-          <Info tip="Give the agent water or food two ways. 'Nearby' drops the (unlabeled) item a step in front of it, so it must perceive and walk over to consume it. 'Direct' shows the item in the egocentric camera and moves it toward the head until normal consumption fires, preserving the object-to-relief learning path." />
+          <Info tip="Give the agent water, food, or a medical kit two ways. Nearby drops the unlabeled item a step in front of it. Direct shows the item in the egocentric camera and moves it toward the head until normal consumption fires, preserving the object-to-relief learning path." />
         </span>
       </div>
-      {(["water", "food"] as const).map((resource) => (
+      {PROVISION_RESOURCES.map((resource) => (
         <div
-          key={resource}
+          key={resource.id}
           style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}
         >
-          <span style={{ flex: "0 0 64px", textTransform: "capitalize" }}>{resource}</span>
+          <span style={{ flex: "0 0 82px" }}>{resource.label}</span>
           <button
             className="btn"
             style={{ flex: 1 }}
             disabled={provBusy || !agentId}
-            onClick={() => void give(resource, "near")}
-            title={`Place ${resource} a step in front of the agent — it must see and walk to it (preserves self-learned seeking; needs a running scenario with ${resource}).`}
+            onClick={() => void give(resource.id, "near")}
+            title={`Place ${resource.label.toLowerCase()} a step in front of the agent; it must perceive and move to it for ${resource.relief} relief.`}
           >
             Place nearby
           </button>
@@ -140,14 +148,14 @@ export default function HomeostasisPanel(props: {
             className="btn"
             style={{ flex: 1 }}
             disabled={provBusy || !agentId}
-            onClick={() => void give(resource, "direct")}
-            title={`Show ${resource} in the agent's view and deliver it toward the head until normal consumption gives ${resource === "water" ? "hydration" : "energy"} relief.`}
+            onClick={() => void give(resource.id, "direct")}
+            title={`Show ${resource.label.toLowerCase()} in the agent's view and deliver it toward the head until normal consumption gives ${resource.relief} relief.`}
           >
             Give directly
           </button>
         </div>
       ))}
-      {provBusy && <div className="strip-label">working…</div>}
+      {provBusy && <div className="strip-label">working...</div>}
       {provError && <div className="ctrl-error">{provError}</div>}
 
       <div className="strip-label" style={{ marginTop: 12 }}>

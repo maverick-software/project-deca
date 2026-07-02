@@ -21,6 +21,7 @@ from decadic.evaluation.runner import (
     report_path_for,
     write_samples_jsonl,
 )
+from decadic.evaluation.sampling import normalize_eval_metrics, target_end_cycle
 from decadic.evaluation.types import EvalReport, EvalSample, EvalSpec
 from decadic.nn.config import VALID_PRESETS
 from decadic.training.supervisor import SkillDojoError, SkillDojoSupervisor
@@ -194,6 +195,8 @@ class EvalJobManager:
                     return
             self._status["state"] = "running"
             deadline = time.perf_counter() + spec.timeout_s
+            start_cycle: int | None = None
+            end_cycle: int | None = None
             while time.perf_counter() < deadline and not self._cancel.is_set():
                 agent = self.registry.get(agent_id)
                 if agent is None:
@@ -208,8 +211,10 @@ class EvalJobManager:
                     "discovery_health": dict(getattr(agent.perceptual, "discovery_health", {}) or {}),
                     "discovery": agent.perceptual.discovery_eval.snapshot(),
                     "object_files": list(getattr(agent.perceptual, "object_files", []) or []),
+                    "ltm_consolidation": dict(getattr(agent.perceptual, "ltm_consolidation", {}) or {}),
                 }
                 dojo_status = self.dojo.status() if self.dojo is not None else None
+                metrics = normalize_eval_metrics(metrics, discovery, dojo_status)
                 sample = EvalSample(
                     cycle=int(metrics.get("cycles_completed", 0) or 0),
                     t_s=round(time.perf_counter() - t0, 6),
@@ -218,9 +223,15 @@ class EvalJobManager:
                     dojo=dojo_status,
                 )
                 samples.append(sample)
+                if start_cycle is None:
+                    start_cycle = sample.cycle
+                    end_cycle = target_end_cycle(start_cycle, spec.cycles)
+                    self._status["start_cycle"] = start_cycle
+                    self._status["target_end_cycle"] = end_cycle
                 self._status["samples"] = len(samples)
                 self._status["cycles"] = sample.cycle
-                if sample.cycle >= spec.cycles:
+                self._status["observed_cycles"] = max(0, sample.cycle - int(start_cycle or sample.cycle))
+                if end_cycle is not None and sample.cycle >= end_cycle:
                     break
                 await asyncio.sleep(spec.poll_interval_s)
 
@@ -237,9 +248,10 @@ class EvalJobManager:
                 report.status = "fail"
                 report.failures.append("eval cancelled")
                 self._status["state"] = "cancelled"
-            elif samples and samples[-1].cycle < spec.cycles:
+            elif samples and end_cycle is not None and samples[-1].cycle < end_cycle:
                 report.status = "fail"
-                report.failures.append(f"target cycles not reached: {samples[-1].cycle}/{spec.cycles}")
+                observed = max(0, samples[-1].cycle - int(start_cycle or samples[-1].cycle))
+                report.failures.append(f"target cycles not reached: observed {observed}/{spec.cycles}")
                 self._status["state"] = "failed"
             else:
                 self._status["state"] = "completed" if report.status == "pass" else "failed"
@@ -311,4 +323,3 @@ def register_evaluation_routes(application: FastAPI) -> None:
     @application.post("/eval/stop")
     async def eval_stop() -> dict[str, Any]:
         return await _manager().stop()
-

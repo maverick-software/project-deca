@@ -28,12 +28,33 @@ VALID_ELEMENTS: tuple[str, ...] = (
     "house",
     "food",
     "water",
+    "medical_kit",
     "bear",
     "ball",
     "obstacles",
     "npc",
     "crowd",
 )
+
+ALWAYS_ON_ELEMENTS: tuple[str, ...] = ("medical_kit",)
+
+
+def normalize_elements(elements: list[str]) -> list[str]:
+    """Validate scenario elements and append always-on survival resources."""
+    chosen: list[str] = []
+    seen: set[str] = set()
+    for raw in elements:
+        e = str(raw).strip().lower()
+        if e in VALID_ELEMENTS and e not in seen:
+            chosen.append(e)
+            seen.add(e)
+    if chosen:
+        for e in ALWAYS_ON_ELEMENTS:
+            if e not in seen:
+                chosen.append(e)
+                seen.add(e)
+    return chosen
+
 
 class EnvironmentControlError(RuntimeError):
     """Invalid environment action (e.g. starting while one already runs)."""
@@ -113,11 +134,7 @@ class EnvironmentSupervisor:
             # previously finished process. The old agent is intentionally kept.
             await self._terminate_locked()
 
-            chosen = [
-                e
-                for e in (str(x).strip().lower() for x in elements)
-                if e in VALID_ELEMENTS
-            ]
+            chosen = normalize_elements(elements)
             if not chosen:
                 raise EnvironmentControlError(
                     f"No valid elements; choose from {list(VALID_ELEMENTS)}"

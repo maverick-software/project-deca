@@ -775,6 +775,8 @@ export type Metrics = {
   stance_phase?: number;
   // Hold mode: the active movement is welded + looping until manually disabled.
   movement_hold?: boolean;
+  // Manual scaffold safety: recenter/repose selected motion stance after a fall.
+  manual_auto_reset?: boolean;
   foot_load_l?: number;
   foot_load_r?: number;
   hand_load_l?: number;
@@ -1028,14 +1030,14 @@ export function reviveAgent(agentId: string, restoreTo?: number): Promise<void> 
   return postJson(`/agent/${agentId}/revive${q}`);
 }
 
-// Provision the agent with water/food. mode "near" asks the body to place the
+// Provision the agent with water/food/medical support. mode "near" asks the body to place the
 // (unlabeled) prop a step away so the agent must perceive and walk to it;
 // mode "direct" asks the body to show the prop in the egocentric camera and
 // move it toward the head until normal consumption fires. "admin" is the old
 // instant reservoir top-up for explicit rescue/testing use.
 export async function giveResource(
   agentId: string,
-  resource: "water" | "food",
+  resource: "water" | "food" | "medical_kit",
   mode: "near" | "direct" | "admin",
 ): Promise<void> {
   const r = await fetch(
@@ -1166,6 +1168,10 @@ export function setStance(agentId: string, name: string): Promise<void> {
 // selected movement runs on repeat until disabled. Off resumes the ROM ratchet.
 export function setMovementHold(agentId: string, enabled: boolean): Promise<void> {
   return postJson(`/agent/${agentId}/body/movement_hold?enabled=${enabled}`);
+}
+
+export function setManualAutoReset(agentId: string, enabled: boolean): Promise<void> {
+  return postJson(`/agent/${agentId}/body/manual_auto_reset?enabled=${enabled}`);
 }
 
 // Freeze (or release) the parent NPC where it stands. The flag lives in the body
@@ -1767,6 +1773,12 @@ export type DojoStatus = {
   hydration: number;
   energy: number;
   integrity: number;
+  distance_traveled: number;
+  net_displacement: number;
+  consume_events: number;
+  resource_relief_events: number;
+  fall_rate: number;
+  stance_phase: number;
   samples: number;
   gate: GateStatus | null;
   failure: CriterionStatus | null;

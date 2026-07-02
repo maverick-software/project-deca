@@ -66,6 +66,7 @@ from decadic.config import (
     ltm_match_threshold,
     ltm_snapshot_limit,
     max_integrity_damage_per_obs,
+    medical_kit_credit,
     metabolic_compression,
     processing_mode,
     perceptual_processing_mode,
@@ -525,6 +526,7 @@ class AgentRuntime:
             "stance_phase": 0.0,
             # Hold mode: keep the active movement welded + looping until disabled.
             "movement_hold": False,
+            "manual_auto_reset": False,
             "foot_load_l": 0.0,
             "foot_load_r": 0.0,
             "hand_load_l": 0.0,
@@ -1593,6 +1595,9 @@ class AgentRuntime:
         movement_hold = body.get("movement_hold")
         if movement_hold is not None:
             self.metrics["movement_hold"] = bool(movement_hold)
+        manual_auto_reset = body.get("manual_auto_reset")
+        if manual_auto_reset is not None:
+            self.metrics["manual_auto_reset"] = bool(manual_auto_reset)
         # Full-body touch map (short name -> load). Live in all modes; the
         # dashboard renders one bar per part for full-body contact awareness.
         part_loads = body.get("part_loads")
@@ -2959,6 +2964,7 @@ class AgentRuntime:
         threat_damage = effects.get("threat_damage", 0.0)
         energy_gain = effects["energy_gain"]
         hydration_gain = effects["hydration_gain"]
+        integrity_gain = effects.get("integrity_gain", 0.0)
         threat = effects["stress"]
         prop = obs.get("proprioception") if isinstance(obs, dict) else None
         effort = normalize_effort(prop.get("effort") if isinstance(prop, dict) else None)
@@ -3038,12 +3044,12 @@ class AgentRuntime:
                         self.homeostasis.integrity,
                         self.homeostasis.viability,
                     )
-            if energy_gain > 0.0 or hydration_gain > 0.0:
+            if energy_gain > 0.0 or hydration_gain > 0.0 or integrity_gain > 0.0:
                 # Eval-only: count the act->relief contingency firing (foraging gate).
                 self.metrics["consume_events"] = (
                     int(self.metrics.get("consume_events", 0)) + 1
                 )
-                credit = energy_gain + hydration_gain
+                credit = energy_gain + hydration_gain + integrity_gain
                 pain, pleasure = viability_delta_to_signals(credit)
                 self.state_bus.emotion_physio = apply_pain_pleasure_to_B(
                     self.state_bus.emotion_physio, pain, pleasure
@@ -3053,13 +3059,16 @@ class AgentRuntime:
                 )
                 if metabolic:
                     self.homeostasis.apply_reservoir_deltas(
-                        energy=energy_gain, hydration=hydration_gain
+                        energy=energy_gain,
+                        hydration=hydration_gain,
+                        integrity=integrity_gain,
                     )
                     logger.info(
-                        "nourishment agent_id=%s energy=+%.4f hydration=+%.4f viability=%.4f",
+                        "nourishment agent_id=%s energy=+%.4f hydration=+%.4f integrity=+%.4f viability=%.4f",
                         self.agent_id,
                         energy_gain,
                         hydration_gain,
+                        integrity_gain,
                         self.homeostasis.viability,
                     )
             if metabolic:
@@ -3079,7 +3088,7 @@ class AgentRuntime:
             self.metrics["fatigue_pain"] = round(float(fatigue_pain), 6)
             self.metrics["strain_pain"] = round(float(strain_pain), 6)
             self.metrics["net_energy_return"] = round(float(energy_gain - (effort_cost if metabolic else 0.0)), 6)
-            if energy_gain > 0.0 or hydration_gain > 0.0:
+            if energy_gain > 0.0 or hydration_gain > 0.0 or integrity_gain > 0.0:
                 self.metrics["resource_relief_events"] = int(
                     self.metrics.get("resource_relief_events", 0)
                 ) + 1
@@ -3189,10 +3198,17 @@ class AgentRuntime:
         self-learned alternative. Returns a small status dict for the API.
         """
         kind = str(resource).strip().lower()
-        if kind not in ("water", "food"):
+        if kind in ("medical", "medkit", "care"):
+            kind = "medical_kit"
+        if kind not in ("water", "food", "medical_kit"):
             raise ValueError(f"unknown resource: {resource!r}")
         if amount is None:
-            credit = water_credit() if kind == "water" else food_credit()
+            if kind == "water":
+                credit = water_credit()
+            elif kind == "food":
+                credit = food_credit()
+            else:
+                credit = medical_kit_credit()
         else:
             credit = float(amount)
         credit = max(0.0, credit)
@@ -3210,8 +3226,10 @@ class AgentRuntime:
                 if metabolic:
                     if kind == "water":
                         self.homeostasis.apply_reservoir_deltas(hydration=credit)
-                    else:
+                    elif kind == "food":
                         self.homeostasis.apply_reservoir_deltas(energy=credit)
+                    else:
+                        self.homeostasis.apply_reservoir_deltas(integrity=credit)
                     logger.info(
                         "nourishment agent_id=%s %s=+%.4f viability=%.4f source=admin",
                         self.agent_id,
@@ -3227,6 +3245,7 @@ class AgentRuntime:
                 "amount": round(credit, 4),
                 "hydration": round(self.homeostasis.hydration, 4),
                 "energy": round(self.homeostasis.energy, 4),
+                "integrity": round(self.homeostasis.integrity, 4),
                 "viability": round(self.homeostasis.viability, 4),
             }
 

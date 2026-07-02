@@ -7,6 +7,7 @@ from decadic.config import (
     fall_damage_scale,
     food_credit,
     max_integrity_damage_per_obs,
+    medical_kit_credit,
     water_credit,
 )
 from decadic.cycle.pipeline import run_cycle
@@ -51,6 +52,7 @@ def test_classify_events_routes_per_reservoir():
     events = [
         {"type": "food", "intensity": 1.0},
         {"type": "water", "intensity": 0.5},
+        {"type": "medical_kit", "intensity": 0.8},
         {"type": "collision", "intensity": 0.6},
         {"type": "fall", "intensity": 0.5},
         {"type": "threat_near", "intensity": 0.8},
@@ -59,6 +61,7 @@ def test_classify_events_routes_per_reservoir():
     out = classify_events(events, THRESH)
     assert out["energy_gain"] == 1.0 * food_credit()
     assert out["hydration_gain"] == 0.5 * water_credit()
+    assert out["integrity_gain"] == 0.8 * medical_kit_credit()
     # collision 0.6 -> impact-energy scale; fall 0.5 -> superficial scale; the
     # 0.2 collision is filtered out below threshold.
     expected = 0.6 * collision_damage_scale() + 0.5 * fall_damage_scale()

@@ -27,6 +27,7 @@ def test_scene_xml_splices_props():
         xml = mod.scene_xml(scene)
         assert "prop_house" in xml
         assert "prop_food_s1" in xml
+        assert "prop_medical_m1" in xml
     # Splice point consumed exactly once and worldbody still closed
     assert mod.scene_xml("bear").count("</worldbody>") == 1
 
@@ -53,6 +54,9 @@ def test_prop_kind_labels():
     # The parent's movable gifts are shared food/water so the agent is credited.
     assert mod.prop_kind("prop_food_gift") == "food"
     assert mod.prop_kind("prop_water_gift") == "water"
+    assert mod.prop_kind("prop_medical_gift") == "medical_kit"
+    assert mod.HumanoidSim._resource_kind("medical_kit") == "medical_kit"
+    assert mod.HumanoidSim._resource_kind("care") == "medical_kit"
 
 
 def test_threat_intensity_scaling():

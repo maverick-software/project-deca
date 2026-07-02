@@ -1,0 +1,1045 @@
+{
+  "agent_id": "aa0d179e-3425-443e-af87-d8f721325cc7",
+  "baseline_comparison": {},
+  "behavior": {
+    "consume_events": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "consume_events",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "cycles_completed": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 3916.0,
+      "last": 3916.0,
+      "max": 3916.0,
+      "metric": "cycles_completed",
+      "min": 3916.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "distance_traveled": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 114.723,
+      "last": 114.723,
+      "max": 114.723,
+      "metric": "distance_traveled",
+      "min": 114.723,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "dojo_latest": {
+      "agent_id": null,
+      "assist_reason": "idle",
+      "attempt_elapsed_s": 0.0,
+      "attempt_failures": 0,
+      "attempt_index": 1,
+      "attempt_timeout_s": 0.0,
+      "auto_retry": false,
+      "caregiver_delivery_count": 0,
+      "caregiver_enabled": false,
+      "caregiver_kind": "",
+      "caregiver_last_offer_cycle": null,
+      "caregiver_last_offer_item": null,
+      "caregiver_missing_parent": false,
+      "caregiver_need": "none",
+      "caregiver_pending": false,
+      "caregiver_refractory_s": 15.0,
+      "caregiver_request_kind": null,
+      "caregiver_status": "disabled",
+      "caregiver_threshold": 80.0,
+      "caregiver_trigger_reservoir": null,
+      "confidence_dwell_s": 0.0,
+      "confidence_reason": "idle",
+      "energy": 100.0,
+      "error": null,
+      "failure": null,
+      "failure_reason": null,
+      "gate": null,
+      "history": [],
+      "hydration": 100.0,
+      "integrity": 100.0,
+      "last_attempt_outcome": null,
+      "manual_scaffold_active": false,
+      "max_attempts": 0,
+      "objective_confidence": 0.0,
+      "paused": false,
+      "phase_count": 0,
+      "phase_description": null,
+      "phase_index": null,
+      "phase_name": null,
+      "poll_interval_s": 1.0,
+      "report_path": null,
+      "running": false,
+      "samples": 0,
+      "skill_id": null,
+      "skill_name": null,
+      "stable_dwell_s": 0.0,
+      "started_at": null,
+      "state": "stopped",
+      "teacher_assist": 0.0,
+      "teacher_drop_m": 0.0,
+      "teacher_fade_rate": 0.0,
+      "teacher_height_error_m": 0.0,
+      "teacher_live": false,
+      "teacher_max": 0.0,
+      "teacher_min": 0.0,
+      "teacher_origin": "self",
+      "teacher_rise_rate": 0.0,
+      "teacher_support_active": false,
+      "teacher_support_force": 0.0,
+      "teacher_support_mode": "off",
+      "teacher_support_torque": 0.0,
+      "teacher_target_drop_m": 0.25,
+      "teacher_vertical_velocity": 0.0,
+      "teacher_weight": 0.0,
+      "unstable_dwell_s": 0.0
+    },
+    "energy": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 93.2039,
+      "last": 93.2039,
+      "max": 93.2039,
+      "metric": "energy",
+      "min": 93.2039,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "fall_rate": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "fall_rate",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "gates": [
+      {
+        "metric": "object_files",
+        "name": "anonymous object files present",
+        "reason": "missing_metric",
+        "satisfied": false,
+        "trend": {
+          "count": 0,
+          "delta": null,
+          "first": null,
+          "last": null,
+          "max": null,
+          "metric": "object_files",
+          "min": null,
+          "nonfinite": 0,
+          "slope": 0.0
+        }
+      },
+      {
+        "metric": "ltm_property_beliefs",
+        "mode": "final",
+        "name": "LTM property beliefs emerge",
+        "op": ">=",
+        "reason": "ok",
+        "satisfied": true,
+        "threshold": 1.0,
+        "trend": {
+          "count": 1,
+          "delta": 0.0,
+          "first": 527.0,
+          "last": 527.0,
+          "max": 527.0,
+          "metric": "ltm_property_beliefs",
+          "min": 527.0,
+          "nonfinite": 0,
+          "slope": 0.0
+        },
+        "value": 527.0
+      },
+      {
+        "metric": "nan_recovery_events",
+        "mode": "final",
+        "name": "no NaN recovery",
+        "op": "<=",
+        "reason": "ok",
+        "satisfied": true,
+        "threshold": 0.0,
+        "trend": {
+          "count": 1,
+          "delta": 0.0,
+          "first": 0.0,
+          "last": 0.0,
+          "max": 0.0,
+          "metric": "nan_recovery_events",
+          "min": 0.0,
+          "nonfinite": 0,
+          "slope": 0.0
+        },
+        "value": 0.0
+      }
+    ],
+    "hydration": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 99.8002,
+      "last": 99.8002,
+      "max": 99.8002,
+      "metric": "hydration",
+      "min": 99.8002,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "integrity": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 74.572,
+      "last": 74.572,
+      "max": 74.572,
+      "metric": "integrity",
+      "min": 74.572,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "net_energy_return": {
+      "count": 1,
+      "delta": 0.0,
+      "first": -0.005094,
+      "last": -0.005094,
+      "max": -0.005094,
+      "metric": "net_energy_return",
+      "min": -0.005094,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "resource_relief_events": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "resource_relief_events",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "root_height": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.194,
+      "last": 0.194,
+      "max": 0.194,
+      "metric": "root_height",
+      "min": 0.194,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "teacher_override_fraction": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "teacher_override_fraction",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "torso_tilt": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 1.4718,
+      "last": 1.4718,
+      "max": 1.4718,
+      "metric": "torso_tilt",
+      "min": 1.4718,
+      "nonfinite": 0,
+      "slope": 0.0
+    }
+  },
+  "failures": [
+    "gate failed: anonymous object files present (missing_metric)",
+    "dominant loss fraction healthy for only 0.0% of samples"
+  ],
+  "health": {
+    "canary_diverging_fraction": 0.0,
+    "dominant_loss_ok_fraction": 0.0,
+    "loss_total": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.47466230392456055,
+      "last": 0.47466230392456055,
+      "max": 0.47466230392456055,
+      "metric": "loss_total",
+      "min": 0.47466230392456055,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "max_loss_jump_after_startup": 0.949367,
+    "nan_recovery_events": 0,
+    "neural_pc_loss": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.3543332815170288,
+      "last": 0.3543332815170288,
+      "max": 0.3543332815170288,
+      "metric": "neural_pc_loss_last",
+      "min": 0.3543332815170288,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "plasticity_freeze_count": 0,
+    "plasticity_frozen_final": false,
+    "plasticity_thaw_count": 0,
+    "samples": 1
+  },
+  "learning": {
+    "consolidator_loss": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.8114444613456726,
+      "last": 0.8114444613456726,
+      "max": 0.8114444613456726,
+      "metric": "consolidator_loss",
+      "min": 0.8114444613456726,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "effort_pred_error": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.014153,
+      "last": 0.014153,
+      "max": 0.014153,
+      "metric": "effort_pred_error",
+      "min": 0.014153,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "forward_model_error": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.023926,
+      "last": 0.023926,
+      "max": 0.023926,
+      "metric": "forward_model_error",
+      "min": 0.023926,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "intero_pred_error": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.017861,
+      "last": 0.017861,
+      "max": 0.017861,
+      "metric": "intero_pred_error",
+      "min": 0.017861,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "tactile_pred_error": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.005181,
+      "last": 0.005181,
+      "max": 0.005181,
+      "metric": "tactile_pred_error",
+      "min": 0.005181,
+      "nonfinite": 0,
+      "slope": 0.0
+    }
+  },
+  "mechanical": {
+    "available": false,
+    "reason": "mechanical module-gradient checks are covered by in-process tests in v1"
+  },
+  "perception": {
+    "discovered_objects": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "discovered_objects",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "latest_discovery": {
+      "discovery": {
+        "body_part_accuracy": 0.0,
+        "id_churn": 0.0,
+        "id_stability": 1.0,
+        "last_body_parts_found": 0,
+        "last_body_parts_truth": 4,
+        "last_detected": 7,
+        "last_matched": 1,
+        "last_oracle": 8,
+        "precision": 0.1555,
+        "recall": 0.1361,
+        "updates": 3917
+      },
+      "discovery_health": {
+        "active_proposals": 8,
+        "appearance_cosine_max": null,
+        "appearance_cosine_mean": null,
+        "body_candidate_count": 0,
+        "centroid_spread": 0.0,
+        "collapsed": false,
+        "flow_confidence": 0.017211,
+        "looming_count": 0,
+        "low_confidence_count": 7,
+        "ltm_write": "queued_consolidation",
+        "mask_entropy_mean": 0.872225,
+        "object_files": 1,
+        "reason": "healthy",
+        "stable_tracked_objects": 7,
+        "status": "healthy",
+        "stuff_count": 7
+      },
+      "object_files": [
+        {
+          "agency": 0.0,
+          "appearance": [
+            0.3782230321894795,
+            0.028748639918948396,
+            0.19258152703802967,
+            0.08113697046558138,
+            0.010901114547448588,
+            0.598710627282006,
+            0.9307571899034405,
+            0.3905662448172739,
+            0.3815734528871447,
+            0.32375459472227053,
+            0.0037534033672133957,
+            0.17993147080195243,
+            0.0224948073439543,
+            0.7908369481488209,
+            0.0029833635455020872,
+            0.0
+          ],
+          "bearing": null,
+          "centroid_uv": [
+            0.6242904663085938,
+            0.9687499403953552
+          ],
+          "confidence": 0.9868526309728622,
+          "depth": null,
+          "entity_role": "body_coupled_entity",
+          "flow": [
+            0.02096276242077899,
+            -0.02562106970367628
+          ],
+          "idx": -1,
+          "kind_hint": "body_part_candidate",
+          "local_motion": 0.17450979351997375,
+          "looming": 0.0,
+          "mask_entropy": null,
+          "motion": [
+            0.02096276242077899,
+            -0.02562106970367628
+          ],
+          "object_id": "ent-00004",
+          "persistence": 1.0,
+          "presence": 1.0,
+          "property_evidence": {
+            "area": 0.010782705334991163,
+            "brightness": 0.224577087638061,
+            "brightness_contrast": 0.240098684601035,
+            "compactness": 0.6664963390145089,
+            "depth": 3.7242463361873166,
+            "edge_strength": 0.19307392842117552,
+            "hue_histogram": [
+              0.006090575923735547,
+              0.05924497404904096,
+              0.06192954565255274,
+              0.8623578743740986,
+              0.01037700040947561,
+              0.0
+            ],
+            "local_motion": 0.08141660310189855,
+            "looming": 0.0029373375011596415,
+            "perceptual_confidence": 0.9389935241591714,
+            "predicts_head_pain": 0.02070766311662197,
+            "predicts_integrity_loss": 0.3230013493369813,
+            "predicts_left_foot_pain": 0.16163789360231348,
+            "predicts_left_thigh_pain": 0.0044,
+            "predicts_pain": 0.3230013493369813,
+            "predicts_right_foot_pain": 0.221497098280088,
+            "rgb_mean": [
+              0.2592667092656335,
+              0.22660517956754397,
+              0.18786003437880644
+            ],
+            "roundness": 0.748821105229214,
+            "size_proxy": 0.04721720048688253,
+            "static_confidence": 0.7561132345549011
+          },
+          "provisional": false,
+          "relative": [
+            2.9036067009784987,
+            0.5090186917966011,
+            -2.261992099869663
+          ],
+          "retina_contrast": 0.12545669078826904,
+          "spread": null
+        },
+        {
+          "agency": 0.0,
+          "appearance": [
+            0.3866180773998271,
+            0.027779103666825747,
+            0.16789899185602186,
+            0.08761027634201307,
+            0.006925558773587311,
+            0.5483029729324613,
+            0.9566791187509642,
+            0.39107587981466085,
+            0.3886923601773543,
+            0.3598329500947806,
+            0.0002724392950354393,
+            0.02183708040527984,
+            0.4557837424312093,
+            0.5206317552650803,
+            0.001474952379789287,
+            0.0
+          ],
+          "bearing": null,
+          "centroid_uv": [
+            0.46875,
+            0.96875
+          ],
+          "confidence": 1.0,
+          "depth": null,
+          "entity_role": "body_coupled_entity",
+          "flow": [
+            0.013970603602117493,
+            -0.030882322906021664
+          ],
+          "idx": -1,
+          "kind_hint": "body_part_candidate",
+          "local_motion": 0.21960783004760742,
+          "looming": -0.022876587736527412,
+          "mask_entropy": null,
+          "motion": [
+            0.013970603602117493,
+            -0.030882322906021664
+          ],
+          "object_id": "ent-00002",
+          "persistence": 1.0,
+          "presence": 1.0,
+          "property_evidence": {
+            "area": 0.006939909179476858,
+            "brightness": 0.21122712658822806,
+            "brightness_contrast": 0.2215967738605224,
+            "compactness": 0.6411584224861294,
+            "depth": 4.075971662911466,
+            "edge_strength": 0.1734372566239593,
+            "hue_histogram": [
+              0.00034201949660986124,
+              0.01663367417858823,
+              0.22344445860156853,
+              0.6854502783659626,
+              0.07412951958418304,
+              0.0
+            ],
+            "local_motion": 0.08641781028011813,
+            "looming": -0.009247130708549038,
+            "perceptual_confidence": 0.9113981110591942,
+            "predicts_head_pain": 0.020707672027889142,
+            "predicts_integrity_loss": 0.3230037469209331,
+            "predicts_left_foot_pain": 0.16163789360231592,
+            "predicts_left_thigh_pain": 0.0044,
+            "predicts_pain": 0.3230037469209331,
+            "predicts_right_foot_pain": 0.22149710406696976,
+            "rgb_mean": [
+              0.23673406553609877,
+              0.2053932458814799,
+              0.19155374395947572
+            ],
+            "roundness": 0.7265914287501014,
+            "size_proxy": 0.037995327870006916,
+            "static_confidence": 0.7407538824085637
+          },
+          "provisional": false,
+          "relative": [
+            3.414269357494089,
+            -0.14907021949183158,
+            -2.6223569249606427
+          ],
+          "retina_contrast": 0.09982684999704361,
+          "spread": null
+        },
+        {
+          "agency": 0.0,
+          "appearance": [
+            0.4040367675173481,
+            0.08791615844967447,
+            0.17491114756470771,
+            0.0363433997470029,
+            0.017527997852720453,
+            0.6265037677457339,
+            0.5117927430717456,
+            0.40816850947619626,
+            0.41149038926245884,
+            0.3559252772960002,
+            0.003600083384552034,
+            0.6035500954945026,
+            0.11186998426178626,
+            0.28094047251352494,
+            3.9368535827134134e-05,
+            0.0
+          ],
+          "bearing": null,
+          "centroid_uv": [
+            0.654853105545044,
+            0.4711317718029022
+          ],
+          "confidence": 0.7855893671512604,
+          "depth": null,
+          "entity_role": "compact_entity",
+          "flow": [
+            0.004464285714285698,
+            0.022321428571428548
+          ],
+          "idx": -1,
+          "kind_hint": "object",
+          "local_motion": 0.00784313678741455,
+          "looming": 0.0,
+          "mask_entropy": null,
+          "motion": [
+            0.004464285714285698,
+            0.022321428571428548
+          ],
+          "object_id": "ent-00014",
+          "persistence": 1.0,
+          "presence": 1.0,
+          "property_evidence": {
+            "area": 0.017413494817499365,
+            "brightness": 0.304988889712988,
+            "brightness_contrast": 0.22540558182936848,
+            "compactness": 0.7044485342900091,
+            "depth": 3.316136415034353,
+            "edge_strength": 0.17664143618503444,
+            "hue_histogram": [
+              0.012444116138702294,
+              0.2545037331966434,
+              0.28131314609051844,
+              0.451699437194646,
+              3.939896740307833e-05,
+              0.0
+            ],
+            "local_motion": 0.036280555584530305,
+            "looming": -0.025699072236961704,
+            "perceptual_confidence": 0.8423897528687176,
+            "predicts_head_pain": 0.02070764120607184,
+            "predicts_integrity_loss": 0.32299504567919535,
+            "predicts_left_foot_pain": 0.1616378936023072,
+            "predicts_left_thigh_pain": 0.0044,
+            "predicts_pain": 0.32299504567919535,
+            "predicts_right_foot_pain": 0.22149708367041976,
+            "rgb_mean": [
+              0.3346067659344753,
+              0.3096436296795534,
+              0.270716088792603
+            ],
+            "roundness": 0.7915444143133179,
+            "size_proxy": 0.06112333942804309,
+            "static_confidence": 0.8921736630607736
+          },
+          "provisional": false,
+          "relative": [
+            2.849359636300607,
+            0.6258597099440962,
+            0.11765262078573827
+          ],
+          "retina_contrast": 0.16652092337608337,
+          "spread": null
+        },
+        {
+          "agency": 0.0,
+          "appearance": [
+            0.46995195990330685,
+            0.2925930008027413,
+            0.3201911173791146,
+            0.05889643404942178,
+            0.21630262319796772,
+            0.29919554657168673,
+            0.43426085724729147,
+            0.44670797813043994,
+            0.4898217484187981,
+            0.42805593038744677,
+            0.07565427309502354,
+            0.34253328439558917,
+            0.45830514005365053,
+            0.12322700416650757,
+            0.00028035004753135435,
+            0.0
+          ],
+          "bearing": null,
+          "centroid_uv": [
+            0.29006248712539673,
+            0.43359220027923584
+          ],
+          "confidence": 1.0,
+          "depth": null,
+          "entity_role": "compact_entity",
+          "flow": [
+            -0.008771929824561403,
+            -0.010964912280701733
+          ],
+          "idx": -1,
+          "kind_hint": "object",
+          "local_motion": 0.024836599826812744,
+          "looming": 0.005721436216798048,
+          "mask_entropy": null,
+          "motion": [
+            -0.008771929824561403,
+            -0.010964912280701733
+          ],
+          "object_id": "ent-00011",
+          "persistence": 1.0,
+          "presence": 1.0,
+          "property_evidence": {
+            "area": 0.21938608172281848,
+            "brightness": 0.5064537371698031,
+            "brightness_contrast": 0.5767992822276912,
+            "compactness": 0.6986349462371875,
+            "depth": 1.155000963425441,
+            "edge_strength": 0.35993605713420407,
+            "hue_histogram": [
+              0.11106982400606184,
+              0.6735213687269301,
+              0.13983274680323599,
+              0.07557488489768201,
+              1.0420831767779592e-06,
+              0.0
+            ],
+            "local_motion": 0.07591365619758084,
+            "looming": 0.0018075324297372368,
+            "perceptual_confidence": 0.9998564608187928,
+            "predicts_head_pain": 0.02070749435540935,
+            "predicts_integrity_loss": 0.32296152833762837,
+            "predicts_left_foot_pain": 0.1616378936022687,
+            "predicts_left_thigh_pain": 0.0044,
+            "predicts_pain": 0.32296152833762837,
+            "predicts_right_foot_pain": 0.22149699388758898,
+            "rgb_mean": [
+              0.4957684220997556,
+              0.5489141155455766,
+              0.4746788244877148
+            ],
+            "roundness": 0.5329202563118881,
+            "size_proxy": 0.25879088555584445,
+            "static_confidence": 0.7743033280079045
+          },
+          "provisional": false,
+          "relative": [
+            1.05668981723906,
+            -0.31893286941651106,
+            0.10263907891098528
+          ],
+          "retina_contrast": 0.3765444755554199,
+          "spread": null
+        },
+        {
+          "agency": 0.0,
+          "appearance": [
+            0.4074694632330095,
+            0.2343158415721481,
+            0.35096967641628074,
+            0.15295966046156806,
+            0.05834545661695793,
+            0.1928162806230553,
+            0.6356928095884394,
+            0.3871311316412668,
+            0.42334808000254204,
+            0.37721498903162715,
+            0.010028427856934898,
+            0.20095272763158156,
+            0.5284357919993632,
+            0.22257919125371156,
+            0.03800374944226151,
+            0.0
+          ],
+          "bearing": null,
+          "centroid_uv": [
+            0.03125,
+            0.6579916477203369
+          ],
+          "confidence": 1.0,
+          "depth": null,
+          "entity_role": "body_coupled_entity",
+          "flow": [
+            0.00662544136288844,
+            -0.0011042679025227153
+          ],
+          "idx": -1,
+          "kind_hint": "body_part_candidate",
+          "local_motion": 0.330718994140625,
+          "looming": 0.0,
+          "mask_entropy": null,
+          "motion": [
+            0.00662544136288844,
+            -0.0011042679025227153
+          ],
+          "object_id": "ent-00007",
+          "persistence": 1.0,
+          "presence": 1.0,
+          "property_evidence": {
+            "area": 0.0592028863530906,
+            "brightness": 0.29540629509418725,
+            "brightness_contrast": 0.5965944666127578,
+            "compactness": 0.7836704219042654,
+            "depth": 2.592055615525164,
+            "edge_strength": 0.349478025533694,
+            "hue_histogram": [
+              0.15447247260091101,
+              0.1998684729056347,
+              0.4236790517557011,
+              0.20876511324205976,
+              0.013214664932858215,
+              0.0
+            ],
+            "local_motion": 0.15819718721176396,
+            "looming": 0.021324716948364845,
+            "perceptual_confidence": 0.9444161778672908,
+            "predicts_head_pain": 0.020707779295191044,
+            "predicts_integrity_loss": 0.32302691142107554,
+            "predicts_left_foot_pain": 0.16163789360234354,
+            "predicts_left_thigh_pain": 0.0044,
+            "predicts_pain": 0.32302691142107554,
+            "predicts_right_foot_pain": 0.2214971684181266,
+            "rgb_mean": [
+              0.29268601592911636,
+              0.31581654740532605,
+              0.27771656499288705
+            ],
+            "roundness": 0.7782195406993907,
+            "size_proxy": 0.11345704709349606,
+            "static_confidence": 0.5293206737076231
+          },
+          "provisional": false,
+          "relative": [
+            2.6020706986517883,
+            -1.9966390717047857,
+            -0.7354950949816018
+          ],
+          "retina_contrast": 0.5245404839515686,
+          "spread": null
+        },
+        {
+          "agency": 0.0,
+          "appearance": [
+            0.3972989747973585,
+            0.07893750738469635,
+            0.13999144197392158,
+            0.08765577693019719,
+            0.017495831349443075,
+            0.5356084022202026,
+            0.7346500621984431,
+            0.40572843677755654,
+            0.4006359893521712,
+            0.35657295011800294,
+            0.010614428965685836,
+            0.30874555732681525,
+            0.05402256728813947,
+            0.6255527383356212,
+            0.0010647043684064012,
+            0.0
+          ],
+          "bearing": null,
+          "centroid_uv": [
+            0.59375,
+            0.71875
+          ],
+          "confidence": 0.9570671051740646,
+          "depth": null,
+          "entity_role": "body_coupled_entity",
+          "flow": [
+            -0.003214285435117037,
+            -0.006071428044109983
+          ],
+          "idx": -1,
+          "kind_hint": "body_part_candidate",
+          "local_motion": 0.20784315466880798,
+          "looming": -0.012944173824159223,
+          "mask_entropy": null,
+          "motion": [
+            -0.003214285435117037,
+            -0.006071428044109983
+          ],
+          "object_id": "ent-00024",
+          "persistence": 1.0,
+          "presence": 1.0,
+          "property_evidence": {
+            "area": 0.017116824649721647,
+            "brightness": 0.26498757942613527,
+            "brightness_contrast": 0.24257744052924596,
+            "compactness": 0.6907235702745365,
+            "depth": 3.502698346613685,
+            "edge_strength": 0.14415108434340382,
+            "hue_histogram": [
+              0.018131135888217798,
+              0.11706545740299917,
+              0.3456784156489254,
+              0.5041299145386099,
+              0.014994709571259868,
+              0.0
+            ],
+            "local_motion": 0.08608125660400136,
+            "looming": -0.0035032001984684692,
+            "perceptual_confidence": 0.8638290530798204,
+            "predicts_head_pain": 0.02070765280796743,
+            "predicts_integrity_loss": 0.322998750435928,
+            "predicts_left_foot_pain": 0.16163789360231068,
+            "predicts_left_thigh_pain": 0.0044,
+            "predicts_pain": 0.322998750435928,
+            "predicts_right_foot_pain": 0.2214970917484287,
+            "rgb_mean": [
+              0.2946906871501102,
+              0.2590255325319085,
+              0.24124620739871655
+            ],
+            "roundness": 0.7632246289228358,
+            "size_proxy": 0.056669462713521024,
+            "static_confidence": 0.7428342207429435
+          },
+          "provisional": false,
+          "relative": [
+            4.073171932412925,
+            0.536243258005041,
+            -1.2953480594030227
+          ],
+          "retina_contrast": 0.0641423836350441,
+          "spread": null
+        },
+        {
+          "agency": 0.0,
+          "appearance": [
+            0.46881424756748635,
+            0.3014629860187539,
+            0.30612068963693007,
+            0.02580521672085828,
+            0.08630252017806803,
+            0.4408676939132795,
+            0.18642383872647014,
+            0.435110271230699,
+            0.4935166724503296,
+            0.4328246958419643,
+            0.13359113820313304,
+            0.08451592733078794,
+            0.7694653549159829,
+            0.01242744773868465,
+            3.209159054790575e-07,
+            0.0
+          ],
+          "bearing": null,
+          "centroid_uv": [
+            0.42558181285858154,
+            0.17419102787971497
+          ],
+          "confidence": 1.0,
+          "depth": null,
+          "entity_role": "compact_entity",
+          "flow": [
+            0.008928571428571452,
+            -0.014880952380952384
+          ],
+          "idx": -1,
+          "kind_hint": "object",
+          "local_motion": 0.012156862765550613,
+          "looming": 0.003538656608090801,
+          "mask_entropy": null,
+          "motion": [
+            0.008928571428571452,
+            -0.014880952380952384
+          ],
+          "object_id": "ent-00008",
+          "persistence": 1.0,
+          "presence": 1.0,
+          "property_evidence": {
+            "area": 0.08652426927108617,
+            "brightness": 0.4811797188420599,
+            "brightness_contrast": 0.4494508309323255,
+            "compactness": 0.9412856619249365,
+            "depth": 1.7921539010403857,
+            "edge_strength": 0.31660341019159977,
+            "hue_histogram": [
+              0.13308227487705582,
+              9.699065154290305e-05,
+              0.8666179908727988,
+              0.0002024608768952165,
+              2.8268096749442144e-07,
+              0.0
+            ],
+            "local_motion": 0.026481626413391975,
+            "looming": -0.01999130643610427,
+            "perceptual_confidence": 0.999963684067136,
+            "predicts_head_pain": 0.020707463534730446,
+            "predicts_integrity_loss": 0.3229539461064012,
+            "predicts_left_foot_pain": 0.1616378936022604,
+            "predicts_left_thigh_pain": 0.0044,
+            "predicts_pain": 0.3229539461064012,
+            "predicts_right_foot_pain": 0.22149697453542463,
+            "rgb_mean": [
+              0.4614516228386331,
+              0.5206393831508859,
+              0.4614480083969415
+            ],
+            "roundness": 0.9120170652354008,
+            "size_proxy": 0.14633120909530326,
+            "static_confidence": 0.920562288851868
+          },
+          "provisional": false,
+          "relative": [
+            1.6479666053158646,
+            -0.17185484728760012,
+            0.8104436782054263
+          ],
+          "retina_contrast": 0.3214316666126251,
+          "spread": null
+        }
+      ]
+    },
+    "ltm_property_beliefs": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 527.0,
+      "last": 527.0,
+      "max": 527.0,
+      "metric": "ltm_property_beliefs",
+      "min": 527.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "object_files": {
+      "count": 0,
+      "delta": null,
+      "first": null,
+      "last": null,
+      "max": null,
+      "metric": "object_files",
+      "min": null,
+      "nonfinite": 0,
+      "slope": 0.0
+    }
+  },
+  "probes": {
+    "available": false,
+    "reason": "no_probe_bank"
+  },
+  "samples_path": "reports\\training_eval_perception_object_files_20260623_073345.jsonl",
+  "scenario": "perception_object_files",
+  "seeds": [
+    1
+  ],
+  "status": "fail"
+}

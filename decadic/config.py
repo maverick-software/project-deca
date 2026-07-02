@@ -1329,6 +1329,7 @@ DEFAULT_STRESS_GAIN = 1.5  # multiplier on depletion at full stress
 DEFAULT_METABOLIC_TICK_S = 1.0  # wall-clock cadence of the metabolic loop
 DEFAULT_WATER_CREDIT = 20.0  # hydration restored per glass consumed
 DEFAULT_FOOD_CREDIT = 15.0  # energy restored per morsel consumed
+DEFAULT_MEDICAL_KIT_CREDIT = 25.0  # integrity restored per medical kit consumed
 
 
 def viability_mode_default() -> str:
@@ -1377,6 +1378,10 @@ def water_credit() -> float:
 
 def food_credit() -> float:
     return float(os.environ.get("DECADIC_FOOD_CREDIT", str(DEFAULT_FOOD_CREDIT)))
+
+
+def medical_kit_credit() -> float:
+    return float(os.environ.get("DECADIC_MEDICAL_KIT_CREDIT", str(DEFAULT_MEDICAL_KIT_CREDIT)))
 
 
 # --- Physical-injury calibration (impact-based, human-superficial) -----------

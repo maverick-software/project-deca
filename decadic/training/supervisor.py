@@ -27,6 +27,7 @@ WINDOW_MAX = 240
 DEFAULT_POLL_S = 1.0
 DEFAULT_CAREGIVER_THRESHOLD = 80.0
 DEFAULT_CAREGIVER_REFRACTORY_S = 15.0
+CAREGIVER_PREFLIGHT_SAMPLES = 3
 
 SAMPLE_KEYS = (
     "viability",
@@ -58,6 +59,7 @@ SAMPLE_KEYS = (
     "teacher_vertical_velocity",
     "teacher_override_fraction",
     "consume_events",
+    "resource_relief_events",
     "distance_traveled",
     "net_displacement",
     "gait_regularity",
@@ -311,6 +313,12 @@ class SkillDojoSupervisor:
             "hydration": round(float(last.get("hydration", 100.0) or 100.0), 4),
             "energy": round(float(last.get("energy", 100.0) or 100.0), 4),
             "integrity": round(float(last.get("integrity", 100.0) or 100.0), 4),
+            "distance_traveled": round(float(last.get("distance_traveled", 0.0) or 0.0), 4),
+            "net_displacement": round(float(last.get("net_displacement", 0.0) or 0.0), 4),
+            "consume_events": round(float(last.get("consume_events", 0.0) or 0.0), 4),
+            "resource_relief_events": round(float(last.get("resource_relief_events", 0.0) or 0.0), 4),
+            "fall_rate": round(float(last.get("fall_rate", 0.0) or 0.0), 4),
+            "stance_phase": round(float(last.get("stance_phase", 0.0) or 0.0), 4),
             "samples": len(self._window),
             "gate": self._last_gate.as_dict() if self._last_gate else None,
             "failure": self._last_failure.as_dict() if self._last_failure else None,
@@ -349,6 +357,24 @@ class SkillDojoSupervisor:
                 self._window.append(sample)
                 self._manual_scaffold_active = self._sample_manual_scaffold_active(sample)
                 self._update_caregiver(agent, sample)
+                if self._caregiver_setup_failed():
+                    self._state = "failed"
+                    self._last_attempt_outcome = "setup_failed"
+                    self._failure_reason = "setup_failed_missing_parent"
+                    self._history.append(
+                        {
+                            "phase": phase.index,
+                            "name": phase.name,
+                            "event": "setup_failed",
+                            "reason": "setup_failed_missing_parent",
+                            "attempt": self._attempt_index,
+                            "at": _utc(),
+                        }
+                    )
+                    self._record_sample(sample)
+                    self._clear_agent_training()
+                    self._write_report(event="setup_failed")
+                    return
                 self._update_teacher_assist(agent, phase, sample)
                 self._record_sample(sample)
                 if await self._handle_death(agent, phase):
@@ -373,13 +399,14 @@ class SkillDojoSupervisor:
                 support_ok = float(sample.get("teacher_support_active", 0.0) or 0.0) < 0.5
                 caregiver_ok = self._caregiver_allows_success(phase)
                 confidence_ok = self._objective_confidence >= 1.0
+                scaffold_ok = (not self._manual_scaffold_active) or not getattr(phase, "is_terminal", False)
                 if (
                     gate.satisfied
                     and dwell_ok
                     and confidence_ok
                     and support_ok
                     and caregiver_ok
-                    and not self._manual_scaffold_active
+                    and scaffold_ok
                     and teacher_ok
                 ):
                     self._last_attempt_outcome = "success"
@@ -646,6 +673,11 @@ class SkillDojoSupervisor:
             return True
         return not self._caregiver_pending and self._caregiver_need == "none"
 
+    def _caregiver_setup_failed(self) -> bool:
+        if not self._caregiver_enabled or not self._caregiver_missing_parent:
+            return False
+        return len(self._window) >= CAREGIVER_PREFLIGHT_SAMPLES
+
     async def _handle_death(self, agent: Any, phase: Any) -> bool:
         if getattr(agent, "status", None) != "dead":
             return False
@@ -837,7 +869,11 @@ class SkillDojoSupervisor:
         if getattr(phase, "gate", None) is not None:
             sample_progress = min(1.0, len(self._window) / max(1, phase.gate.min_samples))
         agreement = _clamp01(float(sample.get("teacher_motor_agreement", 1.0) or 1.0))
-        scaffold_ok = 0.0 if self._manual_scaffold_active else 1.0
+        scaffold_ok = (
+            0.0
+            if self._manual_scaffold_active and getattr(phase, "is_terminal", False)
+            else 1.0
+        )
         danger_ok = max(0.0, 1.0 - _clamp01(demand))
         stable_ok = 1.0 if stable else 0.0
         confidence = min(
@@ -854,7 +890,7 @@ class SkillDojoSupervisor:
             self._confidence_reason = "posture not stable"
         elif agreement < 0.95:
             self._confidence_reason = "student differs from teacher"
-        elif self._manual_scaffold_active:
+        elif self._manual_scaffold_active and getattr(phase, "is_terminal", False):
             self._confidence_reason = "manual scaffold active"
         else:
             confidence = 1.0

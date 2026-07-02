@@ -1,0 +1,177 @@
+{
+  "skill_id": "crawl_to_food",
+  "version": "1.0",
+  "name": "Crawl to Food",
+  "description": "Practice low quadruped crawl motion, require measurable forward progress, then place food ahead so crawling has a purpose.",
+  "target_behavior": "Move from all-fours/crawl practice into autonomous crawling toward food without fake root translation.",
+  "teacher": "none",
+  "required_sensors": ["proprioception", "contacts"],
+  "checkpoint_on_graduate": true,
+  "caregiver_enabled": false,
+  "warnings": [
+    "Early phases may be practiced with manual braces or movement hold; final graduation requires both off.",
+    "Food-ahead placement uses give_food_near, which places a resource in front of the torso outside immediate reach."
+  ],
+  "phases": [
+    {
+      "index": 0,
+      "name": "All-Fours Familiarization",
+      "description": "Repose into a low all-fours body setup and collect stable contact samples before motion practice.",
+      "teacher_weight": 0.0,
+      "config": {
+        "viability_mode": "metabolic",
+        "motor_babble_sigma": 0.12
+      },
+      "body_commands": ["set_stance:all_fours", "recenter"],
+      "reset_commands": ["set_stance:all_fours", "recenter"],
+      "timeout_s": 90,
+      "max_attempts": 6,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {"key": "root_height", "comparator": "<=", "threshold": 0.18, "label": "collapsed below crawl floor", "unit": "m"},
+        {"key": "fall_rate", "comparator": ">=", "threshold": 0.5, "label": "too many falls", "unit": ""}
+      ],
+      "min_dwell_s": 20,
+      "gate": {
+        "min_samples": 8,
+        "criteria": [
+          {"key": "root_height", "comparator": ">=", "threshold": 0.35, "label": "low crawl root retained", "unit": "m"},
+          {"key": "fall_rate", "comparator": "<=", "threshold": 0.15, "label": "low fall rate", "unit": ""},
+          {"key": "hand_load_l", "comparator": ">=", "threshold": 0.01, "label": "left hand contacting", "unit": ""},
+          {"key": "hand_load_r", "comparator": ">=", "threshold": 0.01, "label": "right hand contacting", "unit": ""}
+        ]
+      }
+    },
+    {
+      "index": 1,
+      "name": "Crawl Motion Practice",
+      "description": "Run the crawl motion scaffold and require the stance phase to advance while the body remains low and stable.",
+      "teacher_weight": 0.0,
+      "config": {
+        "viability_mode": "metabolic",
+        "motor_babble_sigma": 0.18
+      },
+      "body_commands": ["set_stance:crawl", "recenter"],
+      "reset_commands": ["set_stance:crawl", "recenter"],
+      "timeout_s": 120,
+      "max_attempts": 8,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {"key": "root_height", "comparator": "<=", "threshold": 0.18, "label": "collapsed below crawl floor", "unit": "m"},
+        {"key": "fall_rate", "comparator": ">=", "threshold": 0.5, "label": "too many falls", "unit": ""}
+      ],
+      "min_dwell_s": 25,
+      "gate": {
+        "min_samples": 10,
+        "criteria": [
+          {"key": "stance_phase", "comparator": "trend>=", "threshold": 0.2, "label": "crawl cycle advances", "unit": ""},
+          {"key": "root_height", "comparator": ">=", "threshold": 0.32, "label": "crawl posture retained", "unit": "m"},
+          {"key": "fall_rate", "comparator": "<=", "threshold": 0.2, "label": "low fall rate", "unit": ""}
+        ]
+      }
+    },
+    {
+      "index": 2,
+      "name": "Forward Crawl",
+      "description": "Keep the crawl setup, but require real root displacement from limb/contact dynamics.",
+      "teacher_weight": 0.0,
+      "config": {
+        "viability_mode": "metabolic",
+        "motor_babble_sigma": 0.22
+      },
+      "body_commands": ["set_stance:crawl", "recenter"],
+      "reset_commands": ["set_stance:crawl", "recenter"],
+      "timeout_s": 150,
+      "max_attempts": 8,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {"key": "root_height", "comparator": "<=", "threshold": 0.18, "label": "collapsed below crawl floor", "unit": "m"},
+        {"key": "fall_rate", "comparator": ">=", "threshold": 0.5, "label": "too many falls", "unit": ""}
+      ],
+      "min_dwell_s": 35,
+      "gate": {
+        "min_samples": 12,
+        "criteria": [
+          {"key": "distance_traveled", "comparator": "trend>=", "threshold": 0.25, "label": "moves along the floor", "unit": "m"},
+          {"key": "net_displacement", "comparator": "trend>=", "threshold": 0.12, "label": "does not only crawl in place", "unit": "m"},
+          {"key": "fall_rate", "comparator": "<=", "threshold": 0.25, "label": "fall rate bounded", "unit": ""}
+        ]
+      }
+    },
+    {
+      "index": 3,
+      "name": "Food-Ahead Crawl",
+      "description": "Periodically place food ahead of the torso and require movement plus food contact/consumption.",
+      "teacher_weight": 0.0,
+      "config": {
+        "viability_mode": "metabolic",
+        "metabolic_compression": 2.0,
+        "drive_priority_gain": 3.0,
+        "motor_babble_sigma": 0.2
+      },
+      "body_commands": ["set_stance:crawl", "recenter"],
+      "reset_commands": ["set_stance:crawl", "recenter"],
+      "periodic_body_commands": [
+        {"command": "give_food_near", "period_s": 18.0}
+      ],
+      "timeout_s": 180,
+      "max_attempts": 8,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {"key": "root_height", "comparator": "<=", "threshold": 0.18, "label": "collapsed below crawl floor", "unit": "m"},
+        {"key": "fall_rate", "comparator": ">=", "threshold": 0.5, "label": "too many falls", "unit": ""}
+      ],
+      "min_dwell_s": 45,
+      "gate": {
+        "min_samples": 12,
+        "criteria": [
+          {"key": "distance_traveled", "comparator": "trend>=", "threshold": 0.35, "label": "crawls toward food", "unit": "m"},
+          {"key": "consume_events", "comparator": "trend>=", "threshold": 1.0, "label": "food reached", "unit": ""},
+          {"key": "fall_rate", "comparator": "<=", "threshold": 0.25, "label": "fall rate bounded", "unit": ""}
+        ]
+      }
+    },
+    {
+      "index": 4,
+      "name": "Autonomous Crawl Forage",
+      "description": "Teacher off and manual scaffold off; autonomous limb control must crawl toward food and consume it.",
+      "teacher_weight": 0.0,
+      "config": {
+        "viability_mode": "metabolic",
+        "metabolic_compression": 2.0,
+        "drive_priority_gain": 3.0,
+        "motor_babble_sigma": 0.12
+      },
+      "body_commands": ["set_stance:crawl", "recenter"],
+      "reset_commands": ["set_stance:crawl", "recenter"],
+      "periodic_body_commands": [
+        {"command": "give_food_near", "period_s": 24.0}
+      ],
+      "timeout_s": 240,
+      "max_attempts": 8,
+      "auto_retry": true,
+      "failure_min_samples": 2,
+      "failure_criteria": [
+        {"key": "root_height", "comparator": "<=", "threshold": 0.16, "label": "collapsed below crawl floor", "unit": "m"},
+        {"key": "fall_rate", "comparator": ">=", "threshold": 0.5, "label": "too many falls", "unit": ""}
+      ],
+      "min_dwell_s": 60,
+      "is_terminal": true,
+      "gate": {
+        "min_samples": 16,
+        "criteria": [
+          {"key": "distance_traveled", "comparator": "trend>=", "threshold": 0.35, "label": "autonomous floor movement", "unit": "m"},
+          {"key": "consume_events", "comparator": "trend>=", "threshold": 1.0, "label": "autonomous food contact", "unit": ""},
+          {"key": "teacher_override_fraction", "comparator": "<=", "threshold": 0.0, "label": "teacher disabled", "unit": ""},
+          {"key": "braces_enabled", "comparator": "<=", "threshold": 0.0, "label": "manual braces off", "unit": ""},
+          {"key": "movement_hold", "comparator": "<=", "threshold": 0.0, "label": "manual movement hold off", "unit": ""},
+          {"key": "fall_rate", "comparator": "<=", "threshold": 0.25, "label": "fall rate bounded", "unit": ""}
+        ]
+      }
+    }
+  ]
+}

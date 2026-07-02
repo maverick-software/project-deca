@@ -89,10 +89,12 @@ def test_npc_preserves_agent_actuator_contract():
         assert sim.model.nu == 21
         assert len(sim.hinge_qpos_adr) == 21
         assert sim.npc_torso is not None
-        # Both movable gifts exist (food + water) but add no actuators.
+        # Movable gifts exist (food + water + medical kit) but add no actuators.
         assert "prop_water_gift" in sim.water_bodies
+        assert "prop_medical_gift" in sim.medical_bodies
         assert sim._gift_addr["food"][0] >= 0
         assert sim._gift_addr["water"][0] >= 0
+        assert sim._gift_addr["medical_kit"][0] >= 0
         # The agent's proprioceptive joint vector tracks its hinges (21 x 2).
         snap = sim.snapshot()
         assert len(snap.joints) == 42
@@ -133,11 +135,11 @@ def test_npc_fsm_eats_drinks_and_offers():
         # 3) Cooldown elapsed -> leave the forage loop to fetch a gift. Park the
         # parent away from any morsel so it doesn't self-eat on this tick.
         sim._npc_next_deliver = 0.0
-        sim._agent_reservoirs = {"hydration": 0.2, "energy": 0.9, "integrity": 1.0}
+        sim._agent_reservoirs = {"hydration": 0.9, "energy": 0.2, "integrity": 1.0}
         place_npc(8.0, 8.0)
         sim.scene_events(2)
         assert sim._npc_phase == "pickup"
-        assert sim._npc_item == "food"  # first delivery is food
+        assert sim._npc_item == "food"
 
         # 4) Reach a live food source -> pick the gift up and carry it.
         live_food = next(
@@ -208,8 +210,8 @@ def test_parent_explicit_request_selects_visible_gift():
 
         sim._agent_reservoirs = {"hydration": 0.95, "energy": 0.4, "integrity": 0.3}
         assert sim._request_parent("care") is True
-        assert sim._npc_item == "food"
-        assert sim._npc_requested_item == "food"
+        assert sim._npc_item == "medical_kit"
+        assert sim._npc_requested_item == "medical_kit"
         assert sim._npc_request_kind == "care"
     finally:
         sim.close()

@@ -107,6 +107,13 @@ def _validate_neural_preset(preset: str | None) -> str | None:
     return name
 
 
+def _scenario_has_resource(resource: str, elements: list[object] | tuple[object, ...]) -> bool:
+    """Whether the running body scenario contains a prop source for resource."""
+    chosen = {str(e).strip().lower() for e in elements}
+    # NPC/crowd scenarios include caregiver gift bodies for all resource kinds.
+    return resource in chosen or "npc" in chosen or "crowd" in chosen
+
+
 def _cors_origins() -> list[str]:
     raw = os.environ.get(
         "DECADIC_CORS_ORIGINS",
@@ -674,6 +681,23 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail="Command queue full")
         return JSONResponse({"agent_id": agent_id, "status": f"{cmd}_queued"})
 
+    @application.post("/agent/{agent_id}/body/manual_auto_reset")
+    async def set_manual_auto_reset(agent_id: str, enabled: bool = True) -> JSONResponse:
+        """Operator safety for manual motion scaffolds.
+
+        When enabled, the body adapter re-applies the selected motion stance after
+        a fall. This is not a Skill Dojo success/failure signal and does not touch
+        brain state or replay memory.
+        """
+        registry: AgentRegistry = application.state.registry
+        agent = registry.get(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Unknown agent")
+        cmd = "manual_auto_reset_on" if enabled else "manual_auto_reset_off"
+        if not agent.queue_body_command(cmd):
+            raise HTTPException(status_code=503, detail="Command queue full")
+        return JSONResponse({"agent_id": agent_id, "status": f"{cmd}_queued"})
+
     @application.get("/body/stances")
     async def list_stances() -> JSONResponse:
         """Catalog of selectable joint-brace stances (name, label, motion flag).
@@ -685,11 +709,11 @@ def create_app() -> FastAPI:
 
     @application.post("/agent/{agent_id}/body/stance")
     async def set_stance(agent_id: str, name: str) -> JSONResponse:
-        """Re-pose the body into a stance and restart that stance's ROM curriculum.
+        """Re-pose the body into a stance without changing manual brace state.
 
-        The body re-poses into the stance start pose and re-welds every joint
-        brace (a new posture is a new skill, learned from fully braced). Unknown
-        names fall back to the default stand.
+        The body re-poses into the stance start pose and preserves the current
+        brace on/off, hold, and earned ROM state. Unknown names fall back to the
+        default stand.
         """
         registry: AgentRegistry = application.state.registry
         agent = registry.get(agent_id)
@@ -740,11 +764,11 @@ def create_app() -> FastAPI:
         mode: str = "near",
         amount: float | None = None,
     ) -> JSONResponse:
-        """Provision the agent with water or food, two ways.
+        """Provision the agent with water, food, or medical kit relief.
 
         ``mode=direct`` asks the connected body to put the chosen resource in
         the egocentric camera view and move it toward the head until normal
-        food/water consumption fires. ``mode=near`` places a prop nearby for the
+        resource consumption fires. ``mode=near`` places a prop nearby for the
         agent to seek. ``mode=admin`` is the old instant reservoir top-up.
         """
         registry: AgentRegistry = application.state.registry
@@ -752,8 +776,13 @@ def create_app() -> FastAPI:
         if agent is None:
             raise HTTPException(status_code=404, detail="Unknown agent")
         res = str(resource).strip().lower()
-        if res not in ("water", "food"):
-            raise HTTPException(status_code=400, detail="resource must be 'water' or 'food'")
+        if res in ("medical", "medkit", "care"):
+            res = "medical_kit"
+        if res not in ("water", "food", "medical_kit"):
+            raise HTTPException(
+                status_code=400,
+                detail="resource must be 'water', 'food', or 'medical_kit'",
+            )
         md = str(mode).strip().lower()
         if md not in ("near", "direct", "visual_direct", "admin"):
             raise HTTPException(
@@ -767,10 +796,20 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             return JSONResponse({"agent_id": agent_id, "status": f"{res}_admin", **result})
         sup: EnvironmentSupervisor = application.state.environment
-        if not sup.is_running() or sup.status().get("agent_id") != agent_id:
+        env_status = sup.status()
+        if not sup.is_running() or env_status.get("agent_id") != agent_id:
             raise HTTPException(
                 status_code=409,
-                detail="No running body for this agent; start a scenario with water/food first.",
+                detail="No running body for this agent; start a scenario with resources first.",
+            )
+        elements = env_status.get("elements")
+        if isinstance(elements, list) and elements and not _scenario_has_resource(res, elements):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{res} is not in the running scenario; restart the environment "
+                    f"with {res} enabled, or use mode=admin for an instant test credit."
+                ),
             )
         suffix = "direct_visual" if md in ("direct", "visual_direct") else "near"
         if not agent.queue_body_command(f"give_{res}_{suffix}"):

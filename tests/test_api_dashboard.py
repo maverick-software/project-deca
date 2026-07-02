@@ -590,6 +590,18 @@ def test_migrated_locomotion_skills_available_from_dojo(api_app):
         by_id = {s["skill_id"]: s for s in skills}
         assert "developmental_locomotion" in by_id
         assert "affective_locomotion" in by_id
+        assert "crawl_to_food" in by_id
         phase = by_id["developmental_locomotion"]["phases"][2]
         assert phase["periodic_body_commands"][0]["command"] == "parent_request:food"
         assert phase["demote_on_death"] is True
+        crawl_phase = by_id["crawl_to_food"]["phases"][3]
+        assert crawl_phase["periodic_body_commands"][0]["command"] == "give_food_near"
+
+
+def test_manual_auto_reset_endpoint_queues_body_command(api_app):
+    with TestClient(api_app) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        body = client.post(f"/agent/{aid}/body/manual_auto_reset?enabled=true").json()
+        assert body["status"] == "manual_auto_reset_on_queued"
+        body = client.post(f"/agent/{aid}/body/manual_auto_reset?enabled=false").json()
+        assert body["status"] == "manual_auto_reset_off_queued"

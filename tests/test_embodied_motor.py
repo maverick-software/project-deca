@@ -690,6 +690,7 @@ def test_default_scene_has_water_and_no_bear():
         assert sim.bear_body is None  # bear removed from the default scene
         assert len(sim.water_bodies) >= 1  # drinkable glasses present
         assert len(sim.food_bodies) >= 1  # food still near spawn
+        assert len(sim.medical_bodies) >= 1  # medkits can restore integrity
     finally:
         sim.close()
 
@@ -765,6 +766,46 @@ def test_direct_visual_delivery_suppresses_radius_until_head_arrival():
         sim.step(mod.DIRECT_PROVISION_DURATION_S + 0.1)
         events = sim.scene_events(1)
         assert any(ev["type"] == "food" and ev["source"] == delivery.name for ev in events)
+        assert delivery.name in sim.eaten
+    finally:
+        sim.close()
+
+
+def test_medical_kit_near_and_direct_delivery_emit_integrity_event():
+    pytest.importorskip("mujoco")
+    mod = _load_adapter_module()
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default")
+    try:
+        food_before = {
+            name: [float(x) for x in sim.data.xpos[bid][:3]]
+            for name, bid in sim.food_bodies.items()
+        }
+        med_before = {
+            name: [float(x) for x in sim.data.xpos[bid][:3]]
+            for name, bid in sim.medical_bodies.items()
+        }
+        assert sim.give_near("medical_kit") is True
+        name = next(n for n in sim.medical_bodies if "gift" not in n)
+        pos = sim.data.xpos[sim.medical_bodies[name]]
+        root = sim.data.xpos[sim.torso_id]
+        xy_dist = ((float(pos[0]) - float(root[0])) ** 2 + (float(pos[1]) - float(root[1])) ** 2) ** 0.5
+        assert xy_dist > mod.MEDICAL_RADIUS
+        assert any(
+            [float(x) for x in sim.data.xpos[sim.medical_bodies[n]][:3]] != pytest.approx(p)
+            for n, p in med_before.items()
+        )
+        for n, p in food_before.items():
+            assert [float(x) for x in sim.data.xpos[sim.food_bodies[n]][:3]] == pytest.approx(p)
+
+        assert sim.give_direct_visual("medical_kit") is True
+        delivery = sim._direct_delivery
+        assert delivery is not None
+        sim.step(mod.DIRECT_PROVISION_DURATION_S + 0.1)
+        events = sim.scene_events(1)
+        assert any(
+            ev["type"] == "medical_kit" and ev["source"] == delivery.name
+            for ev in events
+        )
         assert delivery.name in sim.eaten
     finally:
         sim.close()

@@ -638,6 +638,47 @@ def test_motion_stance_advances_phase_and_retargets(monkeypatch):
         sim.close()
 
 
+def test_crawl_motion_can_make_contact_driven_progress_without_wrench(monkeypatch):
+    """The crawl scaffold should be able to translate from floor contact alone.
+
+    This keeps the no-glide invariant: no horizontal force or root teleport is
+    used, but the tuned limb cycle should no longer be purely in-place.
+    """
+    import math
+    import numpy as np
+
+    pytest.importorskip("mujoco")
+    mod = _load_adapter(monkeypatch)
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
+    try:
+        sim.set_stance("crawl")
+        sim.set_movement_hold(True)
+        start = tuple(sim.snapshot().position[:2])
+        max_wrench = 0.0
+        for _ in range(int(6.0 / 0.05)):
+            sim.step(0.05)
+            max_wrench = max(max_wrench, float(np.abs(sim.data.xfrc_applied[sim.torso_id]).max()))
+        end = tuple(sim.snapshot().position[:2])
+        assert math.hypot(end[0] - start[0], end[1] - start[1]) >= 0.05
+        assert max_wrench == 0.0
+    finally:
+        sim.close()
+
+
+def test_manual_auto_reset_toggle_is_observable(monkeypatch):
+    pytest.importorskip("mujoco")
+    mod = _load_adapter(monkeypatch)
+    sim = mod.HumanoidSim(vision=False, view=False, scene="default", braces=True)
+    try:
+        assert sim.snapshot().manual_auto_reset is False
+        sim.set_manual_auto_reset(True)
+        assert sim.snapshot().manual_auto_reset is True
+        sim.set_manual_auto_reset(False)
+        assert sim.snapshot().manual_auto_reset is False
+    finally:
+        sim.close()
+
+
 def test_stance_sets_posture_aware_fall_floor(monkeypatch):
     """Low stances carry a low fall floor so the quadruped/kneel postures are not
     perpetually flagged as a fall (which standing's 0.7 m floor would do)."""

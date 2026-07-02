@@ -80,11 +80,21 @@ def evaluate_gate(gate: MetricGate, samples: list[EvalSample]) -> dict[str, Any]
     vals = metric_values(samples, gate.metric)
     tr = trend_for(samples, gate.metric)
     if not vals:
+        reason = "missing_metric"
+        for sample in samples:
+            discovery = sample.discovery if isinstance(sample.discovery, dict) else {}
+            health = discovery.get("discovery_health") if isinstance(discovery, dict) else None
+            if isinstance(health, dict) and gate.metric in health:
+                reason = "metric_present_in_discovery_not_metrics"
+                break
+            if isinstance(discovery, dict) and gate.metric in discovery:
+                reason = "metric_present_in_discovery_not_metrics"
+                break
         return {
             "name": gate.name,
             "metric": gate.metric,
             "satisfied": False,
-            "reason": "missing_metric",
+            "reason": reason,
             "trend": tr.to_dict(),
         }
     if gate.mode == "final":
@@ -116,4 +126,3 @@ def evaluate_gate(gate: MetricGate, samples: list[EvalSample]) -> dict[str, Any]
         "reason": "ok" if ok else "gate_failed",
         "trend": tr.to_dict(),
     }
-

@@ -87,8 +87,8 @@ def test_start_pause_resume_stop(tmp_path, monkeypatch):
 
     async def go():
         st = await sup.start(["house", "food", "bear", "nonsense"], vision=True, audio=False)
-        # unknown element filtered, the rest preserved in order
-        assert st["elements"] == ["house", "food", "bear"]
+        # unknown element filtered, the rest preserved in order, med kit forced on
+        assert st["elements"] == ["house", "food", "bear", "medical_kit"]
         assert st["state"] == "running"
         assert st["running"] is True
         assert st["pid"] == 4321
@@ -240,7 +240,7 @@ def test_status_exposes_braces_option_no_legacy_presets(tmp_path, monkeypatch):
 
     async def go():
         st = await sup.start(["crowd", "house"])
-        assert st["elements"] == ["crowd", "house"]
+        assert st["elements"] == ["crowd", "house", "medical_kit"]
         assert "crowd" in st["available_elements"]
         # Braces default off is surfaced in the options; the retired in-tab
         # preset map is gone (presets now live in the dedicated preset store).
@@ -270,8 +270,9 @@ def test_start_braces_on_passes_braces_flag(tmp_path, monkeypatch):
         assert st["options"]["braces"] is False
 
         await sup.stop()
-        await sup.start(["house"], braces=True)
+        st = await sup.start(["house"], braces=True)
         assert "--braces" in captured[-1]
+        assert st["elements"] == ["house", "medical_kit"]
 
     asyncio.run(go())
 

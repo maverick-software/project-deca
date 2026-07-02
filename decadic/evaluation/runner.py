@@ -9,6 +9,7 @@ from typing import Any
 
 from decadic.evaluation.metrics import evaluate_gate, metric_values, trend_for
 from decadic.evaluation.probes import summarize_probe_bank
+from decadic.evaluation.sampling import eval_window
 from decadic.evaluation.types import EvalReport, EvalSample, EvalSpec
 
 
@@ -100,6 +101,14 @@ def _behavior(samples: list[EvalSample]) -> dict[str, Any]:
     latest_dojo = next((s.dojo for s in reversed(samples) if s.dojo), None)
     if latest_dojo:
         out["dojo_latest"] = latest_dojo
+        out["caregiver_latest"] = {
+            "enabled": bool(latest_dojo.get("caregiver_enabled", False)),
+            "status": latest_dojo.get("caregiver_status"),
+            "kind": latest_dojo.get("caregiver_kind"),
+            "missing_parent": bool(latest_dojo.get("caregiver_missing_parent", False)),
+            "delivery_count": latest_dojo.get("caregiver_delivery_count"),
+            "request_kind": latest_dojo.get("caregiver_request_kind"),
+        }
     return out
 
 
@@ -112,6 +121,7 @@ def _perception(samples: list[EvalSample]) -> dict[str, Any]:
     }
     if latest:
         metrics["latest_discovery"] = latest
+        metrics["latest_discovery_health"] = latest.get("discovery_health")
     return metrics
 
 
@@ -141,6 +151,11 @@ def build_report(
             failures.append(f"gate failed: {gate['name']} ({gate['reason']})")
     health = _health(samples, failures)
     behavior = _behavior(samples)
+    latest_dojo = behavior.get("dojo_latest")
+    if isinstance(latest_dojo, dict):
+        reason = str(latest_dojo.get("failure_reason") or "")
+        if reason == "setup_failed_missing_parent":
+            failures.append("setup failed: missing caregiver parent (setup_failed_missing_parent)")
     behavior["gates"] = gate_reports
     report = EvalReport(
         scenario=spec.scenario,
@@ -157,6 +172,7 @@ def build_report(
         probes=summarize_probe_bank(probe_bank),
         behavior=behavior,
         baseline_comparison=baseline_report or {},
+        eval_window=eval_window(samples, spec.cycles),
         failures=failures,
         samples_path=samples_path,
     )

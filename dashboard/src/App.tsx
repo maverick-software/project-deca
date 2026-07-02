@@ -61,7 +61,7 @@ const DEFAULT_CREATION_PRESET = "tiny";
 
 // A calm homeostasis body by default until presets load from the server.
 const DEFAULT_DRAFT: ScenarioDraft = {
-  elements: ["house", "food", "water"],
+  elements: ["house", "food", "water", "medical_kit"],
   vision: true,
   audio: false,
   braces: false,

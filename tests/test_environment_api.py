@@ -12,7 +12,7 @@ def test_environment_status_when_stopped(api_app):
         assert body["running"] is False
         assert body["agent_id"] is None
         # Available elements are advertised for the scenario builder.
-        for el in ("house", "food", "water", "bear", "ball", "obstacles"):
+        for el in ("house", "food", "water", "medical_kit", "bear", "ball", "obstacles"):
             assert el in body["available_elements"]
 
 
