@@ -46,7 +46,7 @@ Extract `EpisodicBackend` and `GraphBackend` protocol classes capturing today's 
 ### 5.2 LanceDB episodic backend (settled shape, details M1)
 - One table per agent: `episode(cycle, ts, salience, meta_json, embedding: vector(80), percept_key: vector(16))` — percept key stored both inside `embedding` (compatibility) and as its own column (novelty search).
 - Search: brute-force under an index threshold (LanceDB scans are already vectorized/fast below ~100k), ANN index (IVF-PQ; estimate) created at threshold N (open: 100k default) on both vector columns.
-- The in-memory recall cache is **retained initially** and LanceDB used for spills/large-N (open decision: retire the cache after benchmarks prove parity — leaning retire at M5, one source of truth).
+- The in-memory recall cache is **retained and upgraded to a FULL mirror** (decision closed by owner 2026-07-03 at M5, superseding the earlier "leaning retire"): a write-through numpy L1 mirroring every live embedding — contiguous float32 `(n, 80)` matrix, parallel id/cycle/salience arrays, percept-key matrix as a zero-copy `[:, 64:80]` view — so search is cache-speed at full-corpus fidelity and LanceDB is the durability layer (write-through on append, bulk columnar load on open, id-mask invalidation on prune, rebuild on restore). Memory guard `DECADIC_LANCE_CACHE_MAX_ROWS` (default 2M rows ≈ 640 MB); past the cap queries fall back to the lance brute-force scan. See `reports/ws4_bench_report.md` (cutover section) for the measurements and rationale.
 - Ephemeral mode for tests: LanceDB over a temp dir, cleaned on close (in-memory fallback preserved verbatim when `db_path=None`).
 
 ### 5.3 Kuzu graph backend (settled shape, details M2)
@@ -84,6 +84,6 @@ Per-backend snapshot semantics: quiesce writes (write-behind queues drained + lo
 ## 8. Open decisions (resolve by end of M1/M2)
 
 - ANN index type and threshold (IVF-PQ vs HNSW; 100k default).
-- Retire the in-memory recall cache after M5, or keep as L1.
+- ~~Retire the in-memory recall cache after M5, or keep as L1.~~ **Closed 2026-07-03 (owner):** kept and upgraded to the uncapped full-mirror L1 (see 5.2); sqlite remains env-selectable as the legacy/parity mode.
 - Kuzu belief storage: node properties vs separate table (perf-dependent).
 - Whether the episodic LanceDB table also absorbs the WS2 harness's episode queries (out of scope unless free).

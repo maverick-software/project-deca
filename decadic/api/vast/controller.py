@@ -23,10 +23,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from decadic.api.presets.store import BUILTIN_PRESETS
 from decadic.api.vast.cli import VastCli, VastCliError, open_tunnel, parse_ssh_url, ssh_exec
 from decadic.api.vast.settings_store import VastSettingsStore
 
 logger = logging.getLogger(__name__)
+
+# Element lists for the 6 built-in scenario presets, sourced from the SAME
+# BUILTIN_PRESETS the dashboard's "+ New agent" dropdown and /agent-presets
+# both use - so a Vast deploy resolves a scene identically to a local agent
+# instead of a second hand-maintained bear/food mapping. "mind" maps to []
+# (no body) since its own elements list is already empty.
+_BUILTIN_SCENE_ELEMENTS: dict[str, list[str]] = {
+    str(p["id"]): list(p["elements"]) for p in BUILTIN_PRESETS
+}
+# Back-compat aliases for the old ad-hoc scene shorthand this endpoint used to
+# accept directly (pre-preset-unification): "bear" meant the predator
+# scenario, "food" meant the foraging scenario. Kept so already-saved
+# ~/.decadic/vast.json defaults and any manual API callers keep working.
+_LEGACY_SCENE_ALIASES: dict[str, str] = {"bear": "predator", "food": "forage"}
 
 REMOTE_ROOT = "/workspace/app"
 REMOTE_PORT = 8765
@@ -345,13 +360,18 @@ class VastController:
 
     # --- helpers -----------------------------------------------------------
     def _scene_elements(self, scene: str | None) -> list[str]:
+        """Resolve a deploy-request scene value to world elements.
+
+        Accepts a built-in preset id (calm/forage/parent/village/predator/
+        mind - the same ids /agent-presets returns), a legacy bear/food
+        alias, or a raw comma-separated element list for manual/API use.
+        """
         s = (scene or "none").strip().lower()
         if s in ("none", "", "mind", "mind_only"):
             return []
-        if s == "bear":
-            return ["house", "bear"]
-        if s == "food":
-            return ["house", "food", "water"]
+        s = _LEGACY_SCENE_ALIASES.get(s, s)
+        if s in _BUILTIN_SCENE_ELEMENTS:
+            return list(_BUILTIN_SCENE_ELEMENTS[s])
         return [e for e in (p.strip() for p in s.split(",")) if e]
 
     def _build_payload(self, *, include_backups: bool) -> str:

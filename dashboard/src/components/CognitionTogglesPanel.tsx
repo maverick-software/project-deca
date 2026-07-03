@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { AgentDefaults, CapacityConfig, Metrics } from "../api";
 import { configureAgent } from "../api";
+import { ENCODER_INFO } from "../explainers";
 import Info from "./Info";
 
 // All cognitive-faculty + observation toggles, surfaced in the UI so nothing is
@@ -134,7 +135,7 @@ export default function CognitionTogglesPanel(props: {
       <label className="cap-row">
         <span>
           Sensory encoder
-          <Info tip="hf: real frozen CLIP + Whisper (downloads ~1 GB on first run; gives the patch tokens discovered perception needs). zeros: cheap synthetic fallback (fast, but discovered perception is inert)." />
+          <Info tip={ENCODER_INFO} />
         </span>
         <select
           value={defaults?.encoder_mode ?? "hf"}

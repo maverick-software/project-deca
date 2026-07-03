@@ -1,3 +1,4 @@
+import { DB_LOSS_INFO } from "../../explainers";
 import type { Deployment } from "../../vastApi";
 
 function fmtElapsed(s: number): string {
@@ -72,6 +73,10 @@ export default function ActiveDeployment(props: {
       <div style={{ fontSize: 11, opacity: 0.6 }}>
         Billing runs while the instance is up. Stop pauses GPU billing (disk still
         charged); Destroy terminates it entirely.
+      </div>
+
+      <div style={{ fontSize: 11, color: "#f0883e" }}>
+        Destroy warning: {DB_LOSS_INFO}
       </div>
     </div>
   );

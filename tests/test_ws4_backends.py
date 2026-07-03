@@ -54,9 +54,46 @@ def test_embedding_layout_frozen():
 # --------------------------------------------------------------------------
 
 
-def test_factory_default_is_sqlite(monkeypatch):
+def test_factory_defaults_are_lancedb_kuzu(monkeypatch):
+    """WS4-M5 cutover: with no env vars set the defaults are lancedb + kuzu."""
+    pytest.importorskip("lancedb")
+    pytest.importorskip("kuzu")
     monkeypatch.delenv("DECADIC_MEMORY_BACKEND", raising=False)
     monkeypatch.delenv("DECADIC_GRAPH_BACKEND", raising=False)
+    from decadic.memory.kuzu_graph import (
+        KuzuLongTermGraph,
+        WriteBehindKuzuLongTermGraph,
+    )
+    from decadic.memory.lancedb_store import LanceEpisodicStore
+
+    store = factory.make_episodic_store(None)
+    try:
+        assert type(store) is LanceEpisodicStore
+    finally:
+        store.close()
+    graph = factory.make_semantic_graph(None)
+    try:
+        assert type(graph) is KuzuLongTermGraph
+    finally:
+        graph.close()
+
+    rt_store = factory.make_runtime_episodic_store(None, enabled=False)
+    try:
+        assert type(rt_store) is LanceEpisodicStore
+        assert rt_store.async_enabled is False
+    finally:
+        rt_store.close()
+    rt_graph = factory.make_runtime_ltm_graph(None, enabled=False)
+    try:
+        assert isinstance(rt_graph, WriteBehindKuzuLongTermGraph)
+    finally:
+        rt_graph.close()
+
+
+def test_factory_sqlite_legacy(monkeypatch):
+    """sqlite stays fully supported as the explicit legacy backend value."""
+    monkeypatch.setenv("DECADIC_MEMORY_BACKEND", "sqlite")
+    monkeypatch.setenv("DECADIC_GRAPH_BACKEND", "sqlite")
     store = factory.make_episodic_store(None)
     assert type(store) is EpisodicStore
     from decadic.memory.semantic_graph import LongTermGraph
@@ -382,6 +419,214 @@ def test_lancedb_ephemeral_mode_cleanup():
     assert tmp_dir is None or tmp_dir.exists()
     store.close()
     assert store._dir is None  # temp storage cleaned up
+
+
+# --------------------------------------------------------------------------
+# M5 -- LanceDB full-mirror L1 recall cache (the cutover's performance layer)
+# --------------------------------------------------------------------------
+
+
+def _lance_store(tmp_path, name):
+    from decadic.memory.lancedb_store import LanceEpisodicStore
+
+    return LanceEpisodicStore(tmp_path / name)
+
+
+def test_lance_mirror_write_through_before_flush(tmp_path, monkeypatch):
+    """Appends are searchable via the mirror immediately, before any flush."""
+    pytest.importorskip("lancedb")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_RETENTION_ENABLED", "0")
+    store = _lance_store(tmp_path, "wt_lance")
+    try:
+        store.set_async(True)  # micro-batching on: appends stay pending
+        records = _synthetic_records(20, seed=31)
+        for r in records[:10]:
+            store.append(r)
+        assert store._pending  # nothing flushed yet -- this is the point
+        q = np.asarray(records[3].embedding, dtype=np.float32)
+        assert _cycles(store.search_similar(q, top_k=1)) == [3]
+        assert store.last_best_similarity == pytest.approx(1.0, abs=1e-5)
+        # Mirror is live now; further appends write through, still unflushed.
+        for r in records[10:]:
+            store.append(r)
+        assert store._pending
+        q = np.asarray(records[17].embedding, dtype=np.float32)
+        assert _cycles(store.search_similar(q, top_k=1)) == [17]
+        key = np.asarray(records[17].embedding, dtype=np.float32)[PERCEPT_KEY_SLICE]
+        assert _cycles(store.search_similar_percept(key, top_k=1)) == [17]
+        stats = store.recall_cache_stats()
+        assert stats["enabled"] is True
+        assert stats["size"] == 20
+        assert stats["hits"] >= 3
+        assert stats["misses"] == 0
+    finally:
+        store.close()
+
+
+def test_lance_nan_embedding_sanitized_at_boundary(tmp_path, monkeypatch):
+    """NaN/inf embeddings must not fail the lance flush (sqlite parity).
+
+    The sqlite backend silently persisted NaN embeddings (raw blob) and its
+    cosine path simply never ranked them. Lance VALIDATES vectors on add() and
+    raises "Vector column contains NaN values" -- one bad episode from the
+    cognition side became a failed flush on the caller's thread
+    (test_api_dashboard::test_list_agents under the flipped defaults).
+    _row_from_record now zeroes non-finite values, so the row lands, the
+    mirror and disk stay identical, and the zero vector never wins a search.
+    """
+    pytest.importorskip("lancedb")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_RETENTION_ENABLED", "0")
+    good = _synthetic_records(3, seed=17)
+    q = np.asarray(good[1].embedding, dtype=np.float32)
+
+    store = _lance_store(tmp_path, "nan_lance")
+    try:
+        for r in good:
+            store.append(r)
+        bad = np.full(EMBEDDING_DIM, np.nan, dtype=np.float32)
+        bad[0] = np.inf
+        bad[1] = -np.inf
+        store.append(
+            EpisodicRecord(
+                cycle_index=99, summary={"nan": True}, salience=0.5, embedding=bad
+            )
+        )
+        store.flush()  # the original failure point: must not raise
+        # The sanitized row is stored but can never win a search.
+        assert _cycles(store.search_similar(q, top_k=1)) == [1]
+        assert store.recall_cache_stats()["size"] == 4
+    finally:
+        store.close()
+
+    # Reopen: the committed corpus (including the sanitized row) bulk-loads
+    # cleanly and searches identically -- mirror and durability layer agree.
+    store2 = _lance_store(tmp_path, "nan_lance")
+    try:
+        assert _cycles(store2.search_similar(q, top_k=1)) == [1]
+        assert store2.recall_cache_stats()["size"] == 4
+    finally:
+        store2.close()
+
+
+def test_lance_mirror_reopen_rebuilds_from_disk(tmp_path, monkeypatch):
+    """append + flush + close, reopen: the mirror bulk-loads the full corpus."""
+    pytest.importorskip("lancedb")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_RETENTION_ENABLED", "0")
+    records = _synthetic_records(50, seed=33)
+    store = _lance_store(tmp_path, "reopen_lance")
+    try:
+        for r in records:
+            store.append(r)
+        store.flush()
+    finally:
+        store.close()
+
+    store2 = _lance_store(tmp_path, "reopen_lance")
+    try:
+        q = np.asarray(records[7].embedding, dtype=np.float32)
+        assert _cycles(store2.search_similar(q, top_k=1)) == [7]
+        assert store2.last_best_similarity == pytest.approx(1.0, abs=1e-5)
+        key = np.asarray(records[7].embedding, dtype=np.float32)[PERCEPT_KEY_SLICE]
+        assert _cycles(store2.search_similar_percept(key, top_k=1)) == [7]
+        stats = store2.recall_cache_stats()
+        assert stats["enabled"] is True
+        assert stats["size"] == 50  # every committed row mirrored
+        assert stats["hits"] >= 2 and stats["misses"] == 0
+    finally:
+        store2.close()
+
+
+def test_lance_mirror_prune_invalidation(tmp_path, monkeypatch):
+    """Pruned victims disappear from mirror-served search results."""
+    pytest.importorskip("lancedb")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_RETENTION_ENABLED", "1")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_RECENT_CAP", "20")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_SALIENT_CAP", "10")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_PRUNE_INTERVAL_WRITES", "10")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_PRUNE_BATCH", "1000")
+    store = _lance_store(tmp_path, "prune_lance")
+    try:
+        records = _synthetic_records(100, seed=35)
+        # Warm the mirror first so pruning exercises the id-mask delete path
+        # (not just a later rebuild).
+        assert store.search_similar(np.ones(EMBEDDING_DIM, np.float32), top_k=1) == []
+        for r in records:
+            store.append(r)
+        surviving = {r["cycle_index"] for r in store.recent(limit=500)}
+        assert len(surviving) < 100  # pruning actually happened
+        pruned = sorted(set(range(100)) - surviving)
+        assert pruned
+        for cycle in pruned[:5]:
+            q = np.asarray(records[cycle].embedding, dtype=np.float32)
+            assert cycle not in _cycles(store.search_similar(q, top_k=3))
+        stats = store.recall_cache_stats()
+        assert stats["enabled"] is True
+        assert stats["size"] == len(surviving)  # mirror tracks the survivors
+    finally:
+        store.close()
+
+
+def test_lance_mirror_equals_scan_path(tmp_path, monkeypatch):
+    """Mirror-served results EXACTLY match the lance-scan fallback path.
+
+    The scan store's mirror cap is monkeypatched to 0, so it takes the
+    brute-force ``table.search`` + exact-cosine-rerank path on identical data.
+    """
+    pytest.importorskip("lancedb")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_RETENTION_ENABLED", "0")
+    records = _synthetic_records(300, seed=37)
+    mirror = _lance_store(tmp_path, "eq_mirror")
+    scan = _lance_store(tmp_path, "eq_scan")
+    monkeypatch.setattr(scan, "_mirror_cap_rows", lambda: 0)  # force lance path
+    try:
+        for r in records:
+            mirror.append(r)
+            scan.append(r)
+        mirror.flush()
+        scan.flush()
+
+        rng = np.random.default_rng(101)
+        for _ in range(10):
+            q = rng.standard_normal(EMBEDDING_DIM).astype(np.float32)
+            hm = mirror.search_similar(q, top_k=5, min_salience=0.3)
+            hs = scan.search_similar(q, top_k=5, min_salience=0.3)
+            assert _cycles(hm) == _cycles(hs)
+            for a, b in zip(hm, hs):
+                assert a["similarity"] == pytest.approx(b["similarity"], abs=1e-6)
+            assert mirror.last_best_similarity == pytest.approx(
+                scan.last_best_similarity, abs=1e-6
+            )
+
+        # exclude_cycle applied identically (as a pre-top-k mask).
+        q = rng.standard_normal(EMBEDDING_DIM).astype(np.float32)
+        exclude = int(mirror.search_similar(q, top_k=1)[0]["cycle_index"])
+        hm = mirror.search_similar(q, top_k=5, exclude_cycle=exclude)
+        hs = scan.search_similar(q, top_k=5, exclude_cycle=exclude)
+        assert _cycles(hm) == _cycles(hs)
+        assert exclude not in _cycles(hm)
+
+        # Percept-key mirror equality too.
+        for _ in range(10):
+            key = rng.standard_normal(PERCEPT_KEY_DIM).astype(np.float32)
+            hm = mirror.search_similar_percept(key, top_k=5)
+            hs = scan.search_similar_percept(key, top_k=5)
+            assert _cycles(hm) == _cycles(hs)
+            for a, b in zip(hm, hs):
+                assert a["similarity"] == pytest.approx(b["similarity"], abs=1e-6)
+            assert mirror.last_best_percept_similarity == pytest.approx(
+                scan.last_best_percept_similarity, abs=1e-6
+            )
+
+        # Each store took the path this test believes it took.
+        m_stats = mirror.recall_cache_stats()
+        s_stats = scan.recall_cache_stats()
+        assert m_stats["enabled"] is True and m_stats["misses"] == 0
+        assert m_stats["hits"] >= 22
+        assert s_stats["enabled"] is False and s_stats["size"] == 0
+        assert s_stats["misses"] >= 21 and s_stats["hits"] == 0
+    finally:
+        mirror.close()
+        scan.close()
 
 
 # --------------------------------------------------------------------------

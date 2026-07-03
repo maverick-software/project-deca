@@ -79,6 +79,11 @@ def test_saved_agent_roundtrip_api(api_app_neural, monkeypatch, tmp_path):
     """Save a live (neural) agent, then load it into a brand-new agent."""
     saved_dir = tmp_path / "saved_agents"
     monkeypatch.setenv("DECADIC_SAVED_DIR", str(saved_dir))
+    # This test asserts the LEGACY on-disk save layout (episodes.sqlite as a
+    # regular file). Under the WS4-M5 defaults (lancedb/kuzu) the memory
+    # snapshots are directories, so pin the sqlite backends explicitly.
+    monkeypatch.setenv("DECADIC_MEMORY_BACKEND", "sqlite")
+    monkeypatch.setenv("DECADIC_GRAPH_BACKEND", "sqlite")
 
     with TestClient(api_app_neural) as client:
         aid = client.post("/agent").json()["agent_id"]

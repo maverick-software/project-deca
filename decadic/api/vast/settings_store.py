@@ -28,10 +28,11 @@ DEFAULT_DEFAULTS: dict[str, Any] = {
     "verified": True,
     "disk": 40,               # GB
     "image": "pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime",
-    "preset": "full",         # tiny | medium | full
+    "preset": "full",         # any decadic.nn.config preset tier, see neuralPresets.ts
     "encoder": "hf",          # hf | zeros
     "whisper_model": "openai/whisper-small",
-    "scene": "bear",          # none | bear | food | <element csv>
+    "scene": "predator",      # built-in preset id (see presets/store.py BUILTIN_PRESETS)
+                               # or a raw comma-separated element list
 }
 
 

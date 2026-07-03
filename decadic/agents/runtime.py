@@ -202,9 +202,10 @@ class AgentRuntime:
         # be toggled live per-agent from the dashboard (Agent Settings). When async is
         # OFF it is byte-identical to a bare EpisodicStore and spawns no worker thread;
         # DECADIC_EPISODIC_ASYNC sets the birth default (ON in production, OFF in tests).
-        # WS4-M0.3: constructed through the backend seam -- with no env vars set this
-        # is exactly WriteBehindEpisodicStore; DECADIC_MEMORY_BACKEND=lancedb swaps in
-        # LanceEpisodicStore (same duck type; the annotation names the sqlite facade).
+        # WS4-M0.3 seam / M5 cutover: with no env vars set this is a
+        # LanceEpisodicStore (full-mirror L1 recall cache, lance durability);
+        # DECADIC_MEMORY_BACKEND=sqlite selects the legacy WriteBehindEpisodicStore
+        # (same duck type; the annotation names the sqlite facade).
         self.episodic: EpisodicStore = make_runtime_episodic_store(
             episodic_db_path, enabled=episodic_async_enabled()
         )
@@ -215,9 +216,9 @@ class AgentRuntime:
         # Always the write-behind wrapper (like episodic) so async consolidation can
         # be toggled live per-agent; when async is OFF it is byte-identical to a bare
         # LongTermGraph and spawns no worker. DECADIC_LTM_ASYNC sets the birth default.
-        # WS4-M0.3: constructed through the backend seam -- with no env vars set this
-        # is exactly WriteBehindLongTermGraph; DECADIC_GRAPH_BACKEND=kuzu selects the
-        # WS4-M2 WriteBehindKuzuLongTermGraph (same write-behind layer, kuzu storage).
+        # WS4-M0.3 seam / M5 cutover: with no env vars set this is the WS4-M2
+        # WriteBehindKuzuLongTermGraph (same write-behind layer, kuzu storage);
+        # DECADIC_GRAPH_BACKEND=sqlite selects the legacy WriteBehindLongTermGraph.
         self.ltm_graph: LongTermGraph | None = (
             make_runtime_ltm_graph(
                 graph_db_path,

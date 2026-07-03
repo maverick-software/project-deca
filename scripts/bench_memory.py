@@ -163,11 +163,26 @@ def _bench_episodic(args: argparse.Namespace, base: Path) -> dict:
 
     full = section["search_similar"]
     percept = section["search_similar_percept"]
+    index_txt = ""
+    if isinstance(metrics, dict) and "lance_index_builds" in metrics:
+        index_txt = (
+            f" | ann_builds={metrics.get('lance_index_builds', 0)}"
+            f"@{metrics.get('lance_indexed_at_rows', 0)}rows"
+        )
+    cache_txt = ""
+    if cache_stats:
+        cache_txt = (
+            f" | cache=enabled:{cache_stats.get('enabled')}"
+            f",size:{cache_stats.get('size', 0)}"
+            f",hits:{cache_stats.get('hits', 0)}"
+            f",misses:{cache_stats.get('misses', 0)}"
+        )
     print(
         f"[bench_memory] backend={args.backend} n={n} "
         f"add={add_rate:.0f} rows/s | "
         f"search p50={full['p50_ms']:.2f}ms p95={full['p95_ms']:.2f}ms | "
         f"percept p50={percept['p50_ms']:.2f}ms p95={percept['p95_ms']:.2f}ms"
+        f"{index_txt}{cache_txt}"
     )
 
     close = getattr(store, "close", None)
