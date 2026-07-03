@@ -1,0 +1,160 @@
+INFO:     Started server process [62384]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
+{"time": "2026-07-03T01:56:02.133393+00:00", "level": "INFO", "logger": "decadic.nn.bundle", "message": "neural compute device=cuda gpu=NVIDIA GeForce RTX 3080 vram_free_gb=8.9 vram_total_gb=10.0 bf16=True"}
+{"time": "2026-07-03T01:56:04.385640+00:00", "level": "INFO", "logger": "decadic.nn.frozen_encoders", "message": "loading frozen CLIP + Whisper (first run may download weights)"}
+{"time": "2026-07-03T01:56:04.680294+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-03T01:56:04.714901+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/clip-vit-base-patch32/3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268/config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:04.811147+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/model.safetensors \"HTTP/1.1 404 Not Found\""}
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+{"time": "2026-07-03T01:56:04.811435+00:00", "level": "WARNING", "logger": "huggingface_hub.utils._http", "message": "Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads."}
+{"time": "2026-07-03T01:56:04.915066+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/model.safetensors.index.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:05.015295+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/pytorch_model.bin \"HTTP/1.1 302 Found\""}
+{"time": "2026-07-03T01:56:05.117693+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/model.safetensors \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:05.219690+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/clip-vit-base-patch32 \"HTTP/1.1 200 OK\""}
+Loading weights:   0%|          | 0/200 [00:00<?, ?it/s]Loading weights: 100%|##########| 200/200 [00:00<00:00, 43217.97it/s]
+[transformers] [1mCLIPVisionModelWithProjection LOAD REPORT[0m from: openai/clip-vit-base-patch32
+Key                                                          | Status     |  | 
+-------------------------------------------------------------+------------+--+-
+text_model.encoder.layers.{0...11}.self_attn.k_proj.bias     | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.out_proj.bias   | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.k_proj.weight   | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.layer_norm1.bias          | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.mlp.fc2.bias              | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.mlp.fc1.weight            | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.q_proj.weight   | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.v_proj.bias     | UNEXPECTED |  | 
+text_model.embeddings.position_embedding.weight              | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.layer_norm1.weight        | UNEXPECTED |  | 
+logit_scale                                                  | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.q_proj.bias     | UNEXPECTED |  | 
+text_model.final_layer_norm.weight                           | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.out_proj.weight | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.mlp.fc1.bias              | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.layer_norm2.weight        | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.v_proj.weight   | UNEXPECTED |  | 
+text_model.embeddings.token_embedding.weight                 | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.mlp.fc2.weight            | UNEXPECTED |  | 
+text_model.final_layer_norm.bias                             | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.layer_norm2.bias          | UNEXPECTED |  | 
+text_projection.weight                                       | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+{"time": "2026-07-03T01:56:05.345686+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/clip-vit-base-patch32/commits/main \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:05.479652+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/clip-vit-base-patch32/discussions?p=0 \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:05.527101+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/processor_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:05.602678+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/clip-vit-base-patch32/commits/refs%2Fpr%2F66 \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:05.623675+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/preprocessor_config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-03T01:56:05.657582+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/clip-vit-base-patch32/3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268/preprocessor_config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:05.699035+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/refs%2Fpr%2F66/model.safetensors.index.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:05.754050+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-03T01:56:05.776731+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:05.795414+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/refs%2Fpr%2F66/model.safetensors \"HTTP/1.1 302 Found\""}
+{"time": "2026-07-03T01:56:05.877825+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/model.safetensors \"HTTP/1.1 302 Found\""}
+Loading weights:   0%|          | 0/479 [00:00<?, ?it/s]Loading weights: 100%|##########| 479/479 [00:00<00:00, 10410.24it/s]
+{"time": "2026-07-03T01:56:06.212138+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/whisper-small/tree/main/additional_chat_templates?recursive=false&expand=false \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:06.307598+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/processor_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:06.406291+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/chat_template.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:06.501787+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/chat_template.jinja \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:06.603006+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/audio_tokenizer_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:06.699674+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/processor_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:06.798735+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/preprocessor_config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-03T01:56:06.818935+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/preprocessor_config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:06.922487+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/processor_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:07.015384+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/preprocessor_config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-03T01:56:07.035114+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/preprocessor_config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:07.146891+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-03T01:56:07.169086+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:07.263155+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/tokenizer_config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-03T01:56:07.287407+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/tokenizer_config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:07.387532+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/whisper-small/tree/main/additional_chat_templates?recursive=false&expand=false \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-03T01:56:07.483052+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/whisper-small/tree/main?recursive=true&expand=false \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-03T01:56:07.681672+00:00", "level": "WARNING", "logger": "decadic.nn.optim", "message": "memory-efficient training requested but 8-bit Adam unavailable (No module named 'bitsandbytes'); falling back to fp32 Adam"}
+{"time": "2026-07-03T01:56:07.682327+00:00", "level": "INFO", "logger": "decadic.nn.bundle", "message": "NeuralBundle agent_id=2e361d12-b3d2-4656-9e74-60f437606547 device=cuda encoder_mode=hf preset=full trainable_params=203764575 perception_feedback=True perception_mode=discovered plasticity=True sparse=True growth=True"}
+{"time": "2026-07-03T01:56:08.258110+00:00", "level": "INFO", "logger": "decadic.consolidation.consolidator", "message": "consolidation_start agent_id=2e361d12-b3d2-4656-9e74-60f437606547 interval_s=30.00 batch=32 tau=0.050 steps=4"}
+INFO:     127.0.0.1:52287 - "WebSocket /agent/2e361d12-b3d2-4656-9e74-60f437606547/cycle" [accepted]
+{"time": "2026-07-03T01:56:08.501508+00:00", "level": "ERROR", "logger": "asyncio", "message": "Task exception was never retrieved\nfuture: <Task finished name='decadic-cycle-2e361d12-b3d2-4656-9e74-60f437606547' coro=<AgentRuntime._cycle_loop() done, defined at D:\\Users\\charl\\software\\Self-Determination Model\\decadic\\agents\\runtime.py:2751> exception=AttributeError(\"'AttentionGate' object has no attribute 'detach'\")>\nTraceback (most recent call last):\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\decadic\\agents\\runtime.py\", line 2830, in _cycle_loop\n    msg = run_neural_cycle(ctx, self.neural)\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\decadic\\cycle\\neural_pipeline.py\", line 1543, in run_neural_cycle\n    _finite(float(gate.detach().mean().cpu().item())) if gate is not None else None\n                  ^^^^^^^^^^^\nAttributeError: 'AttentionGate' object has no attribute 'detach'"}
+INFO:     connection open
+{"time": "2026-07-03T01:56:09.052161+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "fast_path_damage agent_id=2e361d12-b3d2-4656-9e74-60f437606547 damage=21.2500 integrity=78.7500 viability=78.7500"}
+INFO:     connection closed
+{"time": "2026-07-03T02:11:08.554231+00:00", "level": "INFO", "logger": "decadic.api.app", "message": "ws_disconnect agent_id=2e361d12-b3d2-4656-9e74-60f437606547"}
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 421, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 62, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\middleware\cors.py", line 88, in __call__
+    await self.app(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\middleware\base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\decadic\api\vast\proxy.py", line 48, in dispatch
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\fastapi\routing.py", line 2531, in app
+    await route.handle(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\fastapi\routing.py", line 1241, in handle
+    await super().handle(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\fastapi\routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\fastapi\routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\fastapi\routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\fastapi\routing.py", line 344, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\decadic\api\app.py", line 891, in delete_agent
+    await registry.delete_agent(agent_id)
+  File "D:\Users\charl\software\Self-Determination Model\decadic\agents\registry.py", line 64, in delete_agent
+    await agent.stop()
+  File "D:\Users\charl\software\Self-Determination Model\decadic\agents\runtime.py", line 2318, in stop
+    await self._cycle_task
+  File "D:\Users\charl\software\Self-Determination Model\decadic\agents\runtime.py", line 2830, in _cycle_loop
+    msg = run_neural_cycle(ctx, self.neural)
+  File "D:\Users\charl\software\Self-Determination Model\decadic\cycle\neural_pipeline.py", line 1543, in run_neural_cycle
+    _finite(float(gate.detach().mean().cpu().item())) if gate is not None else None
+                  ^^^^^^^^^^^
+AttributeError: 'AttentionGate' object has no attribute 'detach'

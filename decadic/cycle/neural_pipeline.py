@@ -688,10 +688,12 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     gate_decision = None
     gate_override = None
     if AG.gate_enabled():
-        gate = getattr(bundle, "_attention_gate", None)
-        if gate is None:
-            gate = AG.AttentionGate()
-            bundle._attention_gate = gate
+        # NB: named attn_gate, NOT "gate" - this function already has a local
+        # tensor named "gate" (perception precision gate) far below.
+        attn_gate = getattr(bundle, "_attention_gate", None)
+        if attn_gate is None:
+            attn_gate = AG.AttentionGate()
+            bundle._attention_gate = attn_gate
             bundle._stage4_precedent = None  # (z4, risk_logit, age)
         obs_events = None
         if isinstance(ctx.last_observation, dict):
@@ -705,7 +707,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             priority_label=str(ctx.state_bus.priority_label),
             observation_events=obs_events,
         )
-        gate_decision = gate.decide(gate_inputs)
+        gate_decision = attn_gate.decide(gate_inputs)
         precedent = getattr(bundle, "_stage4_precedent", None)
         if not gate_decision.escalate:
             if precedent is None:

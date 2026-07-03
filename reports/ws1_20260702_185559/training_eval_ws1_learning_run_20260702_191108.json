@@ -1,0 +1,510 @@
+{
+  "agent_id": "2e361d12-b3d2-4656-9e74-60f437606547",
+  "baseline_comparison": {},
+  "behavior": {
+    "consume_events": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "consume_events",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "cycles_completed": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "cycles_completed",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "distance_traveled": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "distance_traveled",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "energy": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 100.0,
+      "last": 100.0,
+      "max": 100.0,
+      "metric": "energy",
+      "min": 100.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "fall_rate": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "fall_rate",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "gates": [
+      {
+        "metric": "cycles_completed",
+        "mode": "delta",
+        "name": "cycles advance",
+        "op": ">=",
+        "reason": "gate_failed",
+        "satisfied": false,
+        "threshold": 3000.0,
+        "trend": {
+          "count": 1,
+          "delta": 0.0,
+          "first": 0.0,
+          "last": 0.0,
+          "max": 0.0,
+          "metric": "cycles_completed",
+          "min": 0.0,
+          "nonfinite": 0,
+          "slope": 0.0
+        },
+        "value": 0.0
+      },
+      {
+        "metric": "neural_pc_loss_last",
+        "mode": "delta",
+        "name": "neural pc loss decreases",
+        "op": "<",
+        "reason": "gate_failed",
+        "satisfied": false,
+        "threshold": 0.0,
+        "trend": {
+          "count": 1,
+          "delta": 0.0,
+          "first": 0.0,
+          "last": 0.0,
+          "max": 0.0,
+          "metric": "neural_pc_loss_last",
+          "min": 0.0,
+          "nonfinite": 0,
+          "slope": 0.0
+        },
+        "value": 0.0
+      },
+      {
+        "metric": "loss_canary_jump_ratio",
+        "mode": "fraction<=",
+        "name": "no sustained divergence",
+        "op": "<",
+        "reason": "ok",
+        "satisfied": true,
+        "threshold": 25.0,
+        "trend": {
+          "count": 1,
+          "delta": 0.0,
+          "first": 1.0,
+          "last": 1.0,
+          "max": 1.0,
+          "metric": "loss_canary_jump_ratio",
+          "min": 1.0,
+          "nonfinite": 0,
+          "slope": 0.0
+        },
+        "value": 1.0
+      }
+    ],
+    "hydration": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 100.0,
+      "last": 100.0,
+      "max": 100.0,
+      "metric": "hydration",
+      "min": 100.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "integrity": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 100.0,
+      "last": 100.0,
+      "max": 100.0,
+      "metric": "integrity",
+      "min": 100.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "net_energy_return": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "net_energy_return",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "resource_relief_events": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "resource_relief_events",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "root_height": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "root_height",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "teacher_override_fraction": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "teacher_override_fraction",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "torso_tilt": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "torso_tilt",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    }
+  },
+  "eval_window": {
+    "end_cycle": 0,
+    "observed_cycles": 0,
+    "start_cycle": 0,
+    "target_cycles": 3000
+  },
+  "failures": [
+    "gate failed: cycles advance (gate_failed)",
+    "gate failed: neural pc loss decreases (gate_failed)",
+    "target cycles not reached: observed 0/3000"
+  ],
+  "health": {
+    "canary_diverging_fraction": 0.0,
+    "dominant_loss_ok_fraction": 1.0,
+    "loss_total": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "loss_total",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "max_loss_jump_after_startup": 1.0,
+    "nan_recovery_events": 0,
+    "neural_pc_loss": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "neural_pc_loss_last",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "plasticity_freeze_count": 0,
+    "plasticity_frozen_final": false,
+    "plasticity_thaw_count": 0,
+    "samples": 1
+  },
+  "learning": {
+    "consolidator_loss": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "consolidator_loss",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "effort_pred_error": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "effort_pred_error",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "forward_model_error": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "forward_model_error",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "intero_pred_error": {
+      "count": 0,
+      "delta": null,
+      "first": null,
+      "last": null,
+      "max": null,
+      "metric": "intero_pred_error",
+      "min": null,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "tactile_pred_error": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "tactile_pred_error",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    }
+  },
+  "mechanical": {
+    "available": false,
+    "reason": "mechanical module-gradient checks are covered by in-process tests in v1"
+  },
+  "perception": {
+    "discovered_objects": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "discovered_objects",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "latest_discovery": {
+      "agent_id": "2e361d12-b3d2-4656-9e74-60f437606547",
+      "discovery": {
+        "body_part_accuracy": 0.0,
+        "id_churn": 0.0,
+        "id_stability": 1.0,
+        "last_body_parts_found": 0,
+        "last_body_parts_truth": 0,
+        "last_detected": 0,
+        "last_matched": 0,
+        "last_oracle": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "updates": 0
+      },
+      "discovery_health": null,
+      "egocentric_graph": {
+        "edges": [],
+        "nodes": []
+      },
+      "focus": {
+        "entities": [],
+        "ids": []
+      },
+      "ltm_consolidation": {
+        "reason": "not_evaluated",
+        "status": "not_evaluated"
+      },
+      "ltm_metrics": {
+        "episodic_db_pruned_rows": 0,
+        "episodic_db_rows": 0,
+        "episodic_write_batch_size_last": 0,
+        "ltm_consolidation_jobs_completed": 0,
+        "ltm_consolidation_jobs_enqueued": 0,
+        "ltm_consolidation_queue_depth": 0,
+        "ltm_consolidation_sync_fallbacks": 0,
+        "ltm_consolidation_worker_ms": 0.0,
+        "ltm_match_cache_hits": 0,
+        "ltm_match_cache_misses": 0,
+        "ltm_match_cache_size": 0,
+        "ltm_match_ms": 0.0,
+        "ltm_pruned_edges": 0,
+        "ltm_pruned_nodes": 0,
+        "ltm_pruned_semantic_records": 0,
+        "ltm_semantic_jobs_skipped_by_interval": 0,
+        "ltm_write_batch_size_last": 1,
+        "memory_db_bytes": 4096,
+        "memory_wal_bytes": 49472,
+        "sqlite_batch_commit_count": 0,
+        "sqlite_commit_count": 0,
+        "sqlite_last_commit_ms": 0.0,
+        "sqlite_wal_checkpoint_count": 0
+      },
+      "object_files": [],
+      "oracle_truth_count": 0,
+      "perception_mode": "discovered",
+      "perception_organ": null,
+      "perceptual_processing": {
+        "batching_fallback": false,
+        "commit_hz": 0.0,
+        "commit_lag_ms": 0.0,
+        "frames_committed": 0,
+        "frames_dropped": 0,
+        "inflight": 0,
+        "ingest_hz": 0.0,
+        "mode": "serial_prefetch",
+        "oldest_unfolded_age_ms": 0.0,
+        "pipeline_sessions": 10,
+        "prefetch_backpressure_events": 0,
+        "prefetch_backpressure_ms": 0.0,
+        "prefetch_overload_policy": "drop_oldest",
+        "prefetch_queue_depth": 0,
+        "prefetch_queue_max": 32,
+        "queue_depth": 0,
+        "ready_coalesce_policy": "freshest",
+        "sample_age_ms": 0.0,
+        "stage_pipeline_enabled": true
+      },
+      "retinotopic_map": null,
+      "scene_health": null,
+      "scene_prediction": null,
+      "scene_workspace": {
+        "active_drive_deficits": {
+          "energy": 0.0,
+          "hydration": 0.0,
+          "integrity": 0.0,
+          "pain": 0.0,
+          "priority": "explore"
+        },
+        "attention_top": [],
+        "body_candidate_count": 0,
+        "candidate_count": 0,
+        "cycle": 0,
+        "duplicate_identity_count": 0,
+        "duplicate_prevention_count": 0,
+        "entities": [],
+        "entity_count": 0,
+        "focus_capacity": 0,
+        "focus_ids": [],
+        "occluded_count": 0,
+        "prediction_assisted_count": 0,
+        "prediction_count": 0,
+        "prediction_error": null,
+        "prediction_unstable_count": 0,
+        "reidentified_count": 0,
+        "relations": [],
+        "stable_count": 0,
+        "stuff_count": 0,
+        "visible_count": 0
+      },
+      "stage_pipeline": {
+        "active_sessions": 0,
+        "coalesced_sessions": 0,
+        "commit_lag_ms": null,
+        "committed_sessions": 0,
+        "committed_sessions_per_s": 0.0,
+        "consume_wait_ms": null,
+        "decode_on_consume_ms": null,
+        "dropped_sessions": 0,
+        "failed_sessions": 0,
+        "fold_lag_ms": null,
+        "fold_ratio": 0.0,
+        "frames_deep_processed": 0,
+        "frames_folded": 0,
+        "frames_prefetched": 0,
+        "frames_received": 0,
+        "information_loss": 0,
+        "oldest_unfolded_age_ms": 0.0,
+        "prefetch_backpressure_events": 0,
+        "prefetch_backpressure_ms": 0.0,
+        "producer_overlap_ratio": 0.0,
+        "ready_coalesce_policy": "freshest",
+        "ready_queue_depth": 0,
+        "ready_sessions": 0,
+        "recent_sessions": [],
+        "selected_session": null,
+        "stage_inflight": {
+          "commit": 0,
+          "prefetch": 0
+        },
+        "stage_latency_ms": {},
+        "stage_queue_depths": {
+          "prefetch": 0,
+          "ready": 0
+        },
+        "stale_sessions": 0
+      },
+      "working_memory": {
+        "capacity": 12,
+        "cycle": 0,
+        "decay": 0.9,
+        "scene_latent_rms": null,
+        "scene_preview": null,
+        "slots": []
+      },
+      "workspace_ignition": null
+    },
+    "latest_discovery_health": null,
+    "ltm_property_beliefs": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "ltm_property_beliefs",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    },
+    "object_files": {
+      "count": 1,
+      "delta": 0.0,
+      "first": 0.0,
+      "last": 0.0,
+      "max": 0.0,
+      "metric": "object_files",
+      "min": 0.0,
+      "nonfinite": 0,
+      "slope": 0.0
+    }
+  },
+  "probes": {
+    "available": false,
+    "reason": "no_probe_bank"
+  },
+  "samples_path": "D:\\Users\\charl\\software\\Self-Determination Model\\reports\\ws1_20260702_185559\\training_eval_ws1_learning_run_20260702_191108.jsonl",
+  "scenario": "ws1_learning_run",
+  "seeds": [
+    1
+  ],
+  "status": "fail"
+}
