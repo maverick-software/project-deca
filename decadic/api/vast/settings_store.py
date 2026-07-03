@@ -56,6 +56,21 @@ def _mask(key: str) -> str:
     return f"...{k[-4:]}"
 
 
+def _mask_path(path: str) -> str:
+    """Return a redacted hint of an SSH key path: the filename only, with the
+    directory (which may contain the OS username or other local layout
+    details) hidden. Never returned raw to the UI."""
+    p = (path or "").strip()
+    if not p:
+        return ""
+    name = p.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    if not name:
+        return "***"
+    if len(name) <= 4:
+        return "*" * len(name)
+    return f".../{name}"
+
+
 class VastSettingsStore:
     """Thread-safe JSON-backed store for the Vast key + deploy defaults."""
 
@@ -125,6 +140,14 @@ class VastSettingsStore:
             self._data["ssh_key_path"] = (path or "").strip()
             self._persist()
 
+    def clear_ssh_key_path(self) -> None:
+        with self._lock:
+            self._data["ssh_key_path"] = ""
+            self._persist()
+
+    def has_ssh_key_path(self) -> bool:
+        return bool(self.get_ssh_key_path())
+
     # --- defaults ----------------------------------------------------------
     def get_defaults(self) -> dict[str, Any]:
         with self._lock:
@@ -147,13 +170,17 @@ class VastSettingsStore:
 
     # --- UI-safe view ------------------------------------------------------
     def public_view(self) -> dict[str, Any]:
-        """Masked snapshot safe to return over the API (no raw key)."""
+        """Masked snapshot safe to return over the API (no raw key, no raw
+        filesystem path - the ssh key path can reveal the local OS username
+        or directory layout)."""
         with self._lock:
             key = self._data.get("api_key", "") or ""
+            ssh_path = self._data.get("ssh_key_path", "") or ""
             return {
                 "has_api_key": bool(key),
                 "api_key_masked": _mask(key),
-                "ssh_key_path": self._data.get("ssh_key_path", "") or "",
+                "has_ssh_key_path": bool(ssh_path),
+                "ssh_key_path_masked": _mask_path(ssh_path),
                 "defaults": {**DEFAULT_DEFAULTS, **(self._data.get("defaults", {}) or {})},
                 "config_path": str(self._path),
             }

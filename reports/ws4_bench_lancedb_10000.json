@@ -1,0 +1,50 @@
+{
+  "workstream": "WS4-M0.4",
+  "timestamp_utc": "2026-07-03T15:42:07.177514+00:00",
+  "backend": "lancedb",
+  "n_episodes": 10000,
+  "embedding_dim": 80,
+  "percept_key_dim": 16,
+  "queries": 200,
+  "top_k": 5,
+  "seed": 42,
+  "retention_enabled": false,
+  "add": {
+    "total_s": 1.578156300000046,
+    "rows_per_s": 6336.507987199816
+  },
+  "search_similar": {
+    "p50_ms": 8.172800000011193,
+    "p95_ms": 9.463069999856089,
+    "mean_ms": 8.490081500021915,
+    "max_ms": 61.74239999927522
+  },
+  "search_similar_percept": {
+    "p50_ms": 6.98080000029222,
+    "p95_ms": 7.693700000027093,
+    "mean_ms": 7.014778000007027,
+    "max_ms": 8.38709999970888
+  },
+  "rss_mb_before": 37.046875,
+  "rss_mb_after": 132.484375,
+  "persistence_metrics": {
+    "backend": "lancedb",
+    "sqlite_commit_count": 40,
+    "sqlite_batch_commit_count": 40,
+    "sqlite_last_commit_ms": 9.978199999750359,
+    "sqlite_wal_checkpoint_count": 0,
+    "episodic_write_batch_size_last": 16,
+    "episodic_db_rows": 10000,
+    "episodic_db_pruned_rows": 0,
+    "memory_db_bytes": 4474654,
+    "memory_wal_bytes": 0
+  },
+  "recall_cache_stats": {
+    "enabled": false,
+    "size": 0,
+    "hits": 200,
+    "misses": 0
+  },
+  "python": "3.13.2",
+  "platform": "Windows-11-10.0.26200-SP0"
+}

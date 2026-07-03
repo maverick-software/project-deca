@@ -100,9 +100,8 @@ from decadic.cycle.stage_pipeline import DecadicSession, SerialPrefetchSuperviso
 from decadic.cycle.types import CycleContext
 from decadic.io import get_jsonl_writer
 from decadic.memory.episodic_store import EpisodicStore
-from decadic.memory.ltm_write_behind import WriteBehindLongTermGraph
+from decadic.memory.factory import make_runtime_episodic_store, make_runtime_ltm_graph
 from decadic.memory.semantic_graph import LongTermGraph
-from decadic.memory.write_behind import WriteBehindEpisodicStore
 from decadic.nn.bundle import NeuralBundle
 from decadic.nn.faculties import CognitionFaculties
 from decadic.nn.plastic import PlasticityFlags
@@ -203,7 +202,10 @@ class AgentRuntime:
         # be toggled live per-agent from the dashboard (Agent Settings). When async is
         # OFF it is byte-identical to a bare EpisodicStore and spawns no worker thread;
         # DECADIC_EPISODIC_ASYNC sets the birth default (ON in production, OFF in tests).
-        self.episodic: EpisodicStore = WriteBehindEpisodicStore(
+        # WS4-M0.3: constructed through the backend seam -- with no env vars set this
+        # is exactly WriteBehindEpisodicStore; DECADIC_MEMORY_BACKEND=lancedb swaps in
+        # LanceEpisodicStore (same duck type; the annotation names the sqlite facade).
+        self.episodic: EpisodicStore = make_runtime_episodic_store(
             episodic_db_path, enabled=episodic_async_enabled()
         )
         # Long-term knowledge graph (the hippocampal index): persistent, unbounded
@@ -213,8 +215,11 @@ class AgentRuntime:
         # Always the write-behind wrapper (like episodic) so async consolidation can
         # be toggled live per-agent; when async is OFF it is byte-identical to a bare
         # LongTermGraph and spawns no worker. DECADIC_LTM_ASYNC sets the birth default.
+        # WS4-M0.3: constructed through the backend seam -- with no env vars set this
+        # is exactly WriteBehindLongTermGraph (DECADIC_GRAPH_BACKEND=kuzu is reserved
+        # for WS4-M2 and currently raises NotImplementedError).
         self.ltm_graph: LongTermGraph | None = (
-            WriteBehindLongTermGraph(
+            make_runtime_ltm_graph(
                 graph_db_path,
                 match_threshold=ltm_match_threshold(),
                 max_queue=ltm_consolidation_queue_max(),

@@ -19,7 +19,8 @@ export type VastDefaults = {
 export type VastSettings = {
   has_api_key: boolean;
   api_key_masked: string;
-  ssh_key_path: string;
+  has_ssh_key_path: boolean;
+  ssh_key_path_masked: string;
   defaults: VastDefaults;
   config_path: string;
   cli_available: boolean;
@@ -84,6 +85,9 @@ export type Deployment = {
 
 export type LocalCheckpoint = { agent_id: string; has_brain: boolean };
 
+export type FsEntry = { name: string; path: string; is_dir: boolean };
+export type FsListing = { path: string; parent: string | null; entries: FsEntry[] };
+
 export type GpuName = {
   // Human name as Vast reports it (may contain spaces, e.g. "RTX 4090").
   name: string;
@@ -97,6 +101,7 @@ export type VastSettingsUpdate = {
   api_key?: string;
   clear_api_key?: boolean;
   ssh_key_path?: string;
+  clear_ssh_key_path?: boolean;
   defaults?: Partial<VastDefaults>;
 };
 
@@ -169,6 +174,11 @@ export function searchOffers(params: {
 
 export function fetchLocalCheckpoints(): Promise<{ checkpoints: LocalCheckpoint[] }> {
   return getJson("/vast/local-checkpoints");
+}
+
+export function browseFs(path?: string): Promise<FsListing> {
+  const q = path ? `?path=${encodeURIComponent(path)}` : "";
+  return getJson(`/vast/browse-fs${q}`);
 }
 
 export function fetchGpuNames(): Promise<{ gpu_names: GpuName[] }> {

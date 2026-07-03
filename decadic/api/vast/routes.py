@@ -5,6 +5,7 @@ Endpoints (all local-only; the server must stay bound to 127.0.0.1):
 - GET      /vast/account    - balance/email (best-effort vastai show user)
 - GET      /vast/offers     - GPU offer search
 - GET      /vast/local-checkpoints - agents available to ship/restore
+- GET      /vast/browse-fs  - server-side directory listing (SSH key file picker)
 - POST     /vast/deploy     - start provisioning
 - GET      /vast/deployment - live phase + log
 - POST     /vast/deployment/stop|destroy
@@ -31,6 +32,7 @@ class VastSettingsUpdate(BaseModel):
     api_key: str | None = None
     clear_api_key: bool = False
     ssh_key_path: str | None = None
+    clear_ssh_key_path: bool = False
     defaults: dict[str, Any] | None = None
 
 
@@ -133,7 +135,9 @@ def register_vast_routes(application: FastAPI) -> None:
             store.clear_api_key()
         elif body.api_key:
             store.set_api_key(body.api_key)
-        if body.ssh_key_path is not None:
+        if body.clear_ssh_key_path:
+            store.clear_ssh_key_path()
+        elif body.ssh_key_path is not None:
             store.set_ssh_key_path(body.ssh_key_path)
         if body.defaults:
             store.set_defaults(body.defaults)
@@ -212,6 +216,40 @@ def register_vast_routes(application: FastAPI) -> None:
         ]
         names.sort(key=lambda x: (-x["count"], x["name"]))
         return JSONResponse({"gpu_names": names})
+
+    @application.get("/vast/browse-fs")
+    async def browse_fs(path: str | None = None) -> JSONResponse:
+        """List directories/files under ``path`` (default: the server's home
+        directory) so the dashboard can offer a folder-browse picker for the
+        SSH key file. The server only binds to 127.0.0.1, so this is exposing
+        the operator's own filesystem to their own browser tab - the same
+        trust boundary as every other /vast/* route."""
+        base = Path(path).expanduser() if path else Path.home()
+        try:
+            base = base.resolve()
+        except OSError:
+            pass
+        if not base.exists():
+            raise HTTPException(status_code=404, detail=f"No such path: {base}")
+        if not base.is_dir():
+            raise HTTPException(status_code=400, detail=f"Not a directory: {base}")
+        entries: list[dict[str, Any]] = []
+        try:
+            children = sorted(
+                base.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        for child in children:
+            if child.name.startswith(".") and child.name not in (".ssh",):
+                continue
+            try:
+                is_dir = child.is_dir()
+            except OSError:
+                continue
+            entries.append({"name": child.name, "path": str(child), "is_dir": is_dir})
+        parent = str(base.parent) if base.parent != base else None
+        return JSONResponse({"path": str(base), "parent": parent, "entries": entries})
 
     @application.get("/vast/local-checkpoints")
     async def get_local_checkpoints() -> JSONResponse:

@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 
 from decadic import config as C
-from decadic.memory.embeddings import EMBEDDING_DIM
+from decadic.memory.embeddings import EMBEDDING_DIM, PERCEPT_KEY_SLICE
 from decadic.memory.sqlite_utils import (
     connect,
     configure_connection,
@@ -50,6 +50,11 @@ class EpisodicStore:
         # until the first search (or when the store is empty). Read by the
         # stage 3->4 attention gate as its novelty signal (WS3-G2).
         self.last_best_similarity: float | None = None
+        # Best percept-key cosine of the most recent search_similar_percept
+        # call; None until the first search (or when the store is empty).
+        # WS4-M3.1: percept-only novelty channel (WS3 Phase B fix #1) -- the
+        # full-vector similarity above is swamped by internal-state drift.
+        self.last_best_percept_similarity: float | None = None
         self._conn: sqlite3.Connection | None = None
         self._memory_rows: list[dict[str, Any]] = []
         self._recall_cache_enabled = C.episodic_recall_cache_enabled()
@@ -669,6 +674,89 @@ class EpisodicStore:
         out = np.zeros(out_dim, dtype=np.float32)
         out[: v.shape[0]] = v
         return out
+
+    def search_similar_percept(
+        self,
+        key: np.ndarray,
+        top_k: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Return up to ``top_k`` episodes ranked by cosine over the percept-key
+        sub-vector alone (WS4-M3.1).
+
+        The full 80-d embedding mixes internal state (narrative/emotion/metacog/z5)
+        with the 16-d perceptual key; internal drift swamps external familiarity,
+        which is why the gate's full-vector novelty signal has almost no dynamic
+        range (the WS3 finding). Ranking on ``embedding[PERCEPT_KEY_SLICE]`` alone
+        recovers "have I *seen* this before?". Side channel:
+        ``last_best_percept_similarity`` (None when the store is empty).
+        """
+        key_dim = PERCEPT_KEY_SLICE.stop - PERCEPT_KEY_SLICE.start
+        k = np.asarray(key, dtype=np.float32).reshape(-1)
+        if k.size != key_dim:
+            k = np.pad(k, (0, max(0, key_dim - k.size)))[:key_dim]
+
+        cached = self._search_percept_cache(k, top_k=top_k)
+        if cached is not None:
+            self.last_best_percept_similarity = (
+                float(cached[0]["similarity"]) if cached else None
+            )
+            return cached
+
+        ranked: list[tuple[float, dict[str, Any]]] = []
+        for _sal, item in self._iter_scored_rows(min_salience=0.0, exclude_cycle=None):
+            emb = np.asarray(item["embedding"], dtype=np.float32).reshape(-1)
+            sim = _cosine_similarity(k, emb[PERCEPT_KEY_SLICE])
+            ranked.append((sim, {**item, "similarity": sim}))
+
+        ranked.sort(key=lambda x: x[0], reverse=True)
+        self.last_best_percept_similarity = ranked[0][0] if ranked else None
+        return [r for _, r in ranked[: max(0, top_k)]]
+
+    def _search_percept_cache(
+        self,
+        k: np.ndarray,
+        *,
+        top_k: int,
+    ) -> list[dict[str, Any]] | None:
+        if not self._recall_cache_enabled:
+            return None
+        with self._lock:
+            if not self._recall_items and self._conn is not None:
+                self._load_recall_cache_from_db_locked()
+            if self._recall_dirty:
+                self._rebuild_recall_cache_locked()
+            if self._recall_raw.shape[0] == 0:
+                self._recall_misses += 1
+                return []
+            keys = self._recall_raw[:, PERCEPT_KEY_SLICE]
+            key_norms = np.linalg.norm(keys, axis=1)
+            kn = float(np.linalg.norm(k))
+            if kn < 1e-8:
+                sims_all = np.zeros(keys.shape[0], dtype=np.float32)
+            else:
+                sims_all = (keys @ k.astype(np.float32, copy=False)) / np.maximum(
+                    key_norms * kn, 1e-8
+                )
+                # Match _cosine_similarity: a degenerate stored key reads as 0.
+                sims_all = np.where(key_norms < 1e-8, 0.0, sims_all)
+            n = int(sims_all.shape[0])
+            kk = max(0, min(int(top_k), n))
+            if kk <= 0:
+                return []
+            if n > kk:
+                part = np.argpartition(-sims_all, kk - 1)[:kk]
+                order = part[np.argsort(-sims_all[part])]
+            else:
+                order = np.argsort(-sims_all)
+            self._recall_hits += 1
+            out: list[dict[str, Any]] = []
+            for idx in order:
+                global_idx = int(idx)
+                meta = dict(self._recall_meta[global_idx])
+                meta["embedding"] = self._recall_raw[global_idx].astype(float).tolist()
+                meta["similarity"] = float(sims_all[global_idx])
+                out.append(meta)
+            return out
 
     def persistence_metrics(self) -> dict[str, Any]:
         with self._lock:

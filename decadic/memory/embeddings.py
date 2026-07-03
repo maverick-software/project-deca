@@ -19,6 +19,17 @@ from decadic.state.state_bus import StateBus
 PERCEPT_KEY_DIM = 16
 EMBEDDING_DIM = 64 + PERCEPT_KEY_DIM
 
+# WS4-M0.2: frozen sub-range layout of STORED episode embeddings
+# (episode_embedding_from_cycle). Query vectors (query_vector_from_state_bus)
+# use a different internal split (24/24/16) but the percept key occupies the
+# SAME tail slice in both - which is what makes percept-only similarity
+# (the gate's novelty signal, WS3 Phase B fix #1) a pure sub-vector operation.
+STORED_NARRATIVE_SLICE = slice(0, 16)
+STORED_EMOTION_SLICE = slice(16, 32)
+STORED_METACOG_SLICE = slice(32, 48)
+STORED_Z5_SLICE = slice(48, 64)
+PERCEPT_KEY_SLICE = slice(EMBEDDING_DIM - PERCEPT_KEY_DIM, EMBEDDING_DIM)
+
 
 def _pad(vec: np.ndarray, target: int) -> np.ndarray:
     v = np.asarray(vec, dtype=np.float32).reshape(-1)

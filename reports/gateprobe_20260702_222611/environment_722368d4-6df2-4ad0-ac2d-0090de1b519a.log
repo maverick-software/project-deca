@@ -1,0 +1,54 @@
+[body] agent_id=722368d4-6df2-4ad0-ac2d-0090de1b519a
+[body] elements=['house', 'food', 'water', 'medical_kit'] props=['prop_house', 'prop_food_s1', 'prop_food_s2', 'prop_food_s3', 'prop_food_s4', 'prop_water_w1', 'prop_water_w2', 'prop_water_w3', 'prop_medical_m1', 'prop_medical_m2']
+[body] actuator contract OK: nu=21
+[body] step=0 pos=(0.00,0.00,1.30) moving=False events=0
+[body] step=50 pos=(-0.97,-0.02,0.08) moving=False events=0
+[body] live viewer opened
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=100 pos=(-0.98,-0.05,0.09) moving=False events=0
+[body] placed water near the agent
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=150 pos=(-0.98,-0.05,0.09) moving=False events=0
+[body] placed food near the agent
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] placed medical_kit near the agent
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=200 pos=(-0.99,-0.05,0.09) moving=False events=0
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=250 pos=(-0.99,-0.05,0.09) moving=False events=0
+[body] step=300 pos=(-0.99,-0.06,0.08) moving=False events=0
+[body] placed water near the agent
+[body] placed food near the agent
+[body] step=350 pos=(-0.99,-0.07,0.09) moving=False events=0
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] delivering food through egocentric view
+[body] lifeless=True (passive ragdoll)
+[body] step=400 pos=(-1.00,-0.06,0.09) moving=False events=0
+[body] reanimated (brain driving again)
+[body] step=450 pos=(-0.99,-0.07,0.09) moving=False events=0
+[body] delivering medical_kit through egocentric view
+[body] step=500 pos=(-0.99,-0.06,0.10) moving=False events=0
+[body] placed water near the agent
+[body] placed food near the agent
+[body] lifeless=True (passive ragdoll)
+[body] placed food near the agent
+[body] reanimated (brain driving again)
+[body] step=550 pos=(-1.00,-0.05,0.11) moving=False events=0
+[body] lifeless=True (passive ragdoll)
+[body] placed medical_kit near the agent
+[body] reanimated (brain driving again)
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=600 pos=(-1.01,-0.05,0.11) moving=False events=0
+[body] live viewer closed (body keeps running)
+[body] lifeless=True (passive ragdoll)
