@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import tempfile
 import threading
@@ -92,6 +93,10 @@ class LanceEpisodicStore:
         # Side channels read by the stage 3->4 attention gate (WS3-G2 / WS4-M3.1).
         self.last_best_similarity: float | None = None
         self.last_best_percept_similarity: float | None = None
+        # WS4-M1.3 ANN index state (created lazily past the row threshold).
+        self._indexed_at_rows: int = 0
+        self._index_builds: int = 0
+        self._last_index_ms: float = 0.0
         self._dir: Path | None = (
             _storage_dir_for(self._db_path) if self._db_path is not None else None
         )
@@ -255,6 +260,55 @@ class LanceEpisodicStore:
         if len(batch) > 1:
             self._batch_commit_count += 1
         self._write_batch_size_last = len(batch)
+        self._maybe_create_indexes_locked(tbl)
+
+    # ---------------------------------------------------------------- ANN (M1.3)
+
+    def _maybe_create_indexes_locked(self, tbl: Any) -> None:
+        """WS4-M1.3: create ANN indexes once the corpus crosses the threshold.
+
+        Brute-force cosine over 80-d is ~30 ms p50 at 100k rows on the dev box
+        (measured 2026-07-03) - too slow for a 70-90 ms cycle budget, and 100k
+        episodes is only ~3 h of agent life at 10 Hz. IVF-PQ indexes on both
+        vector columns restore single-digit-ms search at full corpus fidelity.
+        Lance uses the index transparently at query time; rows added after
+        index creation are still searched (lance merges unindexed fragments),
+        so no staleness handling is needed - we simply re-create periodically
+        to keep the indexed fraction high.
+
+        Env: DECADIC_LANCE_INDEX_THRESHOLD (default 50000; 0 disables),
+             DECADIC_LANCE_INDEX_REBUILD_ROWS (default 100000 rows between
+             re-creations).
+        """
+        threshold = int(os.environ.get("DECADIC_LANCE_INDEX_THRESHOLD", "50000"))
+        if threshold <= 0:
+            return
+        try:
+            n = int(tbl.count_rows())
+        except Exception:
+            return
+        if n < threshold:
+            return
+        rebuild_every = max(
+            threshold, int(os.environ.get("DECADIC_LANCE_INDEX_REBUILD_ROWS", "100000"))
+        )
+        if self._indexed_at_rows and n - self._indexed_at_rows < rebuild_every:
+            return
+        try:
+            started = time.perf_counter()
+            for column in ("embedding", "percept_key"):
+                tbl.create_index(
+                    metric="cosine",
+                    vector_column_name=column,
+                    replace=True,
+                )
+            self._indexed_at_rows = n
+            self._index_builds += 1
+            self._last_index_ms = (time.perf_counter() - started) * 1000.0
+        except Exception:
+            logger.warning("lance ANN index creation failed at %d rows", n, exc_info=True)
+            # Remember the attempt so we do not retry every flush.
+            self._indexed_at_rows = n
 
     # ---------------------------------------------------------------- pruning
 
@@ -602,4 +656,7 @@ class LanceEpisodicStore:
                 "episodic_db_pruned_rows": int(self._db_pruned_rows),
                 "memory_db_bytes": _dir_size_bytes(self._dir),
                 "memory_wal_bytes": 0,
+                "lance_index_builds": int(self._index_builds),
+                "lance_indexed_at_rows": int(self._indexed_at_rows),
+                "lance_last_index_ms": float(self._last_index_ms),
             }

@@ -1,0 +1,50 @@
+{
+  "workstream": "WS4-M0.4",
+  "timestamp_utc": "2026-07-03T17:32:07.687648+00:00",
+  "backend": "sqlite",
+  "graph_backend": null,
+  "n_episodes": 100000,
+  "queries": 200,
+  "top_k": 5,
+  "seed": 42,
+  "retention_enabled": false,
+  "rss_mb_before": 32.25,
+  "python": "3.13.2",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "embedding_dim": 80,
+  "percept_key_dim": 16,
+  "add": {
+    "total_s": 268.5525318,
+    "rows_per_s": 372.3666253665161
+  },
+  "search_similar": {
+    "p50_ms": 0.5526499999177759,
+    "p95_ms": 0.776399999540444,
+    "mean_ms": 0.6445519999761018,
+    "max_ms": 8.875700001226505
+  },
+  "search_similar_percept": {
+    "p50_ms": 0.2824499997586827,
+    "p95_ms": 0.4762350009514193,
+    "mean_ms": 0.31554350001897546,
+    "max_ms": 0.7541999984823633
+  },
+  "persistence_metrics": {
+    "sqlite_commit_count": 100001,
+    "sqlite_batch_commit_count": 0,
+    "sqlite_last_commit_ms": 0.033599999369471334,
+    "sqlite_wal_checkpoint_count": 0,
+    "episodic_write_batch_size_last": 1,
+    "episodic_db_rows": 100000,
+    "episodic_db_pruned_rows": 0,
+    "memory_db_bytes": 37240832,
+    "memory_wal_bytes": 4132392
+  },
+  "recall_cache_stats": {
+    "enabled": true,
+    "size": 4096,
+    "hits": 400,
+    "misses": 0
+  },
+  "rss_mb_after": 50.015625
+}
