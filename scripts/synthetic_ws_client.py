@@ -24,20 +24,71 @@ def _post_agent(base_http: str) -> str:
     return str(payload["agent_id"])
 
 
-def _observation(step: int) -> dict:
+NOVEL_BURST_STEPS = 25  # how many steps a "novel" episode perturbs the stream
+
+
+def parse_events(spec: str | None) -> dict[int, str]:
+    """Parse an event spec like "collision:600,novel:1200,collision:1800"
+    into {step: kind}. Kinds: collision (fast-path threat), novel
+    (out-of-distribution proprioception burst). Used by the gate_probe
+    scenario (WS3-P1) to inject stimuli at known steps."""
+    out: dict[int, str] = {}
+    if not spec:
+        return out
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        kind, _, step_s = part.partition(":")
+        kind = kind.strip().lower()
+        if kind in ("collision", "novel") and step_s.strip().isdigit():
+            out[int(step_s.strip())] = kind
+    return out
+
+
+LAP_STEPS = 200  # closed patrol loop: the world repeats, so monotony is real
+
+
+def _observation(step: int, events: dict[int, str] | None = None) -> dict:
+    import math as _math
+
+    obs_events: list[dict] = []
+    # Bounded circular walk instead of an unbounded line: an infinite straight
+    # walk makes every observation mildly novel forever (episodic similarity
+    # never rises), which defeats habituation and any steady-state-calm
+    # measurement. On a loop, experience recurs and novelty genuinely decays.
+    phase = 2.0 * _math.pi * (step % LAP_STEPS) / LAP_STEPS
+    position = [10.0 * _math.cos(phase), 0.0, 10.0 * _math.sin(phase)]
+    velocity = [-_math.sin(phase) * 0.3, 0.0, _math.cos(phase) * 0.3]
+    action = "walking_forward"
+    if events:
+        if events.get(step) == "collision":
+            obs_events.append(
+                {"type": "collision", "intensity": 0.9, "source": "probe_injected"}
+            )
+        # A novel episode perturbs the stream for a window of steps: the body
+        # is suddenly somewhere else, moving differently. Out-of-distribution
+        # relative to everything the agent has stored -> episodic similarity
+        # drops -> the gate's novelty input spikes.
+        for start, kind in events.items():
+            if kind == "novel" and start <= step < start + NOVEL_BURST_STEPS:
+                k = step - start
+                position = [500.0 + 3.0 * k, 8.0, -250.0 + 5.0 * ((k * 7) % 11)]
+                velocity = [-2.5, 1.5, 3.0]
+                action = "falling"
+                break
+    elif step == 5:
+        # Legacy default: one collision early (kept for existing harness runs).
+        obs_events.append({"type": "collision", "intensity": 0.85, "source": "wall_test"})
     return {
         "timestamp": f"2026-05-07T12:{step % 60:02d}:00Z",
         "proprioception": {
-            "position": [float(step) * 0.01, 0.0, 0.0],
+            "position": position,
             "orientation": [0.0, 0.0, 0.0],
-            "velocity": [0.1, 0.0, 0.0],
-            "current_action": "walking_forward",
+            "velocity": velocity,
+            "current_action": action,
         },
-        "events": (
-            [{"type": "collision", "intensity": 0.85, "source": "wall_test"}]
-            if step == 5
-            else []
-        ),
+        "events": obs_events,
         "world_state": {"nearby_entities": [], "agent_inventory": []},
     }
 
@@ -50,6 +101,7 @@ async def _run(
     agent_id: str | None = None,
     rate_s: float = 0.0,
     log_every: int = 1,
+    events: dict[int, str] | None = None,
 ) -> None:
     scheme_http = "https" if ssl else "http"
     scheme_ws = "wss" if ssl else "ws"
@@ -91,7 +143,7 @@ async def _run(
                 async def _sender() -> None:
                     nonlocal sent
                     while sent < steps:
-                        await ws.send(json.dumps(_observation(sent)))
+                        await ws.send(json.dumps(_observation(sent, events)))
                         sent += 1
                         if log_every > 0 and sent % log_every == 0:
                             print(
@@ -136,6 +188,11 @@ def main() -> None:
         default=1,
         help="Print every Nth action (0 = silent stream)",
     )
+    parser.add_argument(
+        "--events",
+        default=None,
+        help='Injected stimuli for the gate probe, e.g. "collision:600,novel:1200,collision:1800"',
+    )
     args = parser.parse_args()
     asyncio.run(
         _run(
@@ -146,6 +203,7 @@ def main() -> None:
             agent_id=args.agent_id,
             rate_s=args.rate,
             log_every=args.log_every,
+            events=parse_events(args.events),
         )
     )
 

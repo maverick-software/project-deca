@@ -1,0 +1,27 @@
+{
+  "scenario": "gate_probe",
+  "description": "WS3-P1 startle test: scripted collisions and novelty bursts at known steps; the real verdict comes from scripts/check_gate_probe.py over the collected samples. Requires DECADIC_GATE_ENABLED=1 and the event-injecting client.",
+  "cycles": 3500,
+  "seeds": [
+    1
+  ],
+  "poll_interval_s": 0.5,
+  "timeout_s": 1200.0,
+  "gates": [
+    {
+      "name": "cycles advance",
+      "metric": "cycles_completed",
+      "mode": "delta",
+      "op": ">=",
+      "threshold": 3500
+    },
+    {
+      "name": "no sustained divergence",
+      "metric": "loss_canary_jump_ratio",
+      "mode": "fraction<=",
+      "op": "<",
+      "threshold": 25,
+      "fraction": 0.99
+    }
+  ]
+}

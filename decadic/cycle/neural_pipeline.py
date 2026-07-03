@@ -2152,6 +2152,13 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         diagnostics["gate_reason"] = gate_decision.reason
         for k, v in gate_decision.contributions.items():
             diagnostics[f"gate_c_{k}"] = round(float(v), 6)
+        # Raw normalized inputs (pre-weighting) so the offline tuner can
+        # replay recorded runs against any weight/threshold configuration.
+        diagnostics["gate_i_novelty"] = round(float(gate_inputs.novelty), 6)
+        diagnostics["gate_i_prediction_error"] = round(float(gate_inputs.prediction_error), 6)
+        diagnostics["gate_i_affect"] = round(float(gate_inputs.affect), 6)
+        diagnostics["gate_i_priority"] = round(float(gate_inputs.priority_investigate), 6)
+        diagnostics["gate_i_fast_path"] = 1 if gate_inputs.fast_path_threat else 0
         diagnostics.update(bundle._attention_gate.telemetry())
     if discovered:
         diagnostics["discovered_perception"] = True
