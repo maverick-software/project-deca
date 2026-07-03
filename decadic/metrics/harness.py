@@ -107,6 +107,8 @@ class HarnessSampler:
         interval_s: float = 2.0,
         run_dir: str | Path | None = None,
         collect_gpu: bool = True,
+        state_every: int = 5,
+        disk_every: int = 5,
         http_get: Callable[[str], dict[str, Any] | None] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -115,10 +117,19 @@ class HarnessSampler:
         self.interval_s = max(0.2, float(interval_s))
         self.run_dir = Path(run_dir) if run_dir else self.out_path.parent
         self.collect_gpu = collect_gpu
+        # /state rebuilds the full perceptual + LTM-graph payload per request
+        # (cost grows with the graph) ON the server event loop. Polling it at
+        # the base interval starves the cycle loop and can stall keepalive
+        # pongs long enough to drop the observation websocket (shakedown
+        # soak_20260702_165403). Sample it, and the run-dir disk walk, only
+        # every Nth poll.
+        self.state_every = max(1, int(state_every))
+        self.disk_every = max(1, int(disk_every))
         self._http_get = http_get or _http_get_json
         self._prev_norms: dict[str, float] = {}
         self.samples_written = 0
         self.errors = 0
+        self._poll_index = 0
 
     # -- single sample ----------------------------------------------------
     def sample_once(self) -> dict[str, Any] | None:
@@ -141,7 +152,9 @@ class HarnessSampler:
             elif k in LABEL_KEYS and isinstance(v, str):
                 row[k] = v
 
-        state_resp = self._http_get(f"{self.base_url}/agent/{self.agent_id}/state")
+        state_resp = None
+        if self._poll_index % self.state_every == 0:
+            state_resp = self._http_get(f"{self.base_url}/agent/{self.agent_id}/state")
         if state_resp is not None:
             payload = state_resp.get("payload") or state_resp
             for field, prefix in STATE_VECTOR_KEYS.items():
@@ -159,15 +172,17 @@ class HarnessSampler:
 
         if self.collect_gpu:
             row.update(_nvidia_smi())
-        try:
-            usage = shutil.disk_usage(self.run_dir)
-            row["disk_free_gb"] = round(usage.free / 1e9, 3)
-            row["run_dir_mb"] = round(
-                sum(f.stat().st_size for f in self.run_dir.glob("**/*") if f.is_file()) / 1e6,
-                3,
-            )
-        except OSError:
-            pass
+        if self._poll_index % self.disk_every == 0:
+            try:
+                usage = shutil.disk_usage(self.run_dir)
+                row["disk_free_gb"] = round(usage.free / 1e9, 3)
+                row["run_dir_mb"] = round(
+                    sum(f.stat().st_size for f in self.run_dir.glob("**/*") if f.is_file()) / 1e6,
+                    3,
+                )
+            except OSError:
+                pass
+        self._poll_index += 1
         row["sample_ms"] = round((time.time() - t0) * 1000.0, 2)
         return row
 

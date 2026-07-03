@@ -74,7 +74,8 @@ def test_sampler_flattens_metrics_and_state(tmp_path):
         return None
 
     sampler = HarnessSampler(
-        "http://x", "aid", tmp_path / "s.jsonl", collect_gpu=False, http_get=fake_http
+        "http://x", "aid", tmp_path / "s.jsonl", collect_gpu=False,
+        state_every=1, http_get=fake_http,
     )
     row = sampler.write_sample()
     assert row is not None

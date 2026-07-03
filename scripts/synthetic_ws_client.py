@@ -62,32 +62,55 @@ async def _run(
     # guarantee one action message per observation (serial prefetch commits
     # cycles on its own schedule), so a lock-step send/recv client deadlocks
     # around the point the pipeline stops replying 1:1.
-    async with websockets.connect(ws_url, max_size=None) as ws:
-        recv_count = 0
-
-        async def _receiver() -> None:
-            nonlocal recv_count
-            async for raw in ws:
-                msg = json.loads(raw)
-                if log_every > 0 and recv_count % log_every == 0:
-                    print(
-                        json.dumps({"recv": recv_count, "action": msg.get("action")}),
-                        flush=True,
-                    )
-                recv_count += 1
-
-        async def _sender() -> None:
-            for i in range(steps):
-                await ws.send(json.dumps(_observation(i)))
-                if log_every > 0 and i > 0 and i % log_every == 0:
-                    print(json.dumps({"sent": i, "received": recv_count}), flush=True)
-                await asyncio.sleep(rate_s if rate_s > 0 else 0.01)
-
-        recv_task = asyncio.create_task(_receiver())
+    #
+    # Long-run resilience: the server event loop can block for seconds under
+    # load (heavy /state snapshots, consolidation bursts), which trips the
+    # default 20s keepalive and kills the stream. Use a generous ping timeout
+    # and reconnect with backoff instead of dying - a soak driver must behave
+    # like a real environment and keep offering observations.
+    recv_count = 0
+    sent = 0
+    reconnects = 0
+    while sent < steps and reconnects < 100:
         try:
-            await _sender()
-        finally:
-            recv_task.cancel()
+            async with websockets.connect(
+                ws_url, max_size=None, ping_interval=20, ping_timeout=120
+            ) as ws:
+
+                async def _receiver() -> None:
+                    nonlocal recv_count
+                    async for raw in ws:
+                        msg = json.loads(raw)
+                        if log_every > 0 and recv_count % log_every == 0:
+                            print(
+                                json.dumps({"recv": recv_count, "action": msg.get("action")}),
+                                flush=True,
+                            )
+                        recv_count += 1
+
+                async def _sender() -> None:
+                    nonlocal sent
+                    while sent < steps:
+                        await ws.send(json.dumps(_observation(sent)))
+                        sent += 1
+                        if log_every > 0 and sent % log_every == 0:
+                            print(
+                                json.dumps({"sent": sent, "received": recv_count}), flush=True
+                            )
+                        await asyncio.sleep(rate_s if rate_s > 0 else 0.01)
+
+                recv_task = asyncio.create_task(_receiver())
+                try:
+                    await _sender()
+                finally:
+                    recv_task.cancel()
+        except (websockets.exceptions.ConnectionClosed, OSError) as e:
+            reconnects += 1
+            print(
+                json.dumps({"reconnect": reconnects, "after_sent": sent, "reason": str(e)[:120]}),
+                flush=True,
+            )
+            await asyncio.sleep(min(30.0, 1.0 * reconnects))
 
 
 def main() -> None:

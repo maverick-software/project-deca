@@ -91,7 +91,7 @@ Gates for a 12-hour soak (thresholds are estimates; calibrate in the 1-hour shak
 
 ## 9. Open decisions (to resolve by end of shakedown)
 
-- Poll interval 2 s vs adaptive (coarser after first hour).
+- ~~Poll interval~~ RESOLVED (shakedown 1, `soak_20260702_165403`): `/metrics` at 2 s is fine, but `/agent/{id}/state` rebuilds the full perceptual + LTM-graph payload per request on the event loop — polling it at 2 s starved the cycle loop (45 → 215 ms wall), stalled keepalive pongs, and dropped the observation websocket. Sampler now polls `/state` and the disk walk every 5th sample (10 s); the client uses ping_timeout=120 s + auto-reconnect. Follow-up (nice-to-have): a lightweight `/state/norms` endpoint.
 - Stall policy `abort` vs `record-and-continue` for research soaks.
 - Log-rotation caps raise vs accept rotation (default: accept).
 - Whether the soak also periodically checkpoints agent weights (`POST /agent/{id}/checkpoint`) for post-hoc analysis — leaning yes, hourly, if checkpoint cost is <5 s.
