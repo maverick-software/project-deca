@@ -28,6 +28,7 @@ from decadic.perception.object_files import (
 )
 from decadic.perception.organ import PerceptionOrgan
 from decadic.cycle.integration_window import IntegrationWindow
+from decadic.cycle import attention_gate as AG
 from decadic.cycle import cognition_trace, narrative as cognition_narrative
 from decadic.cycle.stages import stage_10
 from decadic.interpretability import probes as interp_probes
@@ -680,10 +681,60 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     repself_fed = (
         bundle.prev_repself if getattr(bundle.stack, "has_represented_self", False) else None
     )
+    # --- Stage 3->4 attention gate (WS3, flag-gated; off => byte-identical) ---
+    # Decide BEFORE the forward whether stage 4 runs deliberative compute or a
+    # decayed precedent pass-through. Inputs are read-only taps on values the
+    # cycle already computed. See docs/ws3_attention_gate_prd.md.
+    gate_decision = None
+    gate_override = None
+    if AG.gate_enabled():
+        gate = getattr(bundle, "_attention_gate", None)
+        if gate is None:
+            gate = AG.AttentionGate()
+            bundle._attention_gate = gate
+            bundle._stage4_precedent = None  # (z4, risk_logit, age)
+        obs_events = None
+        if isinstance(ctx.last_observation, dict):
+            ev = ctx.last_observation.get("events")
+            obs_events = ev if isinstance(ev, list) else None
+        gate_inputs = AG.extract_gate_inputs(
+            best_recall_similarity=getattr(ctx.episodic, "last_best_similarity", None),
+            pc_ema=getattr(bundle.plasticity_state, "pc_ema", None),
+            pain_scalar=float(ctx.state_bus.pain_scalar),
+            drive_pressure=float(getattr(ctx.state_bus, "prev_drive_pressure", 0.0) or 0.0),
+            priority_label=str(ctx.state_bus.priority_label),
+            observation_events=obs_events,
+        )
+        gate_decision = gate.decide(gate_inputs)
+        precedent = getattr(bundle, "_stage4_precedent", None)
+        if not gate_decision.escalate:
+            if precedent is None:
+                # Nothing to pass through yet: the first cycles must deliberate.
+                gate_decision = AG.GateDecision(
+                    True,
+                    gate_decision.score,
+                    gate_decision.threshold_effective,
+                    "no_precedent",
+                    gate_decision.contributions,
+                )
+            else:
+                z4_c, risk_c, age = precedent
+                age += 1
+                bundle._stage4_precedent = (z4_c, risk_c, age)
+                decay = math.exp(-float(age) / AG.gate_pass_through_tau())
+                gate_override = (z4_c * decay, risk_c * decay)
+
     # bf16 autocast on the forward only when the memory-efficient path is on (CUDA);
     # a nullcontext otherwise, so the fp32 / CPU / test path is byte-identical.
     with bundle.train_autocast():
-        out = bundle.stack(z0, ep, mem_t, self_prev=self_prev_fed, repself_prev=repself_fed)
+        out = bundle.stack(
+            z0,
+            ep,
+            mem_t,
+            self_prev=self_prev_fed,
+            repself_prev=repself_fed,
+            stage4_override=gate_override,
+        )
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 
     # Autocast can leave the forward's float outputs in bf16 on CUDA. The rest of
@@ -697,6 +748,18 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         k: (v.float() if isinstance(v, torch.Tensor) and v.is_floating_point() else v)
         for k, v in out.items()
     }
+
+    # Cache the precedent after every ESCALATED (deliberated) cycle so the
+    # next skip has something recent to pass through. Detached fp32 clones.
+    if gate_decision is not None and gate_decision.escalate:
+        z4_out = out.get("z4")
+        risk_out = out.get("risk_logit")
+        if isinstance(z4_out, torch.Tensor) and isinstance(risk_out, torch.Tensor):
+            bundle._stage4_precedent = (
+                z4_out.detach().clone(),
+                risk_out.detach().clone(),
+                0,
+            )
 
     # NaN firewall (always on, independent of plasticity): if the forward pass or
     # the persistent recurrent buffers went non-finite, this cycle's update is
@@ -1608,6 +1671,13 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     _np_assign(ctx.state_bus.state_of_mind, sm)
     _np_assign(ctx.state_bus.narrative_emb, nar)
     _np_assign(ctx.state_bus.metacognition, meta)
+    # Element E metacognitive tap (WS3): the system knows *that* it deliberated.
+    # Last slot carries the gate score, signed by the decision (+ escalated,
+    # - skipped). Only written when the gate is enabled (parity otherwise).
+    if gate_decision is not None and ctx.state_bus.metacognition.size > 0:
+        ctx.state_bus.metacognition[-1] = float(
+            gate_decision.score if gate_decision.escalate else -gate_decision.score
+        )
 
     # --- Global workspace: competition + ignition (Phase 2) OR the legacy EMA ----
     # Off-branch (default): the salience-weighted working-memory summary is
@@ -2074,6 +2144,13 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         "nan_recovery": (not forward_finite),
     }
     diagnostics.update(plast_diag)
+    if gate_decision is not None:
+        diagnostics["gate_escalated"] = 1 if gate_decision.escalate else 0
+        diagnostics["gate_score"] = round(float(gate_decision.score), 6)
+        diagnostics["gate_reason"] = gate_decision.reason
+        for k, v in gate_decision.contributions.items():
+            diagnostics[f"gate_c_{k}"] = round(float(v), 6)
+        diagnostics.update(bundle._attention_gate.telemetry())
     if discovered:
         diagnostics["discovered_perception"] = True
         diagnostics.update(discovery_diag)

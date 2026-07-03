@@ -647,6 +647,7 @@ class NeuralCognitiveStack(nn.Module):
         memory_context: torch.Tensor | None = None,
         self_prev: torch.Tensor | None = None,
         repself_prev: torch.Tensor | None = None,
+        stage4_override: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> dict[str, Any]:
         # Per-stage instrumentation: wall time of each block (in execution
         # order) is attributed to its conceptual Decadic stage number.
@@ -688,8 +689,16 @@ class NeuralCognitiveStack(nn.Module):
                 z2 = z2 + self.repself_ingress(rp)
         z3 = self.stage3(torch.cat([z2, ze, zm], dim=-1))
         mark(3)  # memory retrieval / heuristic fusion
-        z4 = self.risk_mlp(z3)
-        risk_logit = self.risk_scalar(z4)
+        if stage4_override is not None:
+            # Stage 3->4 attention gate skip path (WS3): a decayed precedent
+            # (cached z4 / risk_logit from the last escalated cycle) replaces
+            # deliberative compute. Detached constants: no gradient flows
+            # through risk_mlp on skipped cycles by design.
+            z4 = stage4_override[0].to(device=z3.device, dtype=z3.dtype)
+            risk_logit = stage4_override[1].to(device=z3.device, dtype=z3.dtype)
+        else:
+            z4 = self.risk_mlp(z3)
+            risk_logit = self.risk_scalar(z4)
         mark(4)  # risk-utility evaluation
         z5a = self.stage5_enc(z4.unsqueeze(1)).squeeze(1)
         mark(5)  # pre-normative conclusion
@@ -778,6 +787,7 @@ class NeuralCognitiveStack(nn.Module):
 
         return {
             "z5": z5,
+            "z4": z4,
             "risk_logit": risk_logit,
             "emotion": emotion,
             "state_mind": state_mind,

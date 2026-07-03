@@ -46,6 +46,10 @@ class EpisodicStore:
     def __init__(self, db_path: Path | None = None) -> None:
         self._db_path = db_path
         self._lock = threading.RLock()
+        # Best cosine similarity of the most recent search_similar call; None
+        # until the first search (or when the store is empty). Read by the
+        # stage 3->4 attention gate as its novelty signal (WS3-G2).
+        self.last_best_similarity: float | None = None
         self._conn: sqlite3.Connection | None = None
         self._memory_rows: list[dict[str, Any]] = []
         self._recall_cache_enabled = C.episodic_recall_cache_enabled()
@@ -569,6 +573,12 @@ class EpisodicStore:
             exclude_cycle=exclude_cycle,
         )
         if cached is not None:
+            # Side effect for the stage 3->4 attention gate (WS3-G2): expose
+            # the best similarity of the most recent search without a second
+            # scan. None means "no episodes yet" (reads as fully novel).
+            self.last_best_similarity = (
+                float(cached[0]["similarity"]) if cached else None
+            )
             return cached
 
         ranked: list[tuple[float, dict[str, Any]]] = []
@@ -581,6 +591,7 @@ class EpisodicStore:
             ranked.append((sim, row))
 
         ranked.sort(key=lambda x: x[0], reverse=True)
+        self.last_best_similarity = ranked[0][0] if ranked else None
         return [r for _, r in ranked[: max(0, top_k)]]
 
     def _search_similar_cache(

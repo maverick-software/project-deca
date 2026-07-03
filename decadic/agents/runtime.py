@@ -2415,6 +2415,11 @@ class AgentRuntime:
         )
         if "neural_pc_loss" in diagnostics:
             self.metrics["neural_pc_loss_last"] = float(diagnostics["neural_pc_loss"])
+        # Stage 3->4 attention gate telemetry (WS3): surface every gate_*
+        # diagnostic so it reaches /metrics and the measurement harness.
+        for key, val in diagnostics.items():
+            if key.startswith("gate_") and isinstance(val, (int, float)):
+                self.metrics[key] = float(val)
         for key in (
             "loss_total",
             "loss_dominant_fraction",

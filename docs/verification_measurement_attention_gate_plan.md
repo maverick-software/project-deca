@@ -113,5 +113,5 @@ WS2 and WS3-A can run in parallel after WS1. First integrated milestone: **a 12-
 ## Out of scope (recorded for later)
 
 - Baseline reactive agent (PoC criterion 5) — next after WS2, harness already supports two-run comparison.
-- Neo4j migration and prosody-preserving audio codec / YAMNet swap — no success criterion depends on them; revisit after the first full soak report.
+- Memory-backend migration — DECIDED 2026-07-02: SQLite → LanceDB (episodic ANN) + Kuzu (semantic graph with native vector indexes); Neo4j dropped. Both embedded and pip-installable, no server processes. Gated on the 12-h soak profile showing retrieval >5% of cycle budget (WS4; see `ws3_attention_gate_wbs.md` out-of-scope section). Prosody-preserving audio codec / YAMNet swap — still deferred; no success criterion depends on it.
 - `.gitattributes` line-ending normalization — trivial, do alongside WS1.
