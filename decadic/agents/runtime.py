@@ -216,8 +216,8 @@ class AgentRuntime:
         # be toggled live per-agent; when async is OFF it is byte-identical to a bare
         # LongTermGraph and spawns no worker. DECADIC_LTM_ASYNC sets the birth default.
         # WS4-M0.3: constructed through the backend seam -- with no env vars set this
-        # is exactly WriteBehindLongTermGraph (DECADIC_GRAPH_BACKEND=kuzu is reserved
-        # for WS4-M2 and currently raises NotImplementedError).
+        # is exactly WriteBehindLongTermGraph; DECADIC_GRAPH_BACKEND=kuzu selects the
+        # WS4-M2 WriteBehindKuzuLongTermGraph (same write-behind layer, kuzu storage).
         self.ltm_graph: LongTermGraph | None = (
             make_runtime_ltm_graph(
                 graph_db_path,
@@ -2422,9 +2422,14 @@ class AgentRuntime:
             self.metrics["neural_pc_loss_last"] = float(diagnostics["neural_pc_loss"])
         # Stage 3->4 attention gate telemetry (WS3): surface every gate_*
         # diagnostic so it reaches /metrics and the measurement harness.
+        # Strings too (gate_reason, gate_i_novelty_source) - the sampler keeps
+        # label-typed metrics and the probe checker needs them.
         for key, val in diagnostics.items():
-            if key.startswith("gate_") and isinstance(val, (int, float)):
-                self.metrics[key] = float(val)
+            if key.startswith("gate_"):
+                if isinstance(val, (int, float)):
+                    self.metrics[key] = float(val)
+                elif isinstance(val, str):
+                    self.metrics[key] = val
         for key in (
             "loss_total",
             "loss_dominant_fraction",

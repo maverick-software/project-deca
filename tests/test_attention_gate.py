@@ -8,6 +8,7 @@ from decadic.cycle.attention_gate import (
     PrecedentPassThrough,
     extract_gate_inputs,
     gate_enabled,
+    gate_novelty_source,
 )
 
 
@@ -27,6 +28,15 @@ def _gate(**kw):
 def test_default_disabled(monkeypatch):
     monkeypatch.delenv("DECADIC_GATE_ENABLED", raising=False)
     assert gate_enabled() is False  # byte-identical baseline preserved
+
+
+def test_novelty_source_config(monkeypatch):
+    monkeypatch.delenv("DECADIC_GATE_NOVELTY_SOURCE", raising=False)
+    assert gate_novelty_source() == "full"  # default until probe re-validates
+    monkeypatch.setenv("DECADIC_GATE_NOVELTY_SOURCE", "percept")
+    assert gate_novelty_source() == "percept"
+    monkeypatch.setenv("DECADIC_GATE_NOVELTY_SOURCE", "bogus")
+    assert gate_novelty_source() == "full"  # unknown values fall back safely
 
 
 def test_quiet_input_skips():

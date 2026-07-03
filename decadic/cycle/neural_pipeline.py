@@ -699,8 +699,26 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         if isinstance(ctx.last_observation, dict):
             ev = ctx.last_observation.get("events")
             obs_events = ev if isinstance(ev, list) else None
+        # WS4-M3.2: novelty source selection. "percept" queries episodic memory
+        # by the 16-d percept key alone (external familiarity), fixing the
+        # dynamic-range blindness measured in the WS3 probe; "full" (default)
+        # keeps the original whole-embedding similarity.
+        gate_best_sim = getattr(ctx.episodic, "last_best_similarity", None)
+        gate_nov_src = AG.gate_novelty_source()
+        if gate_nov_src == "percept":
+            pk_list = ctx.latents.get("percept_key")
+            if pk_list:
+                try:
+                    ctx.episodic.search_similar_percept(
+                        np.asarray(pk_list, dtype=np.float32), top_k=1
+                    )
+                    ps = getattr(ctx.episodic, "last_best_percept_similarity", None)
+                    if ps is not None:
+                        gate_best_sim = ps
+                except Exception:
+                    pass  # novelty falls back to the full-embedding signal
         gate_inputs = AG.extract_gate_inputs(
-            best_recall_similarity=getattr(ctx.episodic, "last_best_similarity", None),
+            best_recall_similarity=gate_best_sim,
             pc_ema=getattr(bundle.plasticity_state, "pc_ema", None),
             pain_scalar=float(ctx.state_bus.pain_scalar),
             drive_pressure=float(getattr(ctx.state_bus, "prev_drive_pressure", 0.0) or 0.0),
@@ -2159,6 +2177,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         diagnostics["gate_i_affect"] = round(float(gate_inputs.affect), 6)
         diagnostics["gate_i_priority"] = round(float(gate_inputs.priority_investigate), 6)
         diagnostics["gate_i_fast_path"] = 1 if gate_inputs.fast_path_threat else 0
+        diagnostics["gate_i_novelty_source"] = gate_nov_src
         diagnostics.update(bundle._attention_gate.telemetry())
     if discovered:
         diagnostics["discovered_perception"] = True

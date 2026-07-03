@@ -100,12 +100,26 @@ def test_factory_unknown_backend_raises(monkeypatch):
         factory.make_semantic_graph(None)
 
 
-def test_factory_kuzu_reserved(monkeypatch):
+def test_factory_kuzu_backend(monkeypatch):
+    # WS4-M2 replaced the reserved NotImplementedError with the real backend.
+    pytest.importorskip("kuzu")
     monkeypatch.setenv("DECADIC_GRAPH_BACKEND", "kuzu")
-    with pytest.raises(NotImplementedError, match="WS4-M2"):
-        factory.make_semantic_graph(None)
-    with pytest.raises(NotImplementedError, match="WS4-M2"):
-        factory.make_runtime_ltm_graph(None)
+    from decadic.memory.kuzu_graph import (
+        KuzuLongTermGraph,
+        WriteBehindKuzuLongTermGraph,
+    )
+
+    graph = factory.make_semantic_graph(None)
+    try:
+        assert type(graph) is KuzuLongTermGraph
+    finally:
+        graph.close()
+    rt_graph = factory.make_runtime_ltm_graph(None, enabled=False)
+    try:
+        assert isinstance(rt_graph, WriteBehindKuzuLongTermGraph)
+        assert rt_graph.async_enabled is False
+    finally:
+        rt_graph.close()
 
 
 # --------------------------------------------------------------------------
@@ -368,3 +382,254 @@ def test_lancedb_ephemeral_mode_cleanup():
     assert tmp_dir is None or tmp_dir.exists()
     store.close()
     assert store._dir is None  # temp storage cleaned up
+
+
+# --------------------------------------------------------------------------
+# M2 -- sqlite vs kuzu semantic-graph parity
+# --------------------------------------------------------------------------
+
+APPEARANCE_DIM = 16  # production appearance-fingerprint dim (perception/organ.py)
+
+
+def _graph_pair(tmp_path):
+    pytest.importorskip("kuzu")
+    from decadic.memory.kuzu_graph import KuzuLongTermGraph
+    from decadic.memory.semantic_graph import LongTermGraph
+
+    sq = LongTermGraph(tmp_path / "graph.sqlite")
+    kz = KuzuLongTermGraph(tmp_path / "graph_kuzu")
+    return sq, kz
+
+
+def _appearance_stream(n=60, seed=17):
+    """Observation stream: ~half revisits (tiny noise, well inside the 0.6
+    cosine threshold), ~half novel random unit directions."""
+    rng = np.random.default_rng(seed)
+    protos: list[np.ndarray] = []
+    stream: list[np.ndarray] = []
+    for _ in range(n):
+        if protos and rng.uniform() < 0.5:
+            base = protos[int(rng.integers(len(protos)))]
+            vec = base + rng.normal(0.0, 0.02, size=APPEARANCE_DIM).astype(np.float32)
+        else:
+            vec = rng.normal(size=APPEARANCE_DIM).astype(np.float32)
+            protos.append(vec)
+        vec = vec / max(1e-8, float(np.linalg.norm(vec)))
+        stream.append(vec.astype(np.float32))
+    return stream
+
+
+def _run_identity_stream(sq, kz, stream):
+    match_sq, match_kz, ids_sq, ids_kz = [], [], [], []
+    for cycle, vec in enumerate(stream):
+        match_sq.append(sq.match(vec))
+        match_kz.append(kz.match(vec))
+        ids_sq.append(sq.upsert_node(vec, kind="obj", cycle=cycle))
+        ids_kz.append(kz.upsert_node(vec, kind="obj", cycle=cycle))
+    return match_sq, match_kz, ids_sq, ids_kz
+
+
+def test_kuzu_identity_parity(tmp_path):
+    sq, kz = _graph_pair(tmp_path)
+    try:
+        match_sq, match_kz, ids_sq, ids_kz = _run_identity_stream(
+            sq, kz, _appearance_stream(60)
+        )
+        assert match_sq == match_kz  # identical match-decision sequence
+        assert ids_sq == ids_kz  # identical node-id assignment sequence
+        assert sq.counts() == kz.counts()
+    finally:
+        kz.close()
+
+
+def test_kuzu_identity_parity_no_match_cache(tmp_path, monkeypatch):
+    """Cache disabled: sqlite linear scan vs kuzu vector-index (or its guarded
+    linear fallback) must produce the same decisions."""
+    monkeypatch.setenv("DECADIC_LTM_MATCH_CACHE_ENABLED", "0")
+    sq, kz = _graph_pair(tmp_path)
+    try:
+        match_sq, match_kz, ids_sq, ids_kz = _run_identity_stream(
+            sq, kz, _appearance_stream(40, seed=23)
+        )
+        assert match_sq == match_kz
+        assert ids_sq == ids_kz
+        assert sq.counts() == kz.counts()
+    finally:
+        kz.close()
+
+
+def test_kuzu_belief_parity(tmp_path):
+    sq, kz = _graph_pair(tmp_path)
+    try:
+        vec = np.ones(APPEARANCE_DIM, dtype=np.float32)
+        n_sq = sq.upsert_node(vec, kind="obj", cycle=0)
+        n_kz = kz.upsert_node(vec, kind="obj", cycle=0)
+        assert n_sq == n_kz
+        rng = np.random.default_rng(5)
+        for cycle in range(1, 12):
+            ev = {
+                "size_proxy": float(0.40 + 0.01 * rng.uniform()),
+                "edge_strength": float(rng.uniform(0.20, 0.25)),
+            }
+            w = float(rng.uniform(0.3, 1.0))
+            u_sq = sq.upsert_property_beliefs(n_sq, ev, cycle=cycle, evidence_weight=w)
+            u_kz = kz.upsert_property_beliefs(n_kz, ev, cycle=cycle, evidence_weight=w)
+            assert u_sq == u_kz == 2
+        # Contradiction: mean jump >= CONTRADICTION_DELTA after >= 5 evidence.
+        contradiction = {"size_proxy": 1.0}
+        sq.upsert_property_beliefs(n_sq, contradiction, cycle=20, evidence_weight=1.0)
+        kz.upsert_property_beliefs(n_kz, contradiction, cycle=20, evidence_weight=1.0)
+
+        bs_sq, bs_kz = sq.belief_stats(), kz.belief_stats()
+        assert bs_sq["total_property_beliefs"] == bs_kz["total_property_beliefs"] == 2
+        assert bs_sq["unstable_property_count"] == bs_kz["unstable_property_count"] == 1
+        assert bs_sq["avg_property_confidence"] == pytest.approx(
+            bs_kz["avg_property_confidence"], abs=1e-6
+        )
+        pb_sq = sq.snapshot()["nodes"][0]["property_beliefs"]
+        pb_kz = kz.snapshot()["nodes"][0]["property_beliefs"]
+        assert len(pb_sq) == len(pb_kz) == 2
+        for a, b in zip(pb_sq, pb_kz):
+            assert a["property_key"] == b["property_key"]
+            assert a["mean"] == pytest.approx(b["mean"], abs=1e-6)
+            assert a["variance"] == pytest.approx(b["variance"], abs=1e-6)
+            assert a["confidence"] == pytest.approx(b["confidence"], abs=1e-6)
+            assert a["evidence_count"] == pytest.approx(b["evidence_count"], abs=1e-6)
+            assert a["unstable"] == b["unstable"]
+    finally:
+        kz.close()
+
+
+def test_kuzu_edge_parity(tmp_path):
+    sq, kz = _graph_pair(tmp_path)
+    try:
+        ids = []
+        for cycle, vec in enumerate(_appearance_stream(20, seed=3)):
+            nid_sq = sq.upsert_node(vec, kind="obj", cycle=cycle)
+            nid_kz = kz.upsert_node(vec, kind="obj", cycle=cycle)
+            assert nid_sq == nid_kz
+            ids.append(nid_sq)
+        uniq = list(dict.fromkeys(ids))
+        assert len(uniq) >= 2
+        for rep in range(3):  # repeated co-presence accrues weight/count
+            for a, b in zip(uniq, uniq[1:]):
+                sq.bump_edge(a, b, cycle=100 + rep)
+                kz.bump_edge(a, b, cycle=100 + rep)
+        sq.bump_edge(uniq[0], uniq[1], kind="scene_near", weight=0.7, cycle=200)
+        kz.bump_edge(uniq[0], uniq[1], kind="scene_near", weight=0.7, cycle=200)
+        assert sq.counts() == kz.counts()
+        edges_sq = {
+            (e["source"], e["target"], e["kind"]): (e["weight"], e["count"], e["last_cycle"])
+            for e in sq.snapshot(limit=0)["edges"]
+        }
+        edges_kz = {
+            (e["source"], e["target"], e["kind"]): (e["weight"], e["count"], e["last_cycle"])
+            for e in kz.snapshot(limit=0)["edges"]
+        }
+        assert edges_sq == edges_kz
+    finally:
+        kz.close()
+
+
+def test_kuzu_snapshot_shape(tmp_path):
+    sq, kz = _graph_pair(tmp_path)
+    try:
+        ids = []
+        for cycle, vec in enumerate(_appearance_stream(10, seed=41)):
+            ids.append(sq.upsert_node(vec, kind="obj", cycle=cycle))
+            kz.upsert_node(vec, kind="obj", cycle=cycle)
+        uniq = list(dict.fromkeys(ids))
+        sq.bump_edge(uniq[0], uniq[1], cycle=50)
+        kz.bump_edge(uniq[0], uniq[1], cycle=50)
+        sq.upsert_property_beliefs(uniq[0], {"size_proxy": 0.5}, cycle=51)
+        kz.upsert_property_beliefs(uniq[0], {"size_proxy": 0.5}, cycle=51)
+
+        snap_sq, snap_kz = sq.snapshot(), kz.snapshot()
+        assert set(snap_sq) == set(snap_kz)  # same top-level keys
+        assert set(snap_sq["nodes"][0]) == set(snap_kz["nodes"][0])  # per-node keys
+        assert snap_sq["edges"] and set(snap_sq["edges"][0]) == set(snap_kz["edges"][0])
+        assert set(snap_sq["semantic"]) == set(snap_kz["semantic"])
+        # The dashboard-facing scalars agree too (same underlying model).
+        for key in ("total_nodes", "total_edges", "total_property_beliefs"):
+            assert snap_sq[key] == snap_kz[key]
+    finally:
+        kz.close()
+
+
+def test_kuzu_backup_restore_roundtrip(tmp_path):
+    pytest.importorskip("kuzu")
+    from decadic.memory.kuzu_graph import KuzuLongTermGraph
+
+    kz = KuzuLongTermGraph(tmp_path / "graph_kuzu")
+    try:
+        ids = []
+        for cycle, vec in enumerate(_appearance_stream(30, seed=9)):
+            ids.append(kz.upsert_node(vec, kind="obj", cycle=cycle))
+        uniq = list(dict.fromkeys(ids))
+        kz.bump_edge(uniq[0], uniq[1], cycle=40)
+        kz.upsert_property_beliefs(uniq[0], {"size_proxy": 0.5}, cycle=41)
+        baseline_counts = kz.counts()
+        baseline_snapshot = kz.snapshot()
+
+        kz.backup_to(tmp_path / "bak_kuzu")
+
+        # Mutate with basis-vector appearances (orthogonal-ish: guaranteed new nodes).
+        for j in range(8):
+            vec = np.zeros(APPEARANCE_DIM, dtype=np.float32)
+            vec[j] = 1.0
+            kz.upsert_node(vec, kind="obj", cycle=99)
+        assert kz.counts()[0] > baseline_counts[0]
+
+        kz.restore_from(tmp_path / "bak_kuzu")
+        assert kz.counts() == baseline_counts
+        assert kz.snapshot() == baseline_snapshot
+
+        # Persistence across close/reopen (exercises the kuzu load path).
+        kz.close()
+        kz2 = KuzuLongTermGraph(tmp_path / "graph_kuzu")
+        try:
+            assert kz2.counts() == baseline_counts
+            assert kz2.snapshot() == baseline_snapshot
+        finally:
+            kz2.close()
+    finally:
+        kz.close()  # idempotent
+
+
+def test_kuzu_write_behind_sync_consolidation(tmp_path):
+    """The runtime wrapper's synchronous path works end-to-end on kuzu."""
+    pytest.importorskip("kuzu")
+    from types import SimpleNamespace
+
+    from decadic.memory.kuzu_graph import WriteBehindKuzuLongTermGraph
+
+    graph = WriteBehindKuzuLongTermGraph(tmp_path / "rt_kuzu", enabled=False)
+    try:
+        slot = SimpleNamespace(
+            entity_id="wm-1",
+            kind="object",
+            position=None,
+            affective_weight=0.0,
+            seen_count=3,
+            appearance=[float(x) for x in np.eye(APPEARANCE_DIM, dtype=np.float32)[0]],
+            confidence=0.9,
+            kind_hint="object",
+            entity_role="compact_entity",
+            precision=0.9,
+            provisional=False,
+            evidence_count=3.0,
+            contradiction_pressure=0.0,
+            event_links=[],
+            relationship_links=[],
+            scene_entity_id=None,
+            property_evidence={"size_proxy": 0.4},
+        )
+        report = graph.enqueue_consolidation_job([slot], cycle=5, min_seen=2)
+        assert report["queued"] is False
+        assert report["accepted_ids"] == ["ent-00001"]
+        assert graph.counts() == (1, 0)
+        metrics = graph.runtime_metrics()
+        assert metrics["backend"] == "kuzu"
+        assert "ltm_consolidation_queue_depth" in metrics
+    finally:
+        graph.close()

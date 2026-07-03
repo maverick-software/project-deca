@@ -66,6 +66,19 @@ def gate_budget_gain() -> float:
     return max(0.0, float(os.environ.get("DECADIC_GATE_BUDGET_GAIN", str(DEFAULT_GATE_BUDGET_GAIN))))
 
 
+def gate_novelty_source() -> str:
+    """Where the gate's novelty input comes from (WS4-M3.2).
+
+    "full" (default): 1 - best similarity over the full 80-d episode
+    embedding - the WS3-measured signal with ~0.05 dynamic range (internal
+    state swamps external familiarity). "percept": 1 - best similarity over
+    the 16-d percept-key subvector only - external familiarity, the Phase B
+    fix. Default stays "full" until the gate probe re-validates.
+    """
+    value = os.environ.get("DECADIC_GATE_NOVELTY_SOURCE", "full").strip().lower()
+    return value if value in ("full", "percept") else "full"
+
+
 def gate_weights() -> tuple[float, float, float, float]:
     raw = os.environ.get("DECADIC_GATE_WEIGHTS", "").strip()
     if raw:

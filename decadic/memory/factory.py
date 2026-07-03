@@ -5,7 +5,7 @@ through these factories so the storage engine can be swapped by environment
 variable without touching any cognition-side caller:
 
 - ``DECADIC_MEMORY_BACKEND``: ``sqlite`` (default) | ``lancedb``
-- ``DECADIC_GRAPH_BACKEND``:  ``sqlite`` (default) | ``kuzu`` (reserved, WS4-M2)
+- ``DECADIC_GRAPH_BACKEND``:  ``sqlite`` (default) | ``kuzu`` (WS4-M2)
 
 With no env vars set every factory returns exactly the classes the codebase
 constructed before the seam existed (the parity baseline): a bare
@@ -29,11 +29,6 @@ GRAPH_BACKEND_ENV = "DECADIC_GRAPH_BACKEND"
 
 _MEMORY_BACKENDS = ("sqlite", "lancedb")
 _GRAPH_BACKENDS = ("sqlite", "kuzu")
-
-_KUZU_MESSAGE = (
-    "DECADIC_GRAPH_BACKEND=kuzu is reserved for WS4-M2 (Kuzu semantic-graph "
-    "backend, not yet implemented); unset it or use 'sqlite'."
-)
 
 
 def memory_backend() -> str:
@@ -77,7 +72,9 @@ def make_semantic_graph(db_path: Path | None = None, **kwargs: Any) -> Any:
     """
     backend = graph_backend()
     if backend == "kuzu":
-        raise NotImplementedError(_KUZU_MESSAGE)
+        from decadic.memory.kuzu_graph import KuzuLongTermGraph
+
+        return KuzuLongTermGraph(db_path, **kwargs)
     from decadic.memory.semantic_graph import LongTermGraph
 
     return LongTermGraph(db_path, **kwargs)
@@ -107,15 +104,19 @@ def make_runtime_episodic_store(
 
 
 def make_runtime_ltm_graph(db_path: Path | None = None, **kwargs: Any) -> Any:
-    """Long-term graph as the agent runtime builds it (write-behind on sqlite).
+    """Long-term graph as the agent runtime builds it (write-behind wrapper).
 
-    ``kwargs`` are forwarded to :class:`WriteBehindLongTermGraph`
-    (``match_threshold``/``max_queue``/``enabled``). ``kuzu`` is reserved for
-    WS4-M2 and raises :class:`NotImplementedError` for now.
+    ``kwargs`` are forwarded to the write-behind class
+    (``match_threshold``/``max_queue``/``enabled``). ``kuzu`` returns
+    :class:`WriteBehindKuzuLongTermGraph` -- the same write-behind layer
+    (diamond subclass) over the kuzu graph, so async consolidation, retention
+    and runtime metrics behave identically to the sqlite wrapper.
     """
     backend = graph_backend()
     if backend == "kuzu":
-        raise NotImplementedError(_KUZU_MESSAGE)
+        from decadic.memory.kuzu_graph import WriteBehindKuzuLongTermGraph
+
+        return WriteBehindKuzuLongTermGraph(db_path, **kwargs)
     from decadic.memory.ltm_write_behind import WriteBehindLongTermGraph
 
     return WriteBehindLongTermGraph(db_path, **kwargs)

@@ -23,6 +23,16 @@
 
 **Phase B fix #1 (data-backed):** derive gate novelty from the perceptual subvector of the episode embedding only (the 16-d percept key already stored per episode), not the full state query. Secondary: re-evaluate calm in MuJoCo, where resources exist (drive can settle) and the world affords genuine familiarity.
 
+## Addendum (2026-07-03): percept-source novelty re-probe
+
+With WS4's `DECADIC_GATE_NOVELTY_SOURCE=percept` (novelty from the 16-d percept-key subvector via `search_similar_percept`), the probe re-ran on the patrol loop: samples above 0.8 novelty fell from 100+ to 13, detected bursts from 12 to 4, threat reflex again 2/2 — the dynamic-range blindness is substantially fixed. Remaining quiet escalation (16.9%) decomposes into three known, systemic causes, none of them gate bugs:
+
+1. **Learning drift staleness:** the percept key derives from the *learned* z0, so ongoing weight updates make stored keys stale — the loop never reads fully familiar (novelty floor ~0.75). Phase-B option: EMA-stabilized or periodically refreshed keys.
+2. **PE input saturation:** the x/(x+1) mapping pins the PE input near 0.5 while gate-on learning holds pc-loss near 1.0. Phase-B option: normalize PE against a trailing baseline instead.
+3. **Unbounded drive + curiosity feedback:** affect climbs in a resource-less world (as documented 2026-07-02) and investigate-priority now feeds back into escalation.
+
+**Disposition:** steady-state-calm certification in the synthetic environment is bounded by these causes and formally moves to MuJoCo (resources allow satiation; percepts stabilize as learning converges), per the PRD. The gate itself, its safety path, budget behavior, and the novelty-signal fix are validated.
+
 ## Verdict
 
 Phase A ships: the flagship component exists, is flag-gated, measured, safe (fast path proven), and already produced two publishable observations (budget convergence; emergent hunger-vigilance) plus one signal-design finding that defines Phase B. Remaining before Phase B: V2 A/B soaks (gate-on/off via WS2 comparison mode) and the WS2 12-hour soak.

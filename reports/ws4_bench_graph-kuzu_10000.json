@@ -1,0 +1,55 @@
+{
+  "workstream": "WS4-M0.4/M2",
+  "timestamp_utc": "2026-07-03T16:45:32.978566+00:00",
+  "backend": "sqlite",
+  "graph_backend": "kuzu",
+  "n_episodes": 10000,
+  "queries": 200,
+  "top_k": 5,
+  "seed": 42,
+  "retention_enabled": false,
+  "rss_mb_before": 32.54296875,
+  "python": "3.13.2",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "graph": {
+    "backend": "kuzu",
+    "n_observations": 10000,
+    "node_count": 636,
+    "appearance_dim": 16,
+    "queries": 200,
+    "match_hits": 200,
+    "match_cache_enabled": true,
+    "add": {
+      "total_s": 17.995744100000593,
+      "rows_per_s": 555.6869415585694
+    },
+    "match": {
+      "p50_ms": 0.006499998562503606,
+      "p95_ms": 0.006804999065934679,
+      "mean_ms": 0.010977499960063142,
+      "max_ms": 0.8827999990899116
+    },
+    "match_cache_stats": {
+      "enabled": true,
+      "size": 636,
+      "hits": 10199,
+      "misses": 1,
+      "last_ms": 0.005500000042957254
+    },
+    "persistence_metrics": {
+      "backend": "kuzu",
+      "sqlite_commit_count": 10,
+      "sqlite_batch_commit_count": 10,
+      "sqlite_last_commit_ms": 1564.6660999991582,
+      "sqlite_wal_checkpoint_count": 0,
+      "ltm_pruned_nodes": 0,
+      "ltm_pruned_edges": 0,
+      "ltm_pruned_semantic_records": 0,
+      "memory_db_bytes": 4096,
+      "memory_wal_bytes": 4316547,
+      "kuzu_vector_index_state": "untried",
+      "kuzu_vector_index_rebuilds": 0
+    }
+  },
+  "rss_mb_after": 87.6640625
+}
