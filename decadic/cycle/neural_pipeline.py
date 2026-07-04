@@ -774,6 +774,24 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             elif gate_decision.escalate and precedent is not None:
                 gate_shadow_esc = True
 
+    # WS5-M1: WM slot tensor for the keyed read (per-cycle constants; the
+    # adapter is a pure read of WM state). None when the faculty is off, WM
+    # is absent, or no slot is live -- all no-ops inside the forward.
+    wm_slots_t = None
+    wm_mask_t = None
+    if getattr(bundle.stack, "has_wm_slot_tensor", False):
+        _wm = getattr(ctx.perceptual, "working_memory", None)
+        if _wm is not None:
+            try:
+                _st, _sm = _wm.slot_tensor(k_max=C.wm_slot_k())
+                if _sm.any():
+                    wm_slots_t = torch.as_tensor(
+                        _st, device=bundle.device, dtype=z0_bu.dtype
+                    )
+                    wm_mask_t = torch.as_tensor(_sm, device=bundle.device)
+            except Exception:
+                pass  # binding read is additive; never fail the cycle for it
+
     # bf16 autocast on the forward only when the memory-efficient path is on (CUDA);
     # a nullcontext otherwise, so the fp32 / CPU / test path is byte-identical.
     with bundle.train_autocast():
@@ -785,6 +803,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             repself_prev=repself_fed,
             stage4_override=gate_override,
             stage4_shadow=gate_shadow_skip,
+            wm_slots=wm_slots_t,
+            wm_slots_mask=wm_mask_t,
         )
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 

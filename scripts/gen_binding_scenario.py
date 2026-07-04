@@ -32,7 +32,9 @@ def main() -> int:
     ap.add_argument("--phase-steps", type=int, default=120)
     ap.add_argument("--phase-gap", type=int, default=280)
     ap.add_argument("--start", type=int, default=600, help="first phase start (post-warmup)")
-    ap.add_argument("--out", default="docs/eval_scenarios/binding_probe.json")
+    # NOT docs/eval_scenarios: the /eval/scenarios route parses everything
+    # there as an EvalSpec (different schema).
+    ap.add_argument("--out", default="docs/binding_scenarios/binding_probe.json")
     args = ap.parse_args()
 
     n = max(4, int(args.entities))

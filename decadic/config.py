@@ -907,6 +907,22 @@ def represented_self_enabled() -> bool:
     return _env_bool("DECADIC_REPRESENTED_SELF", DEFAULT_REPRESENTED_SELF)
 
 
+# WS5-M1 (relational binding): expose working memory to the stack as a slot
+# TENSOR (K entity tokens read by keyed cross-attention) instead of only the
+# pooled scene latent. Research pathway: default OFF, byte-identical when off;
+# the ingress is zero-init so even flag-on is byte-identical until learned.
+def wm_slot_tensor_enabled() -> bool:
+    return _env_bool("DECADIC_WM_SLOT_TENSOR", False)
+
+
+def wm_slot_k() -> int:
+    """Slots exposed to the stack -- the neural WM window. A COGNITIVE
+    parameter (human WM holds ~4 chunks regardless of brain size), deliberately
+    small and preset-independent; see ws5_relational_binding_prd.md open
+    decisions."""
+    return max(1, int(os.environ.get("DECADIC_WM_SLOT_K", "6")))
+
+
 # Memory-efficient training path (self-model program, Phase 6 — hardware-gated).
 # When ON the per-cycle training step uses (a) an 8-bit Adam optimizer when
 # bitsandbytes is importable on CUDA (halving the optimizer-moment memory, the

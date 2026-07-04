@@ -59,6 +59,10 @@ class CognitionFaculties:
     self_model_feedback: bool = False
     predictive_affect: bool = False
     represented_self: bool = False
+    # WS5-M1 (relational binding): working memory enters the stack as a slot
+    # TENSOR read by keyed cross-attention (zero-init ingress => parity until
+    # learned). Defaults OFF (research pathway; flags-off is byte-identical).
+    wm_slot_tensor: bool = False
 
     def __post_init__(self) -> None:
         mode = str(self.perception_mode).strip().lower()
@@ -69,6 +73,7 @@ class CognitionFaculties:
         self.self_model_feedback = bool(self.self_model_feedback)
         self.predictive_affect = bool(self.predictive_affect)
         self.represented_self = bool(self.represented_self)
+        self.wm_slot_tensor = bool(self.wm_slot_tensor)
 
     @property
     def discovered(self) -> bool:
@@ -86,4 +91,5 @@ class CognitionFaculties:
             self_model_feedback=_cfg.self_model_feedback_enabled(),
             predictive_affect=_cfg.predictive_affect_enabled(),
             represented_self=_cfg.represented_self_enabled(),
+            wm_slot_tensor=_cfg.wm_slot_tensor_enabled(),
         )

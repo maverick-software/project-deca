@@ -306,6 +306,27 @@ class NeuralCognitiveStack(nn.Module):
             with torch.no_grad():
                 self.repself_ingress.weight.zero_()
                 self.repself_ingress.bias.zero_()
+        # WS5-M1 (relational binding): keyed read over the WM slot tensor.
+        # Working memory's K entity tokens (frozen 40-d layout, see
+        # docs/ws5_m0_wm_inventory.md) are attended with a query from the
+        # pre-stage-3 latent; the readout enters additively through a
+        # zero-init ingress -- byte-identical until learning moves it, exactly
+        # the self_ingress/repself_ingress discipline. The slot tensor itself
+        # is a per-cycle constant (built from WM state, no grad history), so
+        # no cross-cycle BPTT path opens.
+        from decadic.state.working_memory import SLOT_TENSOR_DIM as _SLOT_DIM
+
+        self._slot_dim = int(_SLOT_DIM)
+        self.has_wm_slot_tensor = getattr(self.faculties, "wm_slot_tensor", False)
+        if self.has_wm_slot_tensor:
+            slot_att = max(16, cfg.d_model // 4)
+            self.slot_query = nn.Linear(cfg.d_model, slot_att)
+            self.slot_key = nn.Linear(self._slot_dim, slot_att)
+            self.slot_value = nn.Linear(self._slot_dim, cfg.d_model)
+            self.slot_ingress = nn.Linear(cfg.d_model, cfg.d_model)
+            with torch.no_grad():
+                self.slot_ingress.weight.zero_()
+                self.slot_ingress.bias.zero_()
         self.pc_heads = nn.ModuleList([nn.Linear(cfg.d_model, cfg.d_model) for _ in range(4)])
         self.register_buffer("gru_h", torch.zeros(1, cfg.gru_hidden))
         self.register_buffer("lstm_h", torch.zeros(1, cfg.lstm_hidden))
@@ -649,6 +670,8 @@ class NeuralCognitiveStack(nn.Module):
         repself_prev: torch.Tensor | None = None,
         stage4_override: tuple[torch.Tensor, torch.Tensor] | None = None,
         stage4_shadow: bool = False,
+        wm_slots: torch.Tensor | None = None,
+        wm_slots_mask: torch.Tensor | None = None,
     ) -> dict[str, Any]:
         # Per-stage instrumentation: wall time of each block (in execution
         # order) is attributed to its conceptual Decadic stage number.
@@ -688,6 +711,28 @@ class NeuralCognitiveStack(nn.Module):
             rp = repself_prev.to(device=z2.device, dtype=z2.dtype).reshape(z2.shape[0], -1)
             if rp.shape[-1] == self._repself_dim:
                 z2 = z2 + self.repself_ingress(rp)
+        # WS5-M1.2: keyed read over WM slot tokens. Query from the pre-stage-3
+        # latent ("what am I in the middle of processing?"), keys/values from
+        # the K entity tokens; masked softmax excludes empty slots. Zero-init
+        # ingress => byte-identical until learned; no-op when the faculty is
+        # off, no slots arrive, or every slot is masked out.
+        if (
+            self.has_wm_slot_tensor
+            and wm_slots is not None
+            and wm_slots_mask is not None
+        ):
+            m = wm_slots_mask.to(device=z2.device).reshape(-1).bool()
+            if bool(m.any()) and wm_slots.shape[-1] == self._slot_dim:
+                ks = wm_slots.to(device=z2.device, dtype=z2.dtype).reshape(
+                    -1, self._slot_dim
+                )
+                q = self.slot_query(z2).reshape(-1)  # (A,)
+                k = self.slot_key(ks)  # (K, A)
+                logits = (k @ q) * (float(k.shape[-1]) ** -0.5)  # (K,)
+                logits = logits.masked_fill(~m, float("-inf"))
+                attn = torch.softmax(logits, dim=0)  # (K,)
+                readout = attn.unsqueeze(0) @ self.slot_value(ks)  # (1, d_model)
+                z2 = z2 + self.slot_ingress(readout)
         z3 = self.stage3(torch.cat([z2, ze, zm], dim=-1))
         mark(3)  # memory retrieval / heuristic fusion
         shadow_z4: torch.Tensor | None = None

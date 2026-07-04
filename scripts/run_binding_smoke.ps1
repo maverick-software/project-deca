@@ -4,7 +4,9 @@
 param(
     [int]$Port = 8766,
     [int]$Steps = 300,
-    [string]$Scenario = "docs\eval_scenarios\binding_probe.json"
+    # NB: NOT under docs\eval_scenarios -- the /eval/scenarios route parses
+    # everything there as an EvalSpec (different schema; broke the suite once).
+    [string]$Scenario = "docs\binding_scenarios\binding_probe.json"
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,6 +21,17 @@ $BaseUrl = "http://127.0.0.1:$Port"
 if (-not (Test-Path $Scenario)) {
     & $Py "scripts\gen_binding_scenario.py" --out $Scenario
 }
+
+# Save/restore every env var this script touches: $env: assignments persist
+# in the caller's session after the script exits, and stale DECADIC_* vars
+# have now bitten twice (sqlite probe 07-04 morning; USE_NEURAL=0 breaking
+# 10 bundle tests 07-04 afternoon).
+$TouchedEnv = @(
+    "DECADIC_SELF_HOST", "DECADIC_SELF_PORT", "DECADIC_USE_NEURAL",
+    "DECADIC_DEVICE", "DECADIC_LOG_DIR", "DECADIC_PERCEPTION_MODE"
+)
+$SavedEnv = @{}
+foreach ($n in $TouchedEnv) { $SavedEnv[$n] = [Environment]::GetEnvironmentVariable($n) }
 
 $env:DECADIC_SELF_HOST = "127.0.0.1"
 $env:DECADIC_SELF_PORT = "$Port"
@@ -59,6 +72,13 @@ try {
 finally {
     if ($Server -and -not $Server.HasExited) {
         Stop-Process -Id $Server.Id -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($n in $TouchedEnv) {
+        if ($null -eq $SavedEnv[$n]) {
+            Remove-Item "Env:$n" -ErrorAction SilentlyContinue
+        } else {
+            Set-Item "Env:$n" $SavedEnv[$n]
+        }
     }
 }
 Write-Host "artifacts in $RunDir" -ForegroundColor Green

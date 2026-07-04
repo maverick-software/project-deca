@@ -188,6 +188,105 @@ def test_retrieval_tokens_empty_and_partial(tmp_path):
         empty_lz.close()
 
 
+# --------------------------------- M1: slot tensor into the stack (flagged)
+
+
+def _tiny_stack(monkeypatch, wm_slot: bool):
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv("DECADIC_DEVICE", "cpu")
+    monkeypatch.setenv("DECADIC_WM_SLOT_TENSOR", "1" if wm_slot else "0")
+    from decadic.nn.config import neural_config_from_env
+    from decadic.nn.neural_stack import NeuralCognitiveStack
+
+    torch.manual_seed(21)
+    stack = NeuralCognitiveStack(neural_config_from_env("tiny"))
+    stack.eval()
+    cfg = neural_config_from_env("tiny")
+    return torch, stack, cfg
+
+
+def _slot_batch(torch, fill: float, k: int = 4):
+    slots = torch.zeros(k, SLOT_TENSOR_DIM)
+    slots[:, :16] = fill
+    slots[:, 27] = 1.0  # salience
+    mask = torch.tensor([True, True, True, False])
+    return slots, mask
+
+
+def test_wm_slot_faculty_defaults(monkeypatch):
+    from decadic.nn.faculties import CognitionFaculties
+
+    assert CognitionFaculties().wm_slot_tensor is False
+    monkeypatch.setenv("DECADIC_WM_SLOT_TENSOR", "1")
+    assert CognitionFaculties.from_env().wm_slot_tensor is True
+    from decadic.config import wm_slot_k
+
+    monkeypatch.delenv("DECADIC_WM_SLOT_K", raising=False)
+    assert wm_slot_k() == 6  # the neural WM window: cognitive, not scaled
+
+
+def test_stack_flag_off_ignores_slots(monkeypatch):
+    """M1.1 parity: an off-build has no slot modules and ignores slot args."""
+    torch, stack, cfg = _tiny_stack(monkeypatch, wm_slot=False)
+    assert stack.has_wm_slot_tensor is False
+    assert not hasattr(stack, "slot_ingress")
+    z0 = torch.randn(1, cfg.d_model)
+    ep = torch.rand(1, 4)
+    mem = torch.randn(1, cfg.memory_context_dim)
+    slots, mask = _slot_batch(torch, 0.7)
+    with torch.no_grad():
+        stack.reset_recurrent_state()
+        a = stack(z0, ep, mem)
+        stack.reset_recurrent_state()
+        b = stack(z0, ep, mem, wm_slots=slots, wm_slots_mask=mask)
+    for key, v in a.items():
+        if isinstance(v, torch.Tensor):
+            assert torch.equal(v, b[key]), f"flag-off perturbed {key!r}"
+
+
+def test_stack_flag_on_zero_init_parity_then_live(monkeypatch):
+    """M1.2: zero-init ingress => slots are invisible at init; once the
+    ingress moves, slot CONTENT changes cognition -- the boundary crossing."""
+    torch, stack, cfg = _tiny_stack(monkeypatch, wm_slot=True)
+    assert stack.has_wm_slot_tensor and hasattr(stack, "slot_ingress")
+    z0 = torch.randn(1, cfg.d_model)
+    ep = torch.rand(1, 4)
+    mem = torch.randn(1, cfg.memory_context_dim)
+    slots_a, mask = _slot_batch(torch, 0.7)
+    slots_b, _ = _slot_batch(torch, -0.4)
+
+    with torch.no_grad():
+        stack.reset_recurrent_state()
+        base = stack(z0, ep, mem)
+        stack.reset_recurrent_state()
+        at_init = stack(z0, ep, mem, wm_slots=slots_a, wm_slots_mask=mask)
+    for key, v in base.items():
+        if isinstance(v, torch.Tensor):
+            assert torch.equal(v, at_init[key]), f"zero-init parity broke {key!r}"
+
+    with torch.no_grad():
+        stack.slot_ingress.weight.normal_(0.0, 0.2)
+        stack.reset_recurrent_state()
+        live_a = stack(z0, ep, mem, wm_slots=slots_a, wm_slots_mask=mask)
+        stack.reset_recurrent_state()
+        live_b = stack(z0, ep, mem, wm_slots=slots_b, wm_slots_mask=mask)
+        stack.reset_recurrent_state()
+        live_none = stack(z0, ep, mem)
+    # Slots now reach cognition, and DIFFERENT slot content produces
+    # DIFFERENT cognition (what pooling could never do).
+    assert not torch.allclose(live_a["z5"], live_none["z5"])
+    assert not torch.allclose(live_a["z5"], live_b["z5"])
+    # All-masked slots are a strict no-op even with a live ingress.
+    with torch.no_grad():
+        stack.reset_recurrent_state()
+        masked = stack(
+            z0, ep, mem, wm_slots=slots_a, wm_slots_mask=torch.zeros(4, dtype=torch.bool)
+        )
+    assert torch.equal(masked["z5"], live_none["z5"])
+    # Gradient isolation: the slot tensor is a per-cycle constant.
+    assert slots_a.requires_grad is False and slots_a.grad is None
+
+
 # ------------------------------------------- M0.4 oracle appearance seam
 
 
