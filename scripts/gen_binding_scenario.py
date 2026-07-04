@@ -93,24 +93,57 @@ def main() -> int:
                 "start": t,
                 "steps": int(args.phase_steps),
                 "pair": pair,
+                "kind": "train",
                 "gap": 1.5,
                 "event": {"type": "threat_near", "intensity": 0.6, "every": 10},
             }
         )
         t += int(args.phase_steps) + int(args.phase_gap)
 
+    # Probe segment (M5.1): EVENTLESS adjacency phases after training.
+    # probe_trained re-presents trained pairs (memorization check);
+    # probe_novel presents held-out pairings (the generalization criterion).
+    # Interleaved deterministically so drift cannot masquerade as either.
+    # A learned relation deflects priority on BOTH kinds; a memorizer only on
+    # probe_trained; a pooled (flags-off) system on NEITHER (no events -> no
+    # pain -> nothing else can carry the adjacency information).
+    probe_order = []
+    trained_probe = train[: len(hold)] if len(train) >= len(hold) else train
+    pairs_interleaved = []
+    for i in range(max(len(trained_probe), len(hold))):
+        if i < len(trained_probe):
+            pairs_interleaved.append(("probe_trained", trained_probe[i]))
+        if i < len(hold):
+            pairs_interleaved.append(("probe_novel", hold[i]))
+    for kind, pair in pairs_interleaved:
+        schedule.append(
+            {
+                "start": t,
+                "steps": int(args.phase_steps),
+                "pair": pair,
+                "kind": kind,
+                "gap": 1.5,
+                # no "event": adjacency is the ONLY signal in the probe segment
+            }
+        )
+        probe_order.append({"start": t, "kind": kind, "pair": pair})
+        t += int(args.phase_steps) + int(args.phase_gap)
+
     scenario = {
-        "workstream": "WS5-M0.4",
+        "workstream": "WS5-M5.1",
         "relation": "threat_adjacency",
         "seed": args.seed,
         "entities": entities,
         "schedule": schedule,
         "holdout_pairs": hold,
+        "probe_order": probe_order,
         "total_steps_hint": t + 400,
-        "notes": (
-            "Train phases schedule threat-adjacency for train pairs only; "
-            "holdout_pairs are reserved for the M5 novel-pairing test phase. "
-            "Balance/leakage checklist finalized at M5.1."
+        "leakage_controls": (
+            "every entity appears in >=1 train AND >=1 holdout pair (marginal "
+            "entity statistics uninformative); probe phases eventless (pain "
+            "cannot carry the signal); probe_trained/probe_novel interleaved "
+            "(drift cannot masquerade as generalization); pairs balanced by "
+            "round-robin split of all C(n,2) pairings"
         ),
     }
     out = Path(args.out)

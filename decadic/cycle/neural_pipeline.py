@@ -2257,6 +2257,12 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         ),
         "perception_mode": ctx.perception_mode,
         "nan_recovery": (not forward_finite),
+        # WS5-M5: the binding probe's verdict signal -- final post-curiosity
+        # priority (risk_p; deflects DOWNWARD toward "avoid" under learned
+        # threat) plus pain, exported per cycle so pollers need not hit the
+        # heavy /state route.
+        "priority_scalar": round(float(ctx.state_bus.priority_scalar), 6),
+        "pain_scalar": round(float(ctx.state_bus.pain_scalar), 6),
     }
     diagnostics.update(plast_diag)
     if gate_decision is not None:
