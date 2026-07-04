@@ -1,0 +1,83 @@
+{
+  "workstream": "WS3B-M1",
+  "features": [
+    "novelty",
+    "pe",
+    "affect",
+    "priority",
+    "drive",
+    "esc_rate",
+    "latch",
+    "precedent_age"
+  ],
+  "hyperparameters": {
+    "horizon": 50,
+    "alpha": 40.0,
+    "cost": 0.05,
+    "beta": 0.5
+  },
+  "runs": [
+    "gate_decisions_20260704_102618_34732.jsonl",
+    "gate_decisions_20260704_110117_32652.jsonl"
+  ],
+  "totals": {
+    "rows": 34993,
+    "labeled": 1748,
+    "labeled_pos_frac": 0.255720823798627
+  },
+  "per_run": [
+    {
+      "run": "gate_decisions_20260704_102618_34732.jsonl",
+      "rows": 3508,
+      "labeled": 175,
+      "label_mean": 0.3016215480889226,
+      "label_pos_frac": 0.022857142857142857,
+      "escalation_rate": 0.04104903078677309,
+      "regret_by_precedent_age": {
+        "age_0_4": {
+          "n": 4,
+          "mean_regret": 0.005666249999999999
+        },
+        "age_5_16": {
+          "n": 4,
+          "mean_regret": 0.022991499999999998
+        },
+        "age_17_64": {
+          "n": 13,
+          "mean_regret": 0.047554846153846156
+        },
+        "age_65_inf": {
+          "n": 150,
+          "mean_regret": 0.027916226666666665
+        }
+      }
+    },
+    {
+      "run": "gate_decisions_20260704_110117_32652.jsonl",
+      "rows": 31485,
+      "labeled": 1573,
+      "label_mean": 0.41962166779399895,
+      "label_pos_frac": 0.28162746344564527,
+      "escalation_rate": 0.05742417023979673,
+      "regret_by_precedent_age": {
+        "age_0_4": {
+          "n": 101,
+          "mean_regret": 0.01757848514851485
+        },
+        "age_5_16": {
+          "n": 195,
+          "mean_regret": 0.035107364102564105
+        },
+        "age_17_64": {
+          "n": 611,
+          "mean_regret": 0.05461509001636661
+        },
+        "age_65_inf": {
+          "n": 586,
+          "mean_regret": 0.0400036023890785
+        }
+      }
+    }
+  ],
+  "split_rule": "BY RUN ONLY (rows within a run are autocorrelated)"
+}

@@ -76,3 +76,9 @@ GateNet rides `save_brain`/`load_brain`, `/checkpoint`→`/restore`, and the Sav
 - **No timelines anywhere; dependencies only:** M0 → M1 → M2 → M3 → M4 → (MuJoCo) → M5. M0.3 harvest can run concurrently with M1 scaffolding once M0.1/M0.2 are accepted.
 - **Docs:** training reports land in `reports/gate_training_<stamp>/`; every promotion decision (shadow→learned, learned-as-default) gets a dated addendum in the PRD.
 - **Standing WS3 Phase B siblings** (EMA-stabilized percept keys, PE normalization vs trailing baseline, curiosity damping) remain separate items — they improve GateNet's *inputs* and slot in before M5 retraining if landed.
+
+---
+
+## M2 disposition (2026-07-04) — PARKED HERE by design
+
+First two-run training pass (`gate_dataset_20260704_120420`: probe + 31k-cycle gate-on soak; 1,748 labeled, 25.6% positive): train AUC 0.694, **val AUC 0.585** on the held-out event-rich probe run, frontier capture at matched escalation rate **GateNet 4.6% vs heuristic 2.9% (1.58x)**. Verdict per M2.3: signal exists (the soak's skip-regret spread of 0.062 disproved the strong form of PRD risk G5) but is not promotion evidence. WS3B stands down at M2 per the sequencing note: the decision-log channel keeps accruing corpus in every gate-enabled run; M3+ resumes after WS5 relational binding (stage-4 cost structure changes), M5 after MuJoCo. Training artifacts: `reports/gate_training_20260704_120547/`.
