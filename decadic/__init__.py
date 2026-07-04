@@ -1,6 +1,7 @@
 # Decadic Cycle Cognitive Architecture — a sentient-AI cognition system
-# implementing the Decadic Cycle of Expression.
-# Copyright (C) 2026  Charles R. Sears
+# implementing the Decadic Cycle of Expression, the framework introduced in
+# "The Architecture of Awareness: Decoding Consciousness" (Charles R.W. Sears).
+# Copyright (C) 2026  Charles Richard Wayne Sears
 #
 # This program is free software: you can redistribute it and/or modify it
 # under the terms of the GNU Affero General Public License as published by
@@ -17,7 +18,7 @@
 #
 # A commercial (non-AGPL) license is available from the copyright holder; see
 # LICENSING.md. "Decadic Cycle of Expression", "Project Deca", and "Deca" are
-# trademarks of Charles R. Sears and are not licensed under the AGPL.
+# trademarks of Charles Richard Wayne Sears and are not licensed under the AGPL.
 """Decadic Cycle Cognitive Architecture — Phase 2 package."""
 
 __version__ = "0.2.0"

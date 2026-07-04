@@ -5,12 +5,15 @@ abstract: >-
   An embodied, non-LLM cognitive architecture implementing the Decadic Cycle of
   Expression: a ten-stage cognitive loop with predictive-coding learning,
   pain/pleasure viability, episodic and semantic memory, and a stage 3->4
-  attention gate.
+  attention gate. The framework originates in the book "The Architecture of
+  Awareness: Decoding Consciousness" by Charles R.W. Sears.
 type: software
 authors:
   - family-names: Sears
-    given-names: Charles R.
+    given-names: Charles Richard Wayne
     email: charles.r.sears@gmail.com
+    website: "https://www.charlesrsears.com/"
+url: "https://www.charlesrsears.com/"
 version: "0.3.0"
 date-released: "2026-07-04"
 license: AGPL-3.0-or-later
@@ -20,3 +23,11 @@ keywords:
   - predictive-coding
   - embodied-ai
   - decadic-cycle-of-expression
+references:
+  - type: book
+    title: "The Architecture of Awareness: Decoding Consciousness"
+    authors:
+      - family-names: Sears
+        given-names: Charles R.W.
+    isbn: "1963092066"
+    scope: "Originating work defining the Decadic Cycle of Expression framework."
