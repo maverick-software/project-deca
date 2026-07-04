@@ -931,6 +931,14 @@ def memory_tokens_enabled() -> bool:
     return _env_bool("DECADIC_MEMORY_TOKENS", False)
 
 
+# WS5-M3 (relational binding): the relational core -- a small transformer over
+# [slot tokens ; memory tokens ; interoceptive token] whose pooled summary
+# augments the stage-4 risk input (zero-init ingress). Runs on DELIBERATIVE
+# cycles only (a gate skip never pays for it). Default OFF.
+def relational_core_enabled() -> bool:
+    return _env_bool("DECADIC_RELATIONAL_CORE", False)
+
+
 # Memory-efficient training path (self-model program, Phase 6 — hardware-gated).
 # When ON the per-cycle training step uses (a) an 8-bit Adam optimizer when
 # bitsandbytes is importable on CUDA (halving the optimizer-moment memory, the

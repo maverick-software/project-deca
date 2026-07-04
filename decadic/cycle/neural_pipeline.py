@@ -784,7 +784,9 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # flag that defaults off; revisit at M3.2 cost measurement.
     mem_tokens_t = None
     mem_tokens_mask_t = None
-    if getattr(bundle.stack, "has_memory_tokens", False):
+    if getattr(bundle.stack, "has_memory_tokens", False) or getattr(
+        bundle.stack, "has_relational_core", False
+    ):
         try:
             _mt, _mm = ctx.episodic.retrieval_context_tokens(
                 qv,
@@ -801,7 +803,9 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
 
     wm_slots_t = None
     wm_mask_t = None
-    if getattr(bundle.stack, "has_wm_slot_tensor", False):
+    if getattr(bundle.stack, "has_wm_slot_tensor", False) or getattr(
+        bundle.stack, "has_relational_core", False
+    ):
         _wm = getattr(ctx.perceptual, "working_memory", None)
         if _wm is not None:
             try:

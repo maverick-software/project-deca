@@ -359,6 +359,91 @@ def test_memory_tokens_faculty_default(monkeypatch):
     assert CognitionFaculties.from_env().memory_tokens is True
 
 
+# --------------------------------- M3: relational core (stage 3->4)
+
+
+def test_relational_core_parity_content_and_gate_economics(monkeypatch):
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv("DECADIC_RELATIONAL_CORE", "1")
+    _, stack, cfg = _tiny_stack(monkeypatch, wm_slot=False)
+    assert stack.has_relational_core and hasattr(stack, "rel_ingress")
+
+    z0 = torch.randn(1, cfg.d_model)
+    ep = torch.rand(1, 4)
+    mem = torch.randn(1, cfg.memory_context_dim)
+    slots_a, mask = _slot_batch(torch, 0.7)
+    slots_b, _ = _slot_batch(torch, 0.7)
+    slots_b[:, 16:19] = -0.9  # same entities, DIFFERENT spatial relations
+    mem_toks = torch.randn(3, 80) * 0.3
+    mem_mask = torch.ones(3, dtype=torch.bool)
+
+    # Zero-init ingress: relational compute runs but cannot yet move z4.
+    with torch.no_grad():
+        stack.reset_recurrent_state()
+        base = stack(z0, ep, mem)
+        stack.reset_recurrent_state()
+        at_init = stack(
+            z0, ep, mem,
+            wm_slots=slots_a, wm_slots_mask=mask,
+            mem_tokens=mem_toks, mem_tokens_mask=mem_mask,
+        )
+    for key, v in base.items():
+        if isinstance(v, torch.Tensor):
+            assert torch.equal(v, at_init[key]), f"zero-init parity broke {key!r}"
+
+    # Live ingress: relations reach the RISK computation, and changing only
+    # the spatial features (who is where, relative to whom) changes z4 --
+    # the wolf/rock asymmetry becoming computable.
+    with torch.no_grad():
+        stack.rel_ingress.weight.normal_(0.0, 0.2)
+        stack.reset_recurrent_state()
+        live_a = stack(z0, ep, mem, wm_slots=slots_a, wm_slots_mask=mask,
+                       mem_tokens=mem_toks, mem_tokens_mask=mem_mask)
+        stack.reset_recurrent_state()
+        live_b = stack(z0, ep, mem, wm_slots=slots_b, wm_slots_mask=mask,
+                       mem_tokens=mem_toks, mem_tokens_mask=mem_mask)
+        stack.reset_recurrent_state()
+        live_a2 = stack(z0, ep, mem, wm_slots=slots_a, wm_slots_mask=mask,
+                        mem_tokens=mem_toks, mem_tokens_mask=mem_mask)
+    assert not torch.allclose(live_a["z4"], live_b["z4"])
+    assert torch.equal(live_a["z4"], live_a2["z4"])  # deterministic
+
+    # Empty-token degeneracy: intero token alone is a defined, finite path.
+    with torch.no_grad():
+        stack.reset_recurrent_state()
+        lone = stack(z0, ep, mem)
+    assert torch.isfinite(lone["z4"]).all()
+
+    # Gate economics: a SKIPPED cycle (stage4_override) never runs the core.
+    calls = []
+    orig = stack.relational.forward
+
+    def _counting(*a, **k):
+        calls.append(1)
+        return orig(*a, **k)
+
+    stack.relational.forward = _counting
+    override = (live_a["z4"].detach() * 0.5, live_a["risk_logit"].detach() * 0.5)
+    with torch.no_grad():
+        stack.reset_recurrent_state()
+        stack(z0, ep, mem, wm_slots=slots_a, wm_slots_mask=mask,
+              stage4_override=override)
+    assert calls == []  # skip path: relational deliberation not paid for
+    with torch.no_grad():
+        stack.reset_recurrent_state()
+        stack(z0, ep, mem, wm_slots=slots_a, wm_slots_mask=mask)
+    assert len(calls) == 1  # deliberative path: exactly one relational pass
+    stack.relational.forward = orig
+
+
+def test_relational_faculty_default(monkeypatch):
+    from decadic.nn.faculties import CognitionFaculties
+
+    assert CognitionFaculties().relational_core is False
+    monkeypatch.setenv("DECADIC_RELATIONAL_CORE", "1")
+    assert CognitionFaculties.from_env().relational_core is True
+
+
 # ------------------------------------------- M0.4 oracle appearance seam
 
 

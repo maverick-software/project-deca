@@ -345,6 +345,22 @@ class NeuralCognitiveStack(nn.Module):
             with torch.no_grad():
                 self.mem_tok_ingress.weight.zero_()
                 self.mem_tok_ingress.bias.zero_()
+        # WS5-M3.1: relational core. The pooled relational summary augments
+        # the stage-4 risk input through a zero-init ingress (resolves the PRD
+        # open decision: neither zero-concat nor a separate head -- the house
+        # additive pattern keeps risk_mlp's shape and checkpoint compat).
+        # Computed on DELIBERATIVE cycles only (see forward): a gate skip
+        # never pays for relational deliberation, which makes it exactly the
+        # compute the WS3 gate prices.
+        self.has_relational_core = getattr(self.faculties, "relational_core", False)
+        if self.has_relational_core:
+            from decadic.nn.relational_core import RelationalCore
+
+            self.relational = RelationalCore(d_rel=max(32, cfg.d_model // 4))
+            self.rel_ingress = nn.Linear(self.relational.d_rel, cfg.d_model)
+            with torch.no_grad():
+                self.rel_ingress.weight.zero_()
+                self.rel_ingress.bias.zero_()
         self.pc_heads = nn.ModuleList([nn.Linear(cfg.d_model, cfg.d_model) for _ in range(4)])
         self.register_buffer("gru_h", torch.zeros(1, cfg.gru_hidden))
         self.register_buffer("lstm_h", torch.zeros(1, cfg.lstm_hidden))
@@ -795,7 +811,21 @@ class NeuralCognitiveStack(nn.Module):
                     shadow_z4 = self.risk_mlp(z3.detach())
                     shadow_risk_logit = self.risk_scalar(shadow_z4)
         else:
-            z4 = self.risk_mlp(z3)
+            # WS5-M3.1: relational deliberation, deliberative cycles only.
+            # The summary enters the risk input via zero-init ingress; the
+            # shadow tap above deliberately uses plain z3 (it measures the
+            # PRE-relational counterfactual; revisit when the gate retrains).
+            z3_s4 = z3
+            if self.has_relational_core:
+                rel = self.relational(
+                    wm_slots,
+                    wm_slots_mask,
+                    mem_tokens,
+                    mem_tokens_mask,
+                    episodic_proxy,
+                )
+                z3_s4 = z3 + self.rel_ingress(rel)
+            z4 = self.risk_mlp(z3_s4)
             risk_logit = self.risk_scalar(z4)
         mark(4)  # risk-utility evaluation
         z5a = self.stage5_enc(z4.unsqueeze(1)).squeeze(1)

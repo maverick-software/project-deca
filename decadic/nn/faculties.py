@@ -67,6 +67,10 @@ class CognitionFaculties:
     # keyed cross-attention beside the mean-pooled context vector. Defaults
     # OFF (research pathway; zero-init ingress, byte-identical when off).
     memory_tokens: bool = False
+    # WS5-M3 (relational binding): relational core at stage 3->4 (small
+    # transformer over slot/memory/interoceptive tokens; zero-init ingress
+    # into the risk input; deliberative cycles only). Defaults OFF.
+    relational_core: bool = False
 
     def __post_init__(self) -> None:
         mode = str(self.perception_mode).strip().lower()
@@ -79,6 +83,7 @@ class CognitionFaculties:
         self.represented_self = bool(self.represented_self)
         self.wm_slot_tensor = bool(self.wm_slot_tensor)
         self.memory_tokens = bool(self.memory_tokens)
+        self.relational_core = bool(self.relational_core)
 
     @property
     def discovered(self) -> bool:
@@ -98,4 +103,5 @@ class CognitionFaculties:
             represented_self=_cfg.represented_self_enabled(),
             wm_slot_tensor=_cfg.wm_slot_tensor_enabled(),
             memory_tokens=_cfg.memory_tokens_enabled(),
+            relational_core=_cfg.relational_core_enabled(),
         )
