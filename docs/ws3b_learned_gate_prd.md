@@ -1,10 +1,10 @@
-# PRD: WS5 — Learned Attention Gate (WS3 Phase B, core item)
+# PRD: WS3B — Learned Attention Gate (WS3 Phase B, core item)
 
 **Version:** 1.0 — 2026-07-04
 **Status:** Draft for review
 **Predecessors:** WS3 Phase A (heuristic gate: threat reflex 100%, budget converges 44%→6.8%, calm certified on synthetic) · WS4 (full-corpus percept recall, the novelty channel's substrate) · probe redesign 2026-07-04 (memory-honest criteria: unique-target novelty, revisit-must-not-spike, peak telemetry).
-**Companion:** `ws5_learned_gate_wbs.md`
-**Sequencing note:** ordering below is dependency order only. M0–M4 run on the current synthetic rig; M5 is explicitly MuJoCo-gated.
+**Companion:** `ws3b_learned_gate_wbs.md`
+**Sequencing note (updated 2026-07-04, post relational-binding audit):** ordering below is dependency order only. M0–M2 (data channel, labels, GateNet + offline training) are infrastructure and ran immediately — the decision log accrues corpus in every gate-enabled run from here on. **M3+ (shadow/live modes) is sequenced AFTER WS5 relational binding** per `ws5_relational_binding_prd.md` §4: the relational core changes what stage-4 escalation buys, so the gate must learn against the final cost structure, not today's. M5 remains MuJoCo-gated.
 
 ---
 

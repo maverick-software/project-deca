@@ -117,11 +117,11 @@ def gate_novelty_peak_window() -> int:
     return max(1, int(os.environ.get("DECADIC_GATE_NOVELTY_PEAK_WINDOW", "32")))
 
 
-# -- WS5-M0: decision log + shadow deliberation config ------------------------
+# -- WS3B-M0: decision log + shadow deliberation config ------------------------
 
 
 def gate_log_enabled() -> bool:
-    """WS5-M0.1: per-cycle gate decision logging (training-data channel).
+    """WS3B-M0.1: per-cycle gate decision logging (training-data channel).
     Default OFF -- zero new IO on existing runs."""
     return os.environ.get("DECADIC_GATE_LOG", "0").strip().lower() in (
         "1",
@@ -142,7 +142,7 @@ def gate_log_dir() -> Path:
 
 
 def gate_shadow_rate() -> float:
-    """WS5-M0.2: fraction of gate decisions that also run shadow deliberation
+    """WS3B-M0.2: fraction of gate decisions that also run shadow deliberation
     (fresh stage-4 beside the substituted precedent, diagnostics only)."""
     try:
         v = float(os.environ.get("DECADIC_GATE_SHADOW_RATE", "0.05"))
@@ -163,7 +163,7 @@ def shadow_sampled(cycle: int, rate: float) -> bool:
 
 
 class GateDecisionLog:
-    """Buffered JSONL sink for per-cycle gate decisions (WS5-M0.1).
+    """Buffered JSONL sink for per-cycle gate decisions (WS3B-M0.1).
 
     Log-and-continue: any IO failure disables the sink after one warning --
     the cognitive loop must never pay for telemetry. Rows are buffered and

@@ -23,6 +23,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Default memory backends (WS4): episodic vectors on LanceDB, semantic graph on
+# Kuzu. These are the runtime defaults, so a fresh install that runs the server
+# needs this group; the legacy SQLite backends require no extra dependencies.
+memory = [
+    "lancedb>=0.34",
+    "kuzu>=0.11",
+    "pyarrow>=15",
+]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.24",

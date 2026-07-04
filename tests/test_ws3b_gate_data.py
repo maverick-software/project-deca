@@ -1,4 +1,4 @@
-"""WS5-M0: gate decision log + shadow deliberation tap.
+"""WS3B-M0: gate decision log + shadow deliberation tap.
 
 M0.1 -- GateDecisionLog: buffered JSONL, log-and-continue on IO failure,
         off-by-default config.
@@ -254,6 +254,94 @@ def test_build_gate_dataset_outcome_sharpening(tmp_path):
     y_by_cycle = {int(c): float(v) for c, v in zip(arrays["cycle"], arrays["y"]) if v == v}
     assert y_by_cycle[5] < 0.2  # quiet horizon: divergence-only label, low
     assert y_by_cycle[20] > 0.7  # pain followed: attention was warranted
+
+
+# --------------------------------------------------------------------- M2
+
+
+def test_gate_net_shapes_determinism_and_roundtrip(tmp_path):
+    from decadic.nn.gate_net import GateNet, featurize, normalize
+
+    torch.manual_seed(3)
+    net = GateNet(hidden=16)
+    net.eval()
+    x = torch.rand(5, 8)
+    with torch.no_grad():
+        a = net(x)
+        b = net(x)
+    assert a.shape == (5,)
+    assert torch.equal(a, b)  # deterministic
+
+    # featurize/normalize: bounded, age log-compressed, latch capped.
+    row = {
+        "novelty": 0.4,
+        "pe": 0.2,
+        "affect": 0.1,
+        "priority": 1.0,
+        "drive": 0.0,
+        "esc_rate": 0.05,
+        "latch": 99,
+        "precedent_age": 3000,
+    }
+    f = featurize(row)
+    assert f.shape == (8,)
+    assert 0.0 <= f.max() <= 1.05
+    assert f[6] == 1.0  # latch capped
+    import numpy as np
+
+    assert np.allclose(normalize(np.asarray([list(row.values())], dtype=float))[0], f)
+
+    # Save/load round-trip: identical outputs; version guard rejects tampering.
+    p = tmp_path / "gate_net.pt"
+    net.save(p)
+    net2 = GateNet.load(p)
+    with torch.no_grad():
+        assert torch.equal(net(x), net2(x))
+    payload = net.to_payload()
+    payload["version"] = 999
+    with pytest.raises(ValueError):
+        GateNet.from_payload(payload)
+
+
+def test_gate_net_learns_planted_structure(tmp_path):
+    """M2.2 acceptance: on the planted dataset (high novelty <=> high regret)
+    the net must separate the classes to AUC > 0.95."""
+    np = pytest.importorskip("numpy")
+    bgd = _builder()
+    import sys as _sys
+    from pathlib import Path as _P
+
+    _sys.path.insert(0, str(_P(__file__).resolve().parents[1] / "scripts"))
+    import train_gate as tg
+
+    from decadic.nn.gate_net import GateNet, normalize
+
+    log = tmp_path / "gate_decisions_train.jsonl"
+    _planted_log(log, n=600, seed=13)
+    arrays, _ = bgd.build([log], horizon=20, alpha=100.0, cost=0.05, beta=0.0)
+    lab = ~np.isnan(arrays["y"])
+    X = normalize(arrays["X"][lab])
+    y = arrays["y"][lab]
+
+    torch.manual_seed(5)
+    net = GateNet(hidden=16)
+    opt = torch.optim.Adam(net.parameters(), lr=0.02)
+    pos = float((y > 0.5).sum())
+    neg = float((y <= 0.5).sum())
+    loss_fn = torch.nn.BCEWithLogitsLoss(
+        pos_weight=torch.tensor([neg / max(1.0, pos)])
+    )
+    Xt = torch.as_tensor(X)
+    yt = torch.as_tensor(y.astype("float32"))
+    for _ in range(200):
+        opt.zero_grad()
+        loss_fn(net(Xt), yt).backward()
+        opt.step()
+    net.eval()
+    with torch.no_grad():
+        p = torch.sigmoid(net(Xt)).numpy()
+    auc = tg.auc_score(y, p)
+    assert auc is not None and auc > 0.95
 
 
 def test_stage4_shadow_requires_override(monkeypatch):

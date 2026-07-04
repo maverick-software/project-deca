@@ -1,4 +1,4 @@
-"""WS5-M0 acceptance: summarize a gate decision log.
+"""WS3B-M0 acceptance: summarize a gate decision log.
 
 Reports coverage (rows vs cycle span), decision mix, shadow sampling rate,
 and the first regret/waste distributions -- the raw material for M1 labels.

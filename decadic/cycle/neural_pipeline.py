@@ -687,8 +687,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # cycle already computed. See docs/ws3_attention_gate_prd.md.
     gate_decision = None
     gate_override = None
-    gate_shadow_skip = False  # WS5-M0.2: fresh stage-4 beside the override
-    gate_shadow_esc = False  # WS5-M0.2: precedent counterfactual vs fresh z4
+    gate_shadow_skip = False  # WS3B-M0.2: fresh stage-4 beside the override
+    gate_shadow_esc = False  # WS3B-M0.2: precedent counterfactual vs fresh z4
     if AG.gate_enabled():
         # NB: named attn_gate, NOT "gate" - this function already has a local
         # tensor named "gate" (perception precision gate) far below.
@@ -764,7 +764,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 bundle._stage4_precedent = (z4_c, risk_c, age)
                 decay = math.exp(-float(age) / AG.gate_pass_through_tau())
                 gate_override = (z4_c * decay, risk_c * decay)
-        # WS5-M0.2: deterministic shadow sampling for this decision (only
+        # WS3B-M0.2: deterministic shadow sampling for this decision (only
         # meaningful when the decision log has a sink to receive it).
         if AG.gate_log_enabled() and AG.shadow_sampled(
             int(getattr(ctx.state_bus, "cycle_index", 0) or 0), AG.gate_shadow_rate()
@@ -2210,7 +2210,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         diagnostics["gate_i_fast_path"] = 1 if gate_inputs.fast_path_threat else 0
         diagnostics["gate_i_novelty_source"] = gate_nov_src
         diagnostics.update(bundle._attention_gate.telemetry())
-        # --- WS5-M0.1: per-cycle decision log (training-data channel) -------
+        # --- WS3B-M0.1: per-cycle decision log (training-data channel) -------
         # Off by default; buffered, log-and-continue (see GateDecisionLog).
         if AG.gate_log_enabled():
             glog = getattr(bundle, "_gate_log", None)
@@ -2220,7 +2220,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             _pc = getattr(bundle.plasticity_state, "pc_ema", None)
             row: dict[str, Any] = {
                 "cycle": int(getattr(ctx.state_bus, "cycle_index", 0) or 0),
-                # The 8 GateNet features (PRD ws5 3.1):
+                # The 8 GateNet features (PRD ws3b 3.1):
                 "novelty": round(float(gate_inputs.novelty), 6),
                 "pe": round(float(gate_inputs.prediction_error), 6),
                 "affect": round(float(gate_inputs.affect), 6),

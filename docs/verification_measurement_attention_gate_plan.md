@@ -115,3 +115,26 @@ WS2 and WS3-A can run in parallel after WS1. First integrated milestone: **a 12-
 - Baseline reactive agent (PoC criterion 5) — next after WS2, harness already supports two-run comparison.
 - Memory-backend migration — DECIDED 2026-07-02: SQLite → LanceDB (episodic ANN) + Kuzu (semantic graph with native vector indexes); Neo4j dropped. Both embedded and pip-installable, no server processes. Gated on the 12-h soak profile showing retrieval >5% of cycle budget (WS4; see `ws3_attention_gate_wbs.md` out-of-scope section). Prosody-preserving audio codec / YAMNet swap — still deferred; no success criterion depends on it.
 - `.gitattributes` line-ending normalization — trivial, do alongside WS1.
+
+---
+
+## Appendix (2026-07-04): workstream ledger update + WS5 Relational Binding
+
+**Status of the original workstreams:** WS1 closed (learning verified, stability root-caused). WS2 shipped (harness/soak/report; 12-h soak still pending). WS3 Phase A closed and the redesigned gate probe now PASSES in full (threat 1/1, novelty 2/2 unique first exposures, revisit correctly quiet, calm 0.000 — see `reports/ws3_gate_report.md` addendum). WS4 closed (lancedb+kuzu defaults, full-mirror L1, 0.84 ms full-corpus recall, soak A/B exonerating and preferring the new stack). **WS3-B (learned gate)** — `ws3b_learned_gate_{prd,wbs}.md` — has M0–M2 built (decision log, shadow-deliberation regret labels, GateNet + offline trainer); its live modes (M3+) are deliberately parked, see sequencing below.
+
+### WS5 — Relational Binding (next major workstream)
+
+**Docs:** `ws5_relational_binding_prd.md` · `ws5_relational_binding_wbs.md` (2026-07-04 architecture review).
+
+**The gap in one sentence:** Deca can perceive, remember, attend, and feel, but "the wolf is behind the rock" and "the rock is behind the wolf" are the same state to the network — every structured input is pooled into a single vector before cognition sees it. This is the variable-binding gap; it is an architectural mechanism, not a capacity problem, and no scale fixes it.
+
+**The audit's finding:** the symbolic half already exists (WM entity slots, object files, Kuzu entity identity). The differentiable half dies at three pooling chokepoints: scene→stack (EMA-pooled scene latent), memory→stack (mean-pooled top-k recall), stage 3→4 (risk from one fused vector). WS5 carries the slots across that boundary intact: slot tensor, keyed cross-attention reads, one small relational transformer at stage 4, slot keys from the graph (object permanence made visible to the network).
+
+**Falsifiable by construction:** the binding probe trains relations over familiar entities and tests never-seen pairings — flags-off must fail (it structurally cannot represent the pairing), flags-on must pass. Built-in ablation, same discipline as the WS3 probe.
+
+**Sequencing (dependency order, per the two PRDs):**
+1. WS5 begins now that the WS3 gate upgrade is in place (probe PASS, percept-source novelty validated, decision-log channel accruing data in every gate-enabled run).
+2. WS3-B M3+ (shadow/live learned gate) waits for WS5: the relational core changes what stage-4 escalation buys, so the gate learns against the final cost structure (`ws5_relational_binding_prd.md` §4).
+3. MuJoCo embodiment then carries three re-validations at once: calm certification, novelty/binding probes on embodied percepts, and WS3-B M5 outcome-grounded retraining.
+
+Standing items unchanged: WS2 12-h soak · baseline reactive agent (PoC criterion 5) · WS3 Phase-B input fixes (EMA percept keys, PE normalization) fold into WS5/WS3-B where noted.

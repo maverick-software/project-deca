@@ -700,7 +700,7 @@ class NeuralCognitiveStack(nn.Module):
             z4 = stage4_override[0].to(device=z3.device, dtype=z3.dtype)
             risk_logit = stage4_override[1].to(device=z3.device, dtype=z3.dtype)
             if stage4_shadow:
-                # WS5-M0.2 shadow deliberation: what WOULD fresh stage 4 have
+                # WS3B-M0.2 shadow deliberation: what WOULD fresh stage 4 have
                 # said? Diagnostics only -- no_grad on a detached z3, never
                 # substituted into the live path, so the forward's outputs are
                 # bit-identical with the tap on or off (regression-tested).

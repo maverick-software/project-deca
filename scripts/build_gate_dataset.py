@@ -1,11 +1,11 @@
-"""WS5-M1: build a GateNet training dataset from gate decision logs.
+"""WS3B-M1: build a GateNet training dataset from gate decision logs.
 
 Input: one or more ``gate_decisions_*.jsonl`` files (or run directories
-containing them) produced by ``DECADIC_GATE_LOG=1`` (WS5-M0.1). Each input
+containing them) produced by ``DECADIC_GATE_LOG=1`` (WS3B-M0.1). Each input
 file is treated as one RUN; splits downstream must be by run, never by row
 (rows within a run are autocorrelated).
 
-Labels (M1.2, PRD ws5 3.2): both shadow kinds measure the same quantity --
+Labels (M1.2, PRD ws3b 3.2): both shadow kinds measure the same quantity --
 how much fresh stage-4 deliberation diverged from the cheap substitute
 (decayed precedent). So one formula covers both:
 
@@ -170,7 +170,7 @@ def build(
             via_d.append(float(r.get("viability_delta", float("nan"))))
             pc_d.append(float(r.get("pc_delta", float("nan"))))
 
-        # Label-circularity check (PRD ws5 risk 1): regret conditioned on
+        # Label-circularity check (PRD ws3b risk 1): regret conditioned on
         # precedent age -- if regret only grows with age, the label mostly
         # restates the decay clock, not stimulus-driven need.
         age_cond = {}
@@ -213,7 +213,7 @@ def build(
     }
     lab_mask = ~np.isnan(arrays["y"])
     manifest = {
-        "workstream": "WS5-M1",
+        "workstream": "WS3B-M1",
         "features": list(FEATURES),
         "hyperparameters": {
             "horizon": horizon,

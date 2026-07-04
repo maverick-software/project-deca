@@ -1,4 +1,25 @@
-# Self-Determination Model — Decadic Cycle server
+# Decadic Cycle Cognitive Architecture
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Commercial license available](https://img.shields.io/badge/commercial%20license-available-green.svg)](./LICENSING.md)
+
+An embodied, **non-LLM** cognitive architecture: a continuously running agent that
+perceives, remembers, attends, feels its own viability, and learns from prediction
+error — a mind by construction, not a language model wearing one.
+
+The system implements the **Decadic Cycle of Expression**, the framework introduced
+in *[The Architecture of Awareness: Decoding Consciousness](https://www.amazon.com/dp/1963092066)*
+by Charles R.W. Sears. This repository is the working software realization of that theory.
+
+**License:** [AGPL-3.0-or-later](./LICENSE), with a commercial option — see
+[LICENSING.md](./LICENSING.md). **Citing this work:** see [CITATION.cff](./CITATION.cff)
+and [Citing this work](#citing-this-work) below. *"Decadic Cycle of Expression"*,
+*"Project Deca"*, and *"Deca"* are trademarks of Charles Richard Wayne Sears.
+
+---
+
+## Overview
 
 Phase **2** cognitive architecture server: FastAPI + WebSocket, State Bus (A–F), **PyTorch** Decadic pipeline (multimodal fusion transformer, risk MLP, narrative encoder–decoder stack, GRU/LSTM, policy head), **predictive coding** losses, frozen **CLIP + Whisper** encoders when `DECADIC_ENCODER_MODE=hf`, a need-gated **curiosity** drive (`decadic/state/curiosity.py`), **dual-network memory consolidation** (`decadic/consolidation/`), a pre-cognitive **perception organ** with anonymous object files and LTM write gates (`decadic/perception/`), reusable **Skill Dojo / Perception Dojo** curricula (`decadic/training/`), and structured logging (`decadic/logging/`).
 
@@ -1051,3 +1072,46 @@ Default log directory is `./logs/` when `DECADIC_LOG_DIR` is unset (see app life
 ### Checkpoints
 
 `POST /agent/{id}/checkpoint` writes JSON state plus **`agent_{id}_brain.pt`** (stack + proprio encoder + optimizer) when neural mode is on. `POST /agent/{id}/restore` reloads both.
+
+---
+
+## License
+
+This project is **dual-licensed**:
+
+- **Open source:** [GNU AGPL-3.0-or-later](./LICENSE). Free to use, study, modify, and
+  share — with the condition that if you run a modified version as a network service, you
+  must make your modified source available to that service's users (AGPL §13). Because this
+  system is built to be served over an API, that clause is deliberate: it keeps the
+  architecture and any improvements to it in the open.
+- **Commercial:** a separate license without the copyleft / network-source obligations is
+  available for proprietary or closed-hosted use.
+
+Full terms, the contributor-agreement (CLA) requirement, and trademark details are in
+**[LICENSING.md](./LICENSING.md)**. To inquire about a commercial license, contact
+**Charles Richard Wayne Sears**:
+
+- Contact form (preferred): https://www.charlesrsears.com/#connect
+- Email: charles.r.sears@gmail.com
+- LinkedIn: https://www.linkedin.com/in/charlesrsears/
+
+**Trademarks:** *"Decadic Cycle of Expression"*, *"Project Deca"*, and *"Deca"* are
+trademarks of Charles Richard Wayne Sears and are **not** granted by the code license. You
+may state that your work is "based on" the Decadic architecture, but may not name a
+derivative in a way that implies it is the original or is endorsed.
+
+## Citing this work
+
+If you use this software or the architecture in research or writing, please cite **both**
+the software and the originating book. A machine-readable citation for both is in
+[`CITATION.cff`](./CITATION.cff).
+
+- **Software:** Sears, Charles Richard Wayne. *Decadic Cycle Cognitive Architecture*
+  (software), 2026. AGPL-3.0-or-later.
+- **Originating framework:** Sears, Charles R.W. *The Architecture of Awareness: Decoding
+  Consciousness.* ISBN 1963092066.
+
+---
+
+© 2026 Charles Richard Wayne Sears. The Decadic Cycle of Expression framework originates in
+*The Architecture of Awareness: Decoding Consciousness*.

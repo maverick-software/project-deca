@@ -1,7 +1,7 @@
-# WBS: WS5 — Learned Attention Gate
+# WBS: WS3B — Learned Attention Gate
 
-**Companion:** `ws5_learned_gate_prd.md` · Ordering is dependency order only.
-**Gate for the whole workstream:** M0 acceptance (data foundation) before anything trains; M5 does not start until MuJoCo embodiment exists.
+**Companion:** `ws3b_learned_gate_prd.md` · Ordering is dependency order only.
+**Gate for the whole workstream:** M0 acceptance (data foundation) before anything trains; **M3+ does not start until WS5 relational binding lands** (the relational core changes stage-4 cost structure — see PRD sequencing note); M5 does not start until MuJoCo embodiment exists.
 
 ---
 
