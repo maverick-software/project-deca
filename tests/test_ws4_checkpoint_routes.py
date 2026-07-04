@@ -100,6 +100,40 @@ def test_checkpoint_restore_routes_lance_kuzu(api_app_neural, monkeypatch):
         assert int(payload["state_bus"]["cycle_index"]) == saved_cycle
 
 
+def test_saved_agent_roundtrip_binding_faculties_on(api_app_neural, monkeypatch, tmp_path):
+    """WS5-M4.2 route-level: a binding-faculties-on agent survives the full
+    save -> load round-trip on lance+kuzu -- the restored agent's stack
+    carries the relational modules (manifest faculties are self-describing)."""
+    saved_dir = tmp_path / "saved_agents_bind"
+    monkeypatch.setenv("DECADIC_SAVED_DIR", str(saved_dir))
+    _pin_new_backends(monkeypatch)
+    for var in (
+        "DECADIC_WM_SLOT_TENSOR",
+        "DECADIC_MEMORY_TOKENS",
+        "DECADIC_RELATIONAL_CORE",
+    ):
+        monkeypatch.setenv(var, "1")
+
+    with TestClient(api_app_neural) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        agent = api_app_neural.state.registry.get(aid)
+        assert agent.neural.stack.has_relational_core is True
+        _drive_cycles(client, aid, 3)
+        client.post(f"/agent/{aid}/pause")
+
+        r = client.post(f"/agent/{aid}/save", json={"name": "bind-on", "notes": None})
+        assert r.status_code == 200, r.text
+        save_id = r.json()["save_id"]
+        assert r.json()["faculties"]["relational_core"] is True
+
+        lr = client.post(f"/saved-agents/{save_id}/load")
+        assert lr.status_code == 200, lr.text
+        restored = api_app_neural.state.registry.get(lr.json()["agent_id"])
+        assert restored.neural.stack.has_relational_core is True
+        assert restored.neural.stack.has_wm_slot_tensor is True
+        assert restored.neural.stack.has_memory_tokens is True
+
+
 def test_saved_agent_roundtrip_lance_kuzu(api_app_neural, monkeypatch, tmp_path):
     """Full save -> load through the Saved Agents routes on lance+kuzu.
 

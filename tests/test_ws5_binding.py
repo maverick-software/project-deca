@@ -505,6 +505,64 @@ def test_ltm_graph_entity_appearance_getter(tmp_path):
     assert g.entity_appearance("ent-nonexistent") is None
 
 
+# --------------------------------- M4.2: checkpoint compatibility
+
+
+def test_binding_checkpoint_roundtrip_bundle(monkeypatch, tmp_path):
+    """Checkpoints are self-describing (saved faculties win on load):
+    flags-on saves restore binding weights VERBATIM into any process env;
+    flags-off saves load cleanly under a flags-on env (backward compat for
+    every existing brain). The house faculty-toggle semantics."""
+    torch = pytest.importorskip("torch")
+    monkeypatch.delenv("DECADIC_USE_NEURAL", raising=False)
+    monkeypatch.setenv("DECADIC_NEURAL_PRESET", "tiny")
+    monkeypatch.setenv("DECADIC_DEVICE", "cpu")
+    for var in (
+        "DECADIC_WM_SLOT_TENSOR",
+        "DECADIC_MEMORY_TOKENS",
+        "DECADIC_RELATIONAL_CORE",
+    ):
+        monkeypatch.setenv(var, "1")
+    from decadic.nn.bundle import NeuralBundle
+
+    on = NeuralBundle.try_build("bind-ckpt-on")
+    assert on is not None and on.stack.has_relational_core
+    with torch.no_grad():  # move the zero-init blocks so restoration is provable
+        on.stack.rel_ingress.weight.normal_(0.0, 0.1)
+        on.stack.slot_ingress.weight.normal_(0.0, 0.1)
+        on.stack.mem_tok_ingress.weight.normal_(0.0, 0.1)
+    p_on = tmp_path / "brain_on.pt"
+    on.save(p_on)
+
+    for var in (
+        "DECADIC_WM_SLOT_TENSOR",
+        "DECADIC_MEMORY_TOKENS",
+        "DECADIC_RELATIONAL_CORE",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    off_env = NeuralBundle.try_build("bind-ckpt-off-env")
+    assert off_env is not None and off_env.stack.has_relational_core is False
+    off_env.load(p_on)  # adopts the saved (on) faculties + weights verbatim
+    assert off_env.stack.has_relational_core is True
+    assert torch.equal(off_env.stack.rel_ingress.weight, on.stack.rel_ingress.weight)
+    assert torch.equal(off_env.stack.slot_ingress.weight, on.stack.slot_ingress.weight)
+
+    # Reverse direction: a flags-off save under a flags-on env stays off.
+    p_off = tmp_path / "brain_off.pt"
+    off_save = NeuralBundle.try_build("bind-ckpt-off")
+    off_save.save(p_off)
+    for var in (
+        "DECADIC_WM_SLOT_TENSOR",
+        "DECADIC_MEMORY_TOKENS",
+        "DECADIC_RELATIONAL_CORE",
+    ):
+        monkeypatch.setenv(var, "1")
+    on_env = NeuralBundle.try_build("bind-ckpt-on-env")
+    assert on_env.stack.has_relational_core is True
+    on_env.load(p_off)
+    assert on_env.stack.has_relational_core is False  # checkpoint wins
+
+
 # ------------------------------------------- M0.4 oracle appearance seam
 
 
