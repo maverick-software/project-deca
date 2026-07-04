@@ -1250,6 +1250,14 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 reidentify=(
                     ctx.ltm_graph.match if getattr(ctx, "ltm_graph", None) is not None else None
                 ),
+                # WS5-M4.1: identity-matched slots key on the graph's STORED
+                # appearance (stable across occlusion; object permanence
+                # becomes visible to the network via the slot tensor).
+                key_lookup=(
+                    ctx.ltm_graph.entity_appearance
+                    if getattr(ctx, "ltm_graph", None) is not None
+                    else None
+                ),
             )
         stable_count = sum(
             1
@@ -1421,6 +1429,14 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 appearance_ema=C.appearance_ema(),
                 reidentify=(
                     ctx.ltm_graph.match if getattr(ctx, "ltm_graph", None) is not None else None
+                ),
+                # WS5-M4.1: identity-matched slots key on the graph's STORED
+                # appearance (stable across occlusion; object permanence
+                # becomes visible to the network via the slot tensor).
+                key_lookup=(
+                    ctx.ltm_graph.entity_appearance
+                    if getattr(ctx, "ltm_graph", None) is not None
+                    else None
                 ),
             )
         stable_count = sum(

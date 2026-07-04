@@ -111,6 +111,11 @@ class MemorySlot:
     # --- discovered-perception object file (unused in oracle mode) -----------
     # Appearance fingerprint (the slot's latent), used for re-identification.
     appearance: list[float] | None = None
+    # WS5-M4.1: the graph entity's STORED appearance when identity-matched --
+    # the stable key the slot tensor exposes to the network (the live
+    # ``appearance`` above EMA-drifts per sighting; this one anchors identity
+    # across occlusion gaps). None -> the slot keys on its own appearance.
+    key_appearance: list[float] | None = None
     # Image-space centroid (u, v) in [0,1] and its short history, for predicting
     # where a tracked object should re-appear (constant-velocity association).
     uv: list[float] | None = None
@@ -328,6 +333,7 @@ class WorkingMemory:
         match_threshold: float = 0.35,
         appearance_ema: float = 0.5,
         reidentify: Callable[[list[float]], str | None] | None = None,
+        key_lookup: Callable[[str], list[float] | None] | None = None,
     ) -> list[dict[str, Any]]:
         """Bind camera-derived proposals to persistent object files (data association).
 
@@ -343,7 +349,23 @@ class WorkingMemory:
         on a hit the slot adopts that persistent ``ent-NNNNN`` id so the bounded
         "now" graph and the unbounded long-term graph share identities. When it is
         ``None`` (oracle mode / no LTM) the behavior is byte-identical to before.
+
+        ``key_lookup`` (WS5-M4.1) fetches the graph entity's STORED appearance
+        for an identity-matched slot, which becomes the slot's stable
+        ``key_appearance`` -- the identity anchor the slot tensor exposes to
+        the network across occlusion gaps. ``None`` -> unchanged behavior.
         """
+
+        def _apply_graph_key(slot: MemorySlot, sid_: str) -> None:
+            if key_lookup is None or slot.key_appearance is not None:
+                return
+            try:
+                ka = key_lookup(sid_)
+            except Exception:
+                ka = None
+            if ka:
+                slot.key_appearance = [float(v) for v in ka]
+
         self.cycle += 1
         for slot in self.slots.values():
             decay = self.decay / entity_provisional_decay_boost() if slot.provisional else self.decay
@@ -402,6 +424,7 @@ class WorkingMemory:
                     slot = self.slots[sid]
                     prev_uv = list(slot.uv) if slot.uv is not None else None
                     self._refresh_slot(slot, prop, appearance, uv, appearance_ema)
+                    _apply_graph_key(slot, sid)
                     used.add(sid)
                     if prev_uv is not None and uv is not None:
                         matched.append(
@@ -413,9 +436,13 @@ class WorkingMemory:
                             }
                         )
                 else:
+                    reinstated = sid is not None
                     if sid is None:
                         sid = self._coin_id()
                     slot = self._new_slot(sid, prop, appearance, uv)
+                    if reinstated:
+                        # LTM hit: this is a KNOWN entity re-entering the now.
+                        _apply_graph_key(slot, sid)
                     self.slots[sid] = slot
                     used.add(sid)
 
@@ -687,9 +714,12 @@ class WorkingMemory:
             return math.tanh(x)
 
         row = [0.0] * SLOT_TENSOR_DIM
-        # appearance [0:16] -- truncate/zero-pad the slot's latent fingerprint
-        if s.appearance:
-            for i, v in enumerate(s.appearance[:SLOT_TENSOR_APPEARANCE_DIM]):
+        # appearance [0:16] -- the identity KEY: the graph entity's stored
+        # appearance when identity-matched (M4.1, stable across occlusion),
+        # else the slot's own latent fingerprint.
+        key = s.key_appearance or s.appearance
+        if key:
+            for i, v in enumerate(key[:SLOT_TENSOR_APPEARANCE_DIM]):
                 row[i] = _as_float(v)
         # spatial [16:27]
         base = SLOT_TENSOR_APPEARANCE_DIM

@@ -444,6 +444,67 @@ def test_relational_faculty_default(monkeypatch):
     assert CognitionFaculties.from_env().relational_core is True
 
 
+# --------------------------------- M4.1: graph-keyed slots (object permanence)
+
+
+def test_graph_keyed_slots_object_permanence():
+    """A re-encountered entity re-binds to the SAME key across an occlusion
+    gap: the slot is evicted, the live appearance drifts, but the graph's
+    stored appearance anchors identity -- the WBS M4.1 assertion."""
+    stored = [0.9] + [0.1] * 15  # the graph's stored appearance for ent-7
+
+    def lookup(sid):
+        return stored if sid == "ent-7" else None
+
+    def reid(_app):
+        return "ent-7"
+
+    wm = WorkingMemory(capacity=4, decay=0.5, min_salience=0.3)
+    prop1 = {"appearance": [0.8] + [0.12] * 15, "uv": [0.5, 0.5], "confidence": 0.9}
+    wm.integrate_discovered([prop1], reidentify=reid, key_lookup=lookup)
+    assert "ent-7" in wm.slots
+    assert wm.slots["ent-7"].key_appearance == stored
+    t1, m1 = wm.slot_tensor()
+    key_row_1 = t1[0][SLOT_APPEARANCE_SLICE].copy()
+    assert m1[0] and np.allclose(key_row_1, np.asarray(stored, np.float32))
+
+    # Occlusion: decay past eviction -- the slot is GONE from working memory.
+    for _ in range(4):
+        wm.integrate_discovered([], reidentify=reid, key_lookup=lookup)
+    assert "ent-7" not in wm.slots
+
+    # Re-encounter with a drifted live appearance: LTM reinstates the id and
+    # the graph key re-binds IDENTICALLY -- object permanence at key level.
+    prop2 = {"appearance": [0.5] + [0.3] * 15, "uv": [0.2, 0.7], "confidence": 0.9}
+    wm.integrate_discovered([prop2], reidentify=reid, key_lookup=lookup)
+    t2, m2 = wm.slot_tensor()
+    assert m2[0]
+    assert np.array_equal(t2[0][SLOT_APPEARANCE_SLICE], key_row_1)
+    # The live appearance drifted; the key did not leak the drift.
+    assert wm.slots["ent-7"].appearance != stored
+
+    # Unmatched (anonymous) slots key on their own appearance -- no graph key.
+    wm2 = WorkingMemory(capacity=4)
+    wm2.integrate_discovered([prop1], reidentify=lambda _a: None, key_lookup=lookup)
+    anon = next(iter(wm2.slots.values()))
+    assert anon.key_appearance is None
+    t3, _ = wm2.slot_tensor()
+    assert np.allclose(
+        t3[0][SLOT_APPEARANCE_SLICE], np.asarray(prop1["appearance"], np.float32)
+    )
+
+
+def test_ltm_graph_entity_appearance_getter(tmp_path):
+    from decadic.memory.semantic_graph import LongTermGraph
+
+    g = LongTermGraph(tmp_path / "g.sqlite")
+    app = np.linspace(-0.5, 0.5, 16).astype(np.float32)
+    nid = g.upsert_node(app, kind="npc", cycle=1)
+    got = g.entity_appearance(nid)
+    assert got is not None and np.allclose(got, app, atol=1e-5)
+    assert g.entity_appearance("ent-nonexistent") is None
+
+
 # ------------------------------------------- M0.4 oracle appearance seam
 
 

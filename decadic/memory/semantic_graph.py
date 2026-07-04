@@ -838,6 +838,28 @@ class LongTermGraph:
         with self._lock:
             return self._match(a, self._threshold if threshold is None else float(threshold))
 
+    def entity_appearance(self, node_id: str) -> list[float] | None:
+        """WS5-M4.1: the STORED appearance of a known entity, or None.
+
+        The stable identity anchor for graph-keyed WM slots: a slot's live
+        appearance EMA-drifts with every sighting, but the graph's stored
+        embedding moves on its own slow EMA -- so a re-encountered entity
+        re-binds to (nearly) the same key across an occlusion gap. This is
+        what makes object permanence visible to the network.
+        """
+        with self._lock:
+            node = self._nodes.get(str(node_id))
+            if node is None:
+                return None
+            app = node.get("appearance")
+            if app is None:
+                return None
+            try:
+                a = np.asarray(app, dtype=np.float32).reshape(-1)
+            except (TypeError, ValueError):
+                return None
+            return [float(x) for x in a] if a.size else None
+
     def upsert_node(
         self,
         appearance: Any,
