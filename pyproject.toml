@@ -8,6 +8,8 @@ version = "0.3.0"
 description = "Decadic Cycle Cognitive Architecture — Phase 2–3 neural cognition + episodic similarity"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"
+authors = [{ name = "Charles R. Sears", email = "charles.r.sears@gmail.com" }]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",

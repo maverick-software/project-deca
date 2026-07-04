@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software or the Decadic architecture, please cite it as below."
+title: "Decadic Cycle Cognitive Architecture"
+abstract: >-
+  An embodied, non-LLM cognitive architecture implementing the Decadic Cycle of
+  Expression: a ten-stage cognitive loop with predictive-coding learning,
+  pain/pleasure viability, episodic and semantic memory, and a stage 3->4
+  attention gate.
+type: software
+authors:
+  - family-names: Sears
+    given-names: Charles R.
+    email: charles.r.sears@gmail.com
+version: "0.3.0"
+date-released: "2026-07-04"
+license: AGPL-3.0-or-later
+keywords:
+  - cognitive-architecture
+  - artificial-cognition
+  - predictive-coding
+  - embodied-ai
+  - decadic-cycle-of-expression
