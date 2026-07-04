@@ -136,7 +136,11 @@ class SoakRun:
         raise RuntimeError("server not ready after 240s")
 
     def start_agent_and_client(self) -> None:
-        resp = _http("POST", f"{self.base_url}/agent")
+        # Full-preset + hf-encoder bundle construction can exceed the default
+        # 10 s _http timeout (observed 2026-07-04: creation aborted at the
+        # edge). Generous bound -- the readiness loop above already proved
+        # the server is alive.
+        resp = _http("POST", f"{self.base_url}/agent", timeout=180)
         if not resp or "agent_id" not in resp:
             raise RuntimeError("agent creation failed")
         self.agent_id = str(resp["agent_id"])

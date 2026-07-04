@@ -133,6 +133,129 @@ def test_stage4_shadow_is_pure_diagnostics(monkeypatch):
     assert torch.allclose(on["shadow_z4"], base["z4"], atol=1e-5)
 
 
+def _planted_log(path, n=400, seed=7):
+    """Synthetic decision log with PLANTED structure: high novelty <=> high
+    skip-regret. The M1.2 acceptance -- the pipeline must recover exactly the
+    structure that was planted."""
+    import random
+
+    rng = random.Random(seed)
+    lines = []
+    for c in range(1, n + 1):
+        nov = rng.random()
+        row = {
+            "cycle": c,
+            "novelty": round(nov, 6),
+            "pe": 0.3,
+            "affect": 0.1,
+            "priority": 0.0,
+            "drive": 0.05,
+            "esc_rate": 0.05,
+            "latch": 0,
+            "precedent_age": c % 20,
+            "fast_path": 0,
+            "escalate": 0,
+            "reason": "skip",
+            "score": round(nov * 0.5, 6),
+            "threshold_eff": 0.3,
+            "pain": 0.0,
+            "viability": 90.0,
+            "pc_ema": 0.4,
+        }
+        if c % 2 == 0:  # dense shadow sampling for the test
+            row["shadow_kind"] = "skip"
+            row["shadow_regret_z4"] = 0.5 if nov > 0.7 else 0.001
+            row["shadow_regret_risk"] = row["shadow_regret_z4"]
+        lines.append(json.dumps(row))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _builder():
+    import sys
+    from pathlib import Path as _P
+
+    root = _P(__file__).resolve().parents[1]
+    sp = str(root / "scripts")
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
+    import build_gate_dataset
+
+    return build_gate_dataset
+
+
+def test_build_gate_dataset_recovers_planted_structure(tmp_path):
+    np = pytest.importorskip("numpy")
+    bgd = _builder()
+    log = tmp_path / "gate_decisions_test.jsonl"
+    _planted_log(log)
+
+    arrays, manifest = bgd.build([log], horizon=20, alpha=100.0, cost=0.05, beta=0.5)
+    assert manifest["totals"]["rows"] == 400
+    lab = ~np.isnan(arrays["y"])
+    assert manifest["totals"]["labeled"] == int(lab.sum()) > 100
+
+    nov = arrays["X"][:, 0]
+    y = arrays["y"]
+    hi = lab & (nov > 0.7)
+    lo = lab & (nov <= 0.7)
+    # Planted: high-novelty rows carry regret 0.5 -> labels ~1; others ~0.
+    assert float(y[hi].mean()) > 0.95
+    assert float(y[lo].mean()) < 0.05
+
+    # Hyperparameters actually steer labels: an impossible cost flattens all
+    # labels toward zero (nothing is ever worth escalating).
+    arrays2, _ = bgd.build([log], horizon=20, alpha=40.0, cost=1.0, beta=0.0)
+    lab2 = ~np.isnan(arrays2["y"])
+    assert float(arrays2["y"][lab2].mean()) < 0.01
+
+    # Deterministic rebuild: identical inputs -> identical arrays.
+    arrays3, _ = bgd.build([log], horizon=20, alpha=100.0, cost=0.05, beta=0.5)
+    assert np.array_equal(arrays["y"], arrays3["y"], equal_nan=True)
+    assert np.array_equal(arrays["X"], arrays3["X"])
+
+
+def test_build_gate_dataset_outcome_sharpening(tmp_path):
+    """A pain spike inside the horizon lifts a low-divergence label."""
+    np = pytest.importorskip("numpy")
+    bgd = _builder()
+    rows = []
+    for c in range(1, 61):
+        rows.append(
+            {
+                "cycle": c,
+                "novelty": 0.1,
+                "pe": 0.1,
+                "affect": 0.0,
+                "priority": 0.0,
+                "drive": 0.0,
+                "esc_rate": 0.05,
+                "latch": 0,
+                "precedent_age": 3,
+                "fast_path": 0,
+                "escalate": 0,
+                "reason": "skip",
+                "score": 0.1,
+                "threshold_eff": 0.3,
+                # Pain spikes at cycles 25-30; the decision at cycle 20 with a
+                # horizon of 15 sees it, the one at cycle 5 does not.
+                "pain": 0.8 if 25 <= c <= 30 else 0.0,
+                "viability": 90.0,
+                "pc_ema": 0.4,
+            }
+        )
+    for c in (5, 20):
+        rows[c - 1]["shadow_kind"] = "skip"
+        rows[c - 1]["shadow_regret_z4"] = 0.001  # divergence alone says "skip fine"
+        rows[c - 1]["shadow_regret_risk"] = 0.001
+    log = tmp_path / "gate_decisions_pain.jsonl"
+    log.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    arrays, _ = bgd.build([log], horizon=15, alpha=40.0, cost=0.05, beta=1.0)
+    y_by_cycle = {int(c): float(v) for c, v in zip(arrays["cycle"], arrays["y"]) if v == v}
+    assert y_by_cycle[5] < 0.2  # quiet horizon: divergence-only label, low
+    assert y_by_cycle[20] > 0.7  # pain followed: attention was warranted
+
+
 def test_stage4_shadow_requires_override(monkeypatch):
     """Shadow on an escalated (no-override) cycle is a no-op: fresh stage 4
     already ran; the counterfactual there is computed by the caller."""

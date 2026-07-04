@@ -1,0 +1,5 @@
+INFO:     127.0.0.1:58753 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58388 - "GET /vast/deployment HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63080 - "GET /agent/d1abb5ab-9a83-4508-9c34-f65f220a718a/state HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59121 - "GET /agent/d1abb5ab-9a83-4508-9c34-f65f220a718a/metrics HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65366 - "GET /agents HTTP/1.1" 200 OK

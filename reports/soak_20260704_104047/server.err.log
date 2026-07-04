@@ -1,0 +1,5 @@
+INFO:     Started server process [32244]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
+{"time": "2026-07-04T17:40:52.022404+00:00", "level": "INFO", "logger": "decadic.nn.bundle", "message": "neural compute device=cuda gpu=NVIDIA GeForce RTX 3080 vram_free_gb=8.9 vram_total_gb=10.0 bf16=True"}
