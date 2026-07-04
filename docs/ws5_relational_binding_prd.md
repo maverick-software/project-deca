@@ -103,3 +103,25 @@ Every flag off ⇒ full suite byte-identical (existing parity culture). Cycle-co
 - `risk_mlp` input strategy for flag-off weight compatibility (zero-concat vs separate head).
 - K (slot count exposed to the stack) and D_slot defaults — WM capacity default vs a smaller neural window.
 - Whether the WM keyed-read replaces or augments the scene-latent input when on (augment is the conservative default).
+
+---
+
+## Addendum: build decisions and measurements (2026-07-04)
+
+**M1/M2/M3.1 landed** (commits of 2026-07-04): slot tensor (frozen 40-d layout, `docs/ws5_m0_wm_inventory.md`), keyed WM read, memory-token read, relational core. Open decisions resolved during build:
+
+- **risk_mlp input strategy (§8):** neither zero-concat nor a separate head -- the relational summary enters via a zero-init ADDITIVE ingress into the stage-4 input (`z4 = risk_mlp(z3 + rel_ingress(summary))`). Keeps `risk_mlp`'s shape, checkpoint compatibility, and the house zero-init discipline (byte-identical until learned). Flags-off saves load flags-on with zero-init new blocks.
+- **WM keyed read replaces vs augments (§8):** augments, as defaulted. The scene-latent path and mean-pooled `zm` are untouched; binding is additive structure beside the legacy signals.
+- **K and D_slot (§8):** K = 6 (`DECADIC_WM_SLOT_K`, a cognitive parameter, preset-independent); D_slot = 40 frozen. Interface dims do NOT scale with presets (`test_interface_dims_fixed_across_presets` family).
+- **Gate composition (§goal 3):** the relational core computes on DELIBERATIVE cycles only -- `stage4_override` (gate skip) bypasses it entirely, call-count asserted in tests. Relational deliberation is now exactly the compute the WS3 gate prices; the WS3-B shadow tap measures the pre-relational counterfactual (revisit when the gate retrains post-WS5).
+
+**M3.2 measured cost (full preset, RTX 3080, CUDA, forward-only, K=6/k=5, 200 iters):**
+
+| config | off p50/p95 | on p50/p95 | delta p50 |
+|---|---|---|---|
+| 2 layers x 2 heads | 6.15 / 7.06 ms | 7.67 / 10.10 ms | **+1.52 ms (+24.7% of forward, ~2% of the 70-90 ms cycle envelope)** |
+| 3 layers x 4 heads | 5.69 / 6.77 ms | 7.77 / 8.80 ms | +2.07 ms |
+
+"On" includes the full binding path (both keyed reads + relational core). **Sizing decision: default 2x2** (smallest mechanism that can pass the probe); 3x4 is measured, affordable (+0.55 ms), and reserved as the capacity lever if M5.2 flags-on fails for capacity rather than mechanism reasons. `scripts/bench_relational.py` reproduces the table.
+
+**Remaining:** M4.1 graph-keyed slots (object permanence network-visible) · M4.2 checkpoint round-trips through REST · M5 probe (scenario/verdict scaffold exists: `docs/binding_scenarios/`, `gen_binding_scenario.py`, smoke PASS 6/6 slots live).
