@@ -77,8 +77,8 @@ def main() -> int:
     rows = load(Path(args.samples))
     scen = json.loads(Path(args.scenario).read_text(encoding="utf-8"))
     order = scen.get("probe_order", [])
-    n_novel = sum(1 for p in order if p["kind"] == "probe_novel")
-    n_trained = sum(1 for p in order if p["kind"] == "probe_trained")
+    kinds = sorted({p["kind"] for p in order})
+    n_of = {k: sum(1 for p in order if p["kind"] == k) for k in kinds}
     if len(rows) < 50 or not order:
         print(f"FAIL: unusable inputs (samples={len(rows)}, probe phases={len(order)})")
         return 1
@@ -118,7 +118,7 @@ def main() -> int:
 
     # Per-phase decision: does priority deflect toward avoid INSIDE the
     # phase's own window? (No order mapping, no episode counting.)
-    hits = {"probe_trained": 0, "probe_novel": 0}
+    hits = {k: 0 for k in kinds}
     details = []
     for p in order:
         lo, hi = int(p["start"]) + 5, int(p["start"]) + phase_len + 40
@@ -136,11 +136,21 @@ def main() -> int:
     for kind, pair, wmin, ok in details:
         print(f"  {kind:14s} {str(pair):24s} min={wmin} deflected={ok}")
 
+    # v3 two-direction verdict. The discrimination only a bound
+    # representation can make: novel THREAT pairings deflect, novel SAFE
+    # pairings do not -- simultaneously.
+    nt, ns = hits.get("probe_novel_threat", 0), hits.get("probe_novel_safe", 0)
+    tt = hits.get("probe_trained_threat", 0)
+    n_nt = n_of.get("probe_novel_threat", 0)
+    n_ns = n_of.get("probe_novel_safe", 0)
+    n_tt = n_of.get("probe_trained_threat", 0)
     if total == 0:
         verdict = "BLIND"
-    elif hits["probe_novel"] >= n_novel:
+    elif n_nt and nt >= n_nt and ns == 0:
         verdict = "BINDING"
-    elif hits["probe_trained"] > 0 and hits["probe_novel"] < n_novel:
+    elif n_ns and ns > 0 and nt > 0:
+        verdict = "PROXIMITY_SHORTCUT"  # deflects on ANY adjacency: unbound
+    elif tt > 0 and nt < n_nt:
         verdict = "MEMORIZER"
     else:
         verdict = "PARTIAL"
@@ -150,9 +160,9 @@ def main() -> int:
         f"(n={len(gap_vals)})"
     )
     print(
-        f"probe phases deflected: {total}/{len(order)} "
-        f"(trained={hits['probe_trained']}/{n_trained} "
-        f"novel={hits['probe_novel']}/{n_novel})"
+        "probe phases deflected: "
+        + " ".join(f"{k}={hits[k]}/{n_of[k]}" for k in kinds)
+        + f" (total {total}/{len(order)})"
     )
     print(f"BINDING_PROBE: {verdict}")
 

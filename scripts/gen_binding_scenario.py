@@ -1,17 +1,26 @@
-"""WS5-M0.4: generate a binding-probe scenario file.
+"""WS5-M5.1 v3: generate the binding-probe scenario (role-structured).
 
-Entities carry controlled 16-d unit appearance vectors (seeded, near-
-orthogonal by construction at these dims/counts). The relation under test is
-threat-adjacency: during a scheduled phase, pair (a, b) becomes adjacent and
-threat_near events fire, sourced to `a`. Train phases expose a subset of
-pairs; `holdout_pairs` (never scheduled here) are reserved for the M5 probe's
-novel-pairing test phase. Every entity appears in BOTH some train pair and
-some holdout pair, so marginal entity statistics are uninformative -- the
-leakage control from PRD ws5 risk 5, finalized at M5.1.
+v3 design (after the 2026-07-04 v2 runs exposed two flaws):
+1. REAL CONSEQUENCES: threat phases fire damage-class collision events during
+   adjacency -- pain rises, the risk head gets an aversive prediction target
+   (v2's threat_near produced stress but no pain: nothing was learnable).
+2. ROLE STRUCTURE: 2 predators + 4 prey. Damage fires ONLY on predator-prey
+   adjacency; predator-predator and prey-prey adjacencies are scheduled as
+   explicit SAFE negatives. This closes the proximity-shortcut leak: "any two
+   things close -> danger" is now a WRONG generalization, so a pooled system
+   cannot pass by reading global proximity out of z0.
+3. REPETITION: the train schedule runs --laps (default 3) so the zero-init
+   binding ingresses see enough gradient pressure to move.
 
-Usage:
-    python scripts/gen_binding_scenario.py [--entities 6] [--seed 42] \
-        [--out docs/eval_scenarios/binding_probe.json]
+Probe segment (all phases EVENTLESS -- deflection must be prediction):
+    probe_trained_threat  -> should deflect (memory check)
+    probe_novel_threat    -> MUST deflect  (generalization criterion)
+    probe_trained_safe    -> must NOT deflect (sanity)
+    probe_novel_safe      -> must NOT deflect (the discrimination that only
+                             a bound representation can make)
+
+Usage: python scripts/gen_binding_scenario.py [--seed 42] [--laps 3]
+           [--out docs/binding_scenarios/binding_probe.json]
 """
 
 from __future__ import annotations
@@ -27,131 +36,102 @@ import numpy as np
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--entities", type=int, default=6)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--laps", type=int, default=3)
     ap.add_argument("--phase-steps", type=int, default=120)
-    ap.add_argument("--phase-gap", type=int, default=280)
-    ap.add_argument("--start", type=int, default=600, help="first phase start (post-warmup)")
-    # NOT docs/eval_scenarios: the /eval/scenarios route parses everything
-    # there as an EvalSpec (different schema).
+    ap.add_argument("--phase-gap", type=int, default=180)
+    ap.add_argument("--start", type=int, default=600)
     ap.add_argument("--out", default="docs/binding_scenarios/binding_probe.json")
     args = ap.parse_args()
 
-    n = max(4, int(args.entities))
     rng = np.random.default_rng(args.seed)
-    ids = [f"ent-{chr(ord('A') + i)}" for i in range(n)]
+    predators = ["ent-A", "ent-B"]
+    prey = ["ent-C", "ent-D", "ent-E", "ent-F"]
+    ids = predators + prey
 
-    apps = rng.normal(size=(n, 16)).astype(np.float32)
+    apps = rng.normal(size=(len(ids), 16)).astype(np.float32)
     apps /= np.linalg.norm(apps, axis=1, keepdims=True)
-    homes = []
-    for i in range(n):
-        ang = 2.0 * np.pi * i / n
-        homes.append([float(14.0 * np.cos(ang)), 0.0, float(14.0 * np.sin(ang))])
-
-    entities = [
-        {
-            "id": ids[i],
-            "kind": "entity",
-            "appearance": [round(float(v), 6) for v in apps[i]],
-            "home": homes[i],
-            "orbit": 2.0,
-            "period": 400,
-        }
-        for i in range(n)
-    ]
-
-    # Pair split: round-robin over all pairs, alternating train/holdout, then
-    # repair so every entity has >= 1 of each (balance = leakage control).
-    all_pairs = list(itertools.combinations(ids, 2))
-    rng.shuffle(all_pairs)
-    train, hold = [], []
-    for i, p in enumerate(all_pairs):
-        (train if i % 2 == 0 else hold).append(list(p))
-
-    def _covered(pairs: list[list[str]]) -> set[str]:
-        return {e for p in pairs for e in p}
-
-    for eid in ids:
-        if eid not in _covered(train):
-            for p in hold:
-                if eid in p:
-                    train.append(p)
-                    hold.remove(p)
-                    break
-        if eid not in _covered(hold):
-            for p in train:
-                if eid in p and len([q for q in train if eid in q]) > 1:
-                    hold.append(p)
-                    train.remove(p)
-                    break
-
-    schedule = []
-    t = int(args.start)
-    for pair in train:
-        schedule.append(
+    entities = []
+    for i, eid in enumerate(ids):
+        ang = 2.0 * np.pi * i / len(ids)
+        entities.append(
             {
-                "start": t,
-                "steps": int(args.phase_steps),
-                "pair": pair,
-                "kind": "train",
-                "gap": 1.5,
-                "event": {"type": "threat_near", "intensity": 0.6, "every": 10},
+                "id": eid,
+                "kind": "entity",
+                "role_truth": "predator" if eid in predators else "prey",  # eval-only
+                "appearance": [round(float(v), 6) for v in apps[i]],
+                "home": [float(14.0 * np.cos(ang)), 0.0, float(14.0 * np.sin(ang))],
+                "orbit": 2.0,
+                "period": 400,
             }
         )
+
+    # Threat pairs: predator x prey (8). Train on 5, hold out 3 such that
+    # every predator and every prey appears in BOTH splits where possible.
+    threat_pairs = [list(p) for p in itertools.product(predators, prey)]
+    rng.shuffle(threat_pairs)
+    train_threat, hold_threat = threat_pairs[:5], threat_pairs[5:]
+    # Safe pairs: prey-prey (6) + the predator-predator pair (1).
+    safe_pairs = [list(p) for p in itertools.combinations(prey, 2)]
+    rng.shuffle(safe_pairs)
+    train_safe = safe_pairs[:3] + [list(predators)]
+    hold_safe = safe_pairs[3:]
+
+    schedule, t = [], int(args.start)
+
+    def _phase(pair, kind, event=None):
+        nonlocal t
+        ph = {"start": t, "steps": int(args.phase_steps), "pair": pair, "kind": kind, "gap": 1.5}
+        if event:
+            ph["event"] = event
+        schedule.append(ph)
         t += int(args.phase_steps) + int(args.phase_gap)
 
-    # Probe segment (M5.1): EVENTLESS adjacency phases after training.
-    # probe_trained re-presents trained pairs (memorization check);
-    # probe_novel presents held-out pairings (the generalization criterion).
-    # Interleaved deterministically so drift cannot masquerade as either.
-    # A learned relation deflects priority on BOTH kinds; a memorizer only on
-    # probe_trained; a pooled (flags-off) system on NEITHER (no events -> no
-    # pain -> nothing else can carry the adjacency information).
+    dmg = {"type": "collision", "intensity": 0.35, "every": 12}
+    for _lap in range(max(1, args.laps)):
+        # Interleave threat and safe training so neither is a temporal block.
+        for i in range(max(len(train_threat), len(train_safe))):
+            if i < len(train_threat):
+                _phase(train_threat[i], "train_threat", dmg)
+            if i < len(train_safe):
+                _phase(train_safe[i], "train_safe")
+
     probe_order = []
-    trained_probe = train[: len(hold)] if len(train) >= len(hold) else train
-    pairs_interleaved = []
-    for i in range(max(len(trained_probe), len(hold))):
-        if i < len(trained_probe):
-            pairs_interleaved.append(("probe_trained", trained_probe[i]))
-        if i < len(hold):
-            pairs_interleaved.append(("probe_novel", hold[i]))
-    for kind, pair in pairs_interleaved:
-        schedule.append(
-            {
-                "start": t,
-                "steps": int(args.phase_steps),
-                "pair": pair,
-                "kind": kind,
-                "gap": 1.5,
-                # no "event": adjacency is the ONLY signal in the probe segment
-            }
-        )
-        probe_order.append({"start": t, "kind": kind, "pair": pair})
-        t += int(args.phase_steps) + int(args.phase_gap)
+    probe_sets = (
+        [("probe_trained_threat", p) for p in train_threat[:3]]
+        + [("probe_novel_threat", p) for p in hold_threat]
+        + [("probe_trained_safe", p) for p in train_safe[:3]]
+        + [("probe_novel_safe", p) for p in hold_safe]
+    )
+    rng.shuffle(probe_sets)  # deterministic interleave; drift can't masquerade
+    for kind, pair in probe_sets:
+        _phase(pair, kind)
+        probe_order.append({"start": schedule[-1]["start"], "kind": kind, "pair": pair})
 
     scenario = {
-        "workstream": "WS5-M5.1",
-        "relation": "threat_adjacency",
+        "workstream": "WS5-M5.1-v3",
+        "relation": "predator_prey_threat_adjacency",
         "seed": args.seed,
+        "laps": args.laps,
         "entities": entities,
         "schedule": schedule,
-        "holdout_pairs": hold,
         "probe_order": probe_order,
         "total_steps_hint": t + 400,
         "leakage_controls": (
-            "every entity appears in >=1 train AND >=1 holdout pair (marginal "
-            "entity statistics uninformative); probe phases eventless (pain "
-            "cannot carry the signal); probe_trained/probe_novel interleaved "
-            "(drift cannot masquerade as generalization); pairs balanced by "
-            "round-robin split of all C(n,2) pairings"
+            "role-structured: damage ONLY on predator-prey adjacency; safe "
+            "adjacencies scheduled as explicit negatives (proximity shortcut "
+            "is a WRONG generalization); every entity in train and holdout "
+            "splits; probe phases eventless and shuffled; two-direction test "
+            "(novel threat must deflect, novel safe must not)"
         ),
     }
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(scenario, indent=2), encoding="utf-8")
     print(
-        f"[gen_binding_scenario] entities={n} train_pairs={len(train)} "
-        f"holdout_pairs={len(hold)} phases_end~step {t} -> {out}"
+        f"[gen_binding_scenario] v3 laps={args.laps} "
+        f"train: threat={len(train_threat)} safe={len(train_safe)} | "
+        f"probe: {len(probe_sets)} phases | end~step {t} -> {out}"
     )
     return 0
 
