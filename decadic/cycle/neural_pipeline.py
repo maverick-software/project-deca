@@ -777,6 +777,28 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # WS5-M1: WM slot tensor for the keyed read (per-cycle constants; the
     # adapter is a pure read of WM state). None when the faculty is off, WM
     # is absent, or no slot is live -- all no-ops inside the forward.
+    # WS5-M2: recalled-episode tokens for the memory keyed read. Uses the same
+    # query vector as the pooled recall above; the mirror serves this sub-ms.
+    # NB: when recall ran off the critical path (cached_memory_context), this
+    # is one extra mirror search inside the lock -- acceptable for a research
+    # flag that defaults off; revisit at M3.2 cost measurement.
+    mem_tokens_t = None
+    mem_tokens_mask_t = None
+    if getattr(bundle.stack, "has_memory_tokens", False):
+        try:
+            _mt, _mm = ctx.episodic.retrieval_context_tokens(
+                qv,
+                k=int(os.environ.get("DECADIC_MEMORY_TOP_K", "5")),
+                min_salience=float(os.environ.get("DECADIC_MEMORY_MIN_SALIENCE", "0")),
+            )
+            if _mm.any():
+                mem_tokens_t = torch.as_tensor(
+                    _mt, device=bundle.device, dtype=z0_bu.dtype
+                )
+                mem_tokens_mask_t = torch.as_tensor(_mm, device=bundle.device)
+        except Exception:
+            pass  # binding read is additive; never fail the cycle for it
+
     wm_slots_t = None
     wm_mask_t = None
     if getattr(bundle.stack, "has_wm_slot_tensor", False):
@@ -805,6 +827,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             stage4_shadow=gate_shadow_skip,
             wm_slots=wm_slots_t,
             wm_slots_mask=wm_mask_t,
+            mem_tokens=mem_tokens_t,
+            mem_tokens_mask=mem_tokens_mask_t,
         )
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 

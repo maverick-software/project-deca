@@ -63,6 +63,10 @@ class CognitionFaculties:
     # TENSOR read by keyed cross-attention (zero-init ingress => parity until
     # learned). Defaults OFF (research pathway; flags-off is byte-identical).
     wm_slot_tensor: bool = False
+    # WS5-M2 (relational binding): recalled episodes enter as TOKENS read by
+    # keyed cross-attention beside the mean-pooled context vector. Defaults
+    # OFF (research pathway; zero-init ingress, byte-identical when off).
+    memory_tokens: bool = False
 
     def __post_init__(self) -> None:
         mode = str(self.perception_mode).strip().lower()
@@ -74,6 +78,7 @@ class CognitionFaculties:
         self.predictive_affect = bool(self.predictive_affect)
         self.represented_self = bool(self.represented_self)
         self.wm_slot_tensor = bool(self.wm_slot_tensor)
+        self.memory_tokens = bool(self.memory_tokens)
 
     @property
     def discovered(self) -> bool:
@@ -92,4 +97,5 @@ class CognitionFaculties:
             predictive_affect=_cfg.predictive_affect_enabled(),
             represented_self=_cfg.represented_self_enabled(),
             wm_slot_tensor=_cfg.wm_slot_tensor_enabled(),
+            memory_tokens=_cfg.memory_tokens_enabled(),
         )

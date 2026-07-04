@@ -923,6 +923,14 @@ def wm_slot_k() -> int:
     return max(1, int(os.environ.get("DECADIC_WM_SLOT_K", "6")))
 
 
+# WS5-M2 (relational binding): recalled episodes enter the stack as TOKENS
+# read by keyed cross-attention, beside the legacy mean-pooled context vector
+# (five remembered situations stop entering as their average). Research
+# pathway: default OFF, byte-identical when off; zero-init ingress.
+def memory_tokens_enabled() -> bool:
+    return _env_bool("DECADIC_MEMORY_TOKENS", False)
+
+
 # Memory-efficient training path (self-model program, Phase 6 — hardware-gated).
 # When ON the per-cycle training step uses (a) an 8-bit Adam optimizer when
 # bitsandbytes is importable on CUDA (halving the optimizer-moment memory, the

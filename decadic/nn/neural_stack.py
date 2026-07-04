@@ -327,6 +327,24 @@ class NeuralCognitiveStack(nn.Module):
             with torch.no_grad():
                 self.slot_ingress.weight.zero_()
                 self.slot_ingress.bias.zero_()
+        # WS5-M2 (relational binding): keyed read over recalled-episode TOKENS
+        # (frozen 80-d episodic embedding layout), beside the mean-pooled
+        # context vector -- five remembered situations stop entering as their
+        # average. Same discipline as the slot read: zero-init ingress,
+        # per-cycle constant tokens, no cross-cycle BPTT.
+        from decadic.memory.embeddings import EMBEDDING_DIM as _EPI_DIM
+
+        self._mem_tok_dim = int(_EPI_DIM)
+        self.has_memory_tokens = getattr(self.faculties, "memory_tokens", False)
+        if self.has_memory_tokens:
+            mem_att = max(16, cfg.d_model // 4)
+            self.mem_tok_query = nn.Linear(cfg.d_model, mem_att)
+            self.mem_tok_key = nn.Linear(self._mem_tok_dim, mem_att)
+            self.mem_tok_value = nn.Linear(self._mem_tok_dim, cfg.d_model)
+            self.mem_tok_ingress = nn.Linear(cfg.d_model, cfg.d_model)
+            with torch.no_grad():
+                self.mem_tok_ingress.weight.zero_()
+                self.mem_tok_ingress.bias.zero_()
         self.pc_heads = nn.ModuleList([nn.Linear(cfg.d_model, cfg.d_model) for _ in range(4)])
         self.register_buffer("gru_h", torch.zeros(1, cfg.gru_hidden))
         self.register_buffer("lstm_h", torch.zeros(1, cfg.lstm_hidden))
@@ -672,6 +690,8 @@ class NeuralCognitiveStack(nn.Module):
         stage4_shadow: bool = False,
         wm_slots: torch.Tensor | None = None,
         wm_slots_mask: torch.Tensor | None = None,
+        mem_tokens: torch.Tensor | None = None,
+        mem_tokens_mask: torch.Tensor | None = None,
     ) -> dict[str, Any]:
         # Per-stage instrumentation: wall time of each block (in execution
         # order) is attributed to its conceptual Decadic stage number.
@@ -733,6 +753,28 @@ class NeuralCognitiveStack(nn.Module):
                 attn = torch.softmax(logits, dim=0)  # (K,)
                 readout = attn.unsqueeze(0) @ self.slot_value(ks)  # (1, d_model)
                 z2 = z2 + self.slot_ingress(readout)
+        # WS5-M2.1: keyed read over recalled-episode tokens, parallel to the
+        # slot read above (query from the same pre-stage-3 latent). The
+        # mean-pooled zm path is untouched -- this AUGMENTS recall with
+        # structure rather than replacing the legacy signal (conservative
+        # default per PRD open decisions).
+        if (
+            self.has_memory_tokens
+            and mem_tokens is not None
+            and mem_tokens_mask is not None
+        ):
+            mm = mem_tokens_mask.to(device=z2.device).reshape(-1).bool()
+            if bool(mm.any()) and mem_tokens.shape[-1] == self._mem_tok_dim:
+                ts = mem_tokens.to(device=z2.device, dtype=z2.dtype).reshape(
+                    -1, self._mem_tok_dim
+                )
+                mq = self.mem_tok_query(z2).reshape(-1)
+                mk = self.mem_tok_key(ts)
+                mlogits = (mk @ mq) * (float(mk.shape[-1]) ** -0.5)
+                mlogits = mlogits.masked_fill(~mm, float("-inf"))
+                mattn = torch.softmax(mlogits, dim=0)
+                mread = mattn.unsqueeze(0) @ self.mem_tok_value(ts)
+                z2 = z2 + self.mem_tok_ingress(mread)
         z3 = self.stage3(torch.cat([z2, ze, zm], dim=-1))
         mark(3)  # memory retrieval / heuristic fusion
         shadow_z4: torch.Tensor | None = None

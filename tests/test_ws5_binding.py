@@ -287,6 +287,78 @@ def test_stack_flag_on_zero_init_parity_then_live(monkeypatch):
     assert slots_a.requires_grad is False and slots_a.grad is None
 
 
+# --------------------------------- M2: memory tokens into the stack
+
+
+def test_stack_memory_tokens_parity_then_live(monkeypatch):
+    """M2.1: flag-off ignores tokens; flag-on is zero-init parity; once the
+    ingress moves, DIFFERENT recalled episodes produce DIFFERENT cognition
+    (mean-pooling made five memories indistinguishable from their average)."""
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv("DECADIC_MEMORY_TOKENS", "0")
+    _, stack_off, cfg = _tiny_stack(monkeypatch, wm_slot=False)
+    assert stack_off.has_memory_tokens is False
+    assert not hasattr(stack_off, "mem_tok_ingress")
+
+    monkeypatch.setenv("DECADIC_MEMORY_TOKENS", "1")
+    torch2, stack, cfg = _tiny_stack(monkeypatch, wm_slot=False)
+    assert stack.has_memory_tokens and hasattr(stack, "mem_tok_ingress")
+
+    z0 = torch.randn(1, cfg.d_model)
+    ep = torch.rand(1, 4)
+    mem = torch.randn(1, cfg.memory_context_dim)
+    toks_a = torch.randn(5, 80) * 0.5
+    toks_b = -toks_a
+    mask = torch.tensor([True, True, True, False, False])
+
+    # Flag-off build ignores token args entirely.
+    with torch.no_grad():
+        stack_off.reset_recurrent_state()
+        a = stack_off(z0, ep, mem)
+        stack_off.reset_recurrent_state()
+        b = stack_off(z0, ep, mem, mem_tokens=toks_a, mem_tokens_mask=mask)
+    assert torch.equal(a["z5"], b["z5"])
+
+    # Flag-on at init: zero ingress => byte-identical with or without tokens.
+    with torch.no_grad():
+        stack.reset_recurrent_state()
+        base = stack(z0, ep, mem)
+        stack.reset_recurrent_state()
+        at_init = stack(z0, ep, mem, mem_tokens=toks_a, mem_tokens_mask=mask)
+    for key, v in base.items():
+        if isinstance(v, torch.Tensor):
+            assert torch.equal(v, at_init[key]), f"zero-init parity broke {key!r}"
+
+    # Live ingress: tokens reach cognition, and content matters.
+    with torch.no_grad():
+        stack.mem_tok_ingress.weight.normal_(0.0, 0.2)
+        stack.reset_recurrent_state()
+        live_a = stack(z0, ep, mem, mem_tokens=toks_a, mem_tokens_mask=mask)
+        stack.reset_recurrent_state()
+        live_b = stack(z0, ep, mem, mem_tokens=toks_b, mem_tokens_mask=mask)
+        stack.reset_recurrent_state()
+        live_none = stack(z0, ep, mem)
+        stack.reset_recurrent_state()
+        masked = stack(
+            z0,
+            ep,
+            mem,
+            mem_tokens=toks_a,
+            mem_tokens_mask=torch.zeros(5, dtype=torch.bool),
+        )
+    assert not torch.allclose(live_a["z5"], live_none["z5"])
+    assert not torch.allclose(live_a["z5"], live_b["z5"])
+    assert torch.equal(masked["z5"], live_none["z5"])
+
+
+def test_memory_tokens_faculty_default(monkeypatch):
+    from decadic.nn.faculties import CognitionFaculties
+
+    assert CognitionFaculties().memory_tokens is False
+    monkeypatch.setenv("DECADIC_MEMORY_TOKENS", "1")
+    assert CognitionFaculties.from_env().memory_tokens is True
+
+
 # ------------------------------------------- M0.4 oracle appearance seam
 
 
