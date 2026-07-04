@@ -463,6 +463,77 @@ def test_lance_mirror_write_through_before_flush(tmp_path, monkeypatch):
         store.close()
 
 
+def test_percept_recency_exclusion_parity(tmp_path, monkeypatch):
+    """WS3 recency horizon: exclude_cycle_after behaves identically on both
+    backends and restores 'familiar = seen BEFORE the recent past'.
+
+    Layout: cycles 0..9 carry distinct random keys; cycles 100..109 repeat
+    those same keys (a second patrol lap). Without the horizon a lap-repeat
+    query trivially matches its fresh twin; with the horizon at 50 it must
+    match the OLD lap (still similarity ~1 -> ambient stays calm), and with
+    the horizon below everything it returns empty (None side channel ->
+    fully novel downstream).
+    """
+    pytest.importorskip("lancedb")
+    monkeypatch.setenv("DECADIC_EPISODIC_DB_RETENTION_ENABLED", "0")
+    from decadic.memory.lancedb_store import LanceEpisodicStore
+
+    rng = np.random.default_rng(23)
+    keys = rng.normal(size=(10, 16)).astype(np.float32)
+    keys /= np.linalg.norm(keys, axis=1, keepdims=True)
+
+    def _rec(cycle: int, key: np.ndarray) -> EpisodicRecord:
+        emb = np.zeros(EMBEDDING_DIM, dtype=np.float32)
+        emb[PERCEPT_KEY_SLICE] = key
+        return EpisodicRecord(
+            cycle_index=cycle, summary={"c": cycle}, salience=0.9, embedding=emb
+        )
+
+    sq = EpisodicStore(tmp_path / "recency.sqlite")
+    lz = LanceEpisodicStore(tmp_path / "recency_lance")
+    try:
+        for store in (sq, lz):
+            for i in range(10):
+                store.append(_rec(i, keys[i]))
+            for i in range(10):
+                store.append(_rec(100 + i, keys[i]))
+            if hasattr(store, "flush"):  # lance micro-batch; sqlite commits inline
+                store.flush()
+
+        for store in (sq, lz):
+            # No horizon: the fresh twin (cycle 103) is a legitimate match.
+            hits = store.search_similar_percept(keys[3], top_k=1)
+            assert hits and hits[0]["cycle_index"] in (3, 103)
+            assert store.last_best_percept_similarity == pytest.approx(1.0, abs=1e-5)
+
+            # Horizon at 50: the recent lap is invisible; the OLD sighting
+            # still answers -- a repeated loop stays familiar.
+            hits = store.search_similar_percept(keys[3], top_k=1, exclude_cycle_after=50)
+            assert hits and hits[0]["cycle_index"] == 3
+            assert store.last_best_percept_similarity == pytest.approx(1.0, abs=1e-5)
+
+            # A never-seen key under the horizon: best match must be weak.
+            novel = rng.normal(size=16).astype(np.float32)
+            novel /= np.linalg.norm(novel)
+            store.search_similar_percept(novel, top_k=1, exclude_cycle_after=50)
+            assert store.last_best_percept_similarity is not None
+            assert store.last_best_percept_similarity < 0.999
+
+            # Horizon below everything: no eligible rows -> empty + None
+            # (reads as fully novel downstream).
+            hits = store.search_similar_percept(keys[3], top_k=1, exclude_cycle_after=0)
+            assert hits == []
+            assert store.last_best_percept_similarity is None
+
+        # Cross-backend parity on the horizon-constrained ranking.
+        for q in keys:
+            a = sq.search_similar_percept(q, top_k=3, exclude_cycle_after=50)
+            b = lz.search_similar_percept(q, top_k=3, exclude_cycle_after=50)
+            assert [h["cycle_index"] for h in a] == [h["cycle_index"] for h in b]
+    finally:
+        lz.close()  # sqlite EpisodicStore has no close(); GC handles it
+
+
 def test_lance_nan_embedding_sanitized_at_boundary(tmp_path, monkeypatch):
     """NaN/inf embeddings must not fail the lance flush (sqlite parity).
 

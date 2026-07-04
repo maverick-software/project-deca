@@ -679,6 +679,7 @@ class EpisodicStore:
         self,
         key: np.ndarray,
         top_k: int = 5,
+        exclude_cycle_after: int | None = None,
     ) -> list[dict[str, Any]]:
         """Return up to ``top_k`` episodes ranked by cosine over the percept-key
         sub-vector alone (WS4-M3.1).
@@ -689,13 +690,20 @@ class EpisodicStore:
         range (the WS3 finding). Ranking on ``embedding[PERCEPT_KEY_SLICE]`` alone
         recovers "have I *seen* this before?". Side channel:
         ``last_best_percept_similarity`` (None when the store is empty).
+
+        ``exclude_cycle_after`` excludes rows with ``cycle_index >=`` it (the
+        WS3 novelty recency horizon): without it the best match is always the
+        just-written previous frame (similarity ~1.0) and novelty collapses to
+        zero everywhere, including during injected events (probe 2026-07-04).
         """
         key_dim = PERCEPT_KEY_SLICE.stop - PERCEPT_KEY_SLICE.start
         k = np.asarray(key, dtype=np.float32).reshape(-1)
         if k.size != key_dim:
             k = np.pad(k, (0, max(0, key_dim - k.size)))[:key_dim]
 
-        cached = self._search_percept_cache(k, top_k=top_k)
+        cached = self._search_percept_cache(
+            k, top_k=top_k, exclude_cycle_after=exclude_cycle_after
+        )
         if cached is not None:
             self.last_best_percept_similarity = (
                 float(cached[0]["similarity"]) if cached else None
@@ -704,6 +712,11 @@ class EpisodicStore:
 
         ranked: list[tuple[float, dict[str, Any]]] = []
         for _sal, item in self._iter_scored_rows(min_salience=0.0, exclude_cycle=None):
+            if (
+                exclude_cycle_after is not None
+                and int(item["cycle_index"]) >= int(exclude_cycle_after)
+            ):
+                continue
             emb = np.asarray(item["embedding"], dtype=np.float32).reshape(-1)
             sim = _cosine_similarity(k, emb[PERCEPT_KEY_SLICE])
             ranked.append((sim, {**item, "similarity": sim}))
@@ -717,6 +730,7 @@ class EpisodicStore:
         k: np.ndarray,
         *,
         top_k: int,
+        exclude_cycle_after: int | None = None,
     ) -> list[dict[str, Any]] | None:
         if not self._recall_cache_enabled:
             return None
@@ -740,7 +754,21 @@ class EpisodicStore:
                 # Match _cosine_similarity: a degenerate stored key reads as 0.
                 sims_all = np.where(key_norms < 1e-8, 0.0, sims_all)
             n = int(sims_all.shape[0])
-            kk = max(0, min(int(top_k), n))
+            eligible = n
+            if exclude_cycle_after is not None:
+                cycles = np.fromiter(
+                    (int(m["cycle_index"]) for m in self._recall_meta),
+                    dtype=np.int64,
+                    count=n,
+                )
+                elig_mask = cycles < int(exclude_cycle_after)
+                eligible = int(np.count_nonzero(elig_mask))
+                if eligible == 0:
+                    self._recall_hits += 1
+                    return []
+                sims_all = np.asarray(sims_all, dtype=np.float32).copy()
+                sims_all[~elig_mask] = -np.inf
+            kk = max(0, min(int(top_k), eligible))
             if kk <= 0:
                 return []
             if n > kk:

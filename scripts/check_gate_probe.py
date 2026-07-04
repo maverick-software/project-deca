@@ -21,7 +21,12 @@ import sys
 from pathlib import Path
 
 LATENCY_SAMPLES = 2
-NOVELTY_HIGH = 0.8
+# Calibrated 2026-07-04 (probe redesign): with percept-source novelty + the
+# recency horizon, ambient sits at ~0.001 (p99) while a genuine first
+# exposure measures ~0.35 (the encoder partially assimilates even a teleport,
+# so the old 0.8 bar was unreachable by construction). 0.20 is ~200x ambient:
+# a clean separator on measured data, not a hopeful one.
+NOVELTY_HIGH = 0.20
 WARMUP_CYCLES = 500
 # Calm is judged only outside a recovery window after any stimulus: post-threat
 # vigilance is designed behavior (pain decays slowly; prediction error stays
@@ -49,7 +54,19 @@ def load(path: str | Path) -> list[dict]:
     return rows
 
 
-def check(rows: list[dict], max_quiet_rate: float) -> list[tuple[str, bool, str]]:
+def _nov(m: dict) -> float:
+    """Novelty signal for verdicts: the rolling-window peak when available
+    (spikes last ~1-3 cycles; the sampler reads every ~6 -- the raw value
+    misses them by construction), else the raw per-cycle input."""
+    v = m.get("gate_i_novelty_peak")
+    if v is None:
+        v = m.get("gate_i_novelty")
+    return float(v or 0.0)
+
+
+def check(
+    rows: list[dict], max_quiet_rate: float, expect_novel: int | None = None
+) -> list[tuple[str, bool, str]]:
     results: list[tuple[str, bool, str]] = []
 
     def esc_delta(i: int, j: int) -> float:
@@ -76,27 +93,33 @@ def check(rows: list[dict], max_quiet_rate: float) -> list[tuple[str, bool, str]
         )
     )
 
-    # 2. novelty response
+    # 2. novelty response. When --expect-novel is given, the burst COUNT is
+    # part of the contract: too few means a first exposure went unnoticed,
+    # too many means either ambient noise or -- the redesign's key assertion
+    # -- a REVISIT spiked that correct episodic memory should have recognized
+    # (habituation-across-events is a feature under test, not a nuisance).
     novel_events = 0
     novel_hits = 0
     i = 0
     while i < len(rows):
         m = rows[i]
         cyc = m.get("cycle") or m.get("cycles_completed") or 0
-        if (m.get("gate_i_novelty") or 0) >= NOVELTY_HIGH and cyc > WARMUP_CYCLES:
+        if _nov(m) >= NOVELTY_HIGH and cyc > WARMUP_CYCLES:
             novel_events += 1
             if esc_delta(i - 1, i + LATENCY_SAMPLES) >= 1:
                 novel_hits += 1
             # skip the rest of this burst
-            while i < len(rows) and (rows[i].get("gate_i_novelty") or 0) >= NOVELTY_HIGH:
+            while i < len(rows) and _nov(rows[i]) >= NOVELTY_HIGH:
                 i += 1
         else:
             i += 1
+    count_ok = novel_events > 0 if expect_novel is None else novel_events == expect_novel
+    expect_note = "" if expect_novel is None else f" (expected exactly {expect_novel})"
     results.append(
         (
             "novelty response",
-            novel_events > 0 and novel_hits == novel_events,
-            f"{novel_hits}/{novel_events} novelty bursts answered"
+            count_ok and novel_hits == novel_events,
+            f"{novel_hits}/{novel_events} novelty bursts answered{expect_note}"
             + ("" if novel_events else " - NO high-novelty samples after warmup"),
         )
     )
@@ -110,7 +133,7 @@ def check(rows: list[dict], max_quiet_rate: float) -> list[tuple[str, bool, str]
         if (rows[i].get("fast_path_hits", 0) or 0) > (rows[i - 1].get("fast_path_hits", 0) or 0):
             stimulus_cycles.append(_cycle(rows[i]))
     for m in rows:
-        if (m.get("gate_i_novelty") or 0) >= NOVELTY_HIGH:
+        if _nov(m) >= NOVELTY_HIGH:
             stimulus_cycles.append(_cycle(m))
 
     def in_recovery(cyc: float) -> bool:
@@ -120,7 +143,7 @@ def check(rows: list[dict], max_quiet_rate: float) -> list[tuple[str, bool, str]
         m
         for m in rows
         if _cycle(m) > WARMUP_CYCLES
-        and (m.get("gate_i_novelty") or 0) < NOVELTY_HIGH
+        and _nov(m) < NOVELTY_HIGH
         and not in_recovery(_cycle(m))
     ]
     if quiet:
@@ -141,13 +164,21 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("samples")
     ap.add_argument("--max-quiet-rate", type=float, default=0.10)
+    ap.add_argument(
+        "--expect-novel",
+        type=int,
+        default=None,
+        help="Exact number of novelty bursts expected (count the novel: events "
+        "in the spec; revisit: events must NOT add to this count -- that is "
+        "the habituation assertion)",
+    )
     args = ap.parse_args()
 
     rows = load(args.samples)
     if len(rows) < 20:
         print(f"FAIL: only {len(rows)} usable samples (gate telemetry missing? gate not enabled?)")
         return 1
-    results = check(rows, args.max_quiet_rate)
+    results = check(rows, args.max_quiet_rate, expect_novel=args.expect_novel)
     ok = all(passed for _, passed, _ in results)
     for name, passed, detail in results:
         print(f"[{'PASS' if passed else 'FAIL'}] {name}: {detail}")

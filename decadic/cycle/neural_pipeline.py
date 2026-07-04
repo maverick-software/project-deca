@@ -687,6 +687,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # cycle already computed. See docs/ws3_attention_gate_prd.md.
     gate_decision = None
     gate_override = None
+    gate_shadow_skip = False  # WS5-M0.2: fresh stage-4 beside the override
+    gate_shadow_esc = False  # WS5-M0.2: precedent counterfactual vs fresh z4
     if AG.gate_enabled():
         # NB: named attn_gate, NOT "gate" - this function already has a local
         # tensor named "gate" (perception precision gate) far below.
@@ -709,12 +711,25 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             pk_list = ctx.latents.get("percept_key")
             if pk_list:
                 try:
+                    # Recency horizon: exclude the last N cycles so novelty
+                    # means "unseen before the recent past", not "different
+                    # from one write-through frame ago" (which pinned the
+                    # channel at ~0 -- probe 2026-07-04). 0 disables.
+                    horizon = AG.gate_novelty_recency_horizon()
+                    cur_cycle = int(getattr(ctx.state_bus, "cycle_index", 0) or 0)
+                    excl_after = (cur_cycle - horizon) if horizon > 0 else None
                     ctx.episodic.search_similar_percept(
-                        np.asarray(pk_list, dtype=np.float32), top_k=1
+                        np.asarray(pk_list, dtype=np.float32),
+                        top_k=1,
+                        exclude_cycle_after=excl_after,
                     )
-                    ps = getattr(ctx.episodic, "last_best_percept_similarity", None)
-                    if ps is not None:
-                        gate_best_sim = ps
+                    # The percept search OWNS the channel once it ran: None
+                    # (store empty / everything inside the horizon) correctly
+                    # reads as fully novel downstream -- do not fall back to
+                    # the full-embedding similarity in that case.
+                    gate_best_sim = getattr(
+                        ctx.episodic, "last_best_percept_similarity", None
+                    )
                 except Exception:
                     pass  # novelty falls back to the full-embedding signal
         gate_inputs = AG.extract_gate_inputs(
@@ -726,6 +741,12 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             observation_events=obs_events,
         )
         gate_decision = attn_gate.decide(gate_inputs)
+        # Telemetry-only rolling max: short first-exposure spikes must survive
+        # the eval sampler's stride (surfaces as gate_i_novelty_peak).
+        attn_gate.note_novelty(
+            float(gate_inputs.novelty),
+            int(getattr(ctx.state_bus, "cycle_index", 0) or 0),
+        )
         precedent = getattr(bundle, "_stage4_precedent", None)
         if not gate_decision.escalate:
             if precedent is None:
@@ -743,6 +764,15 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 bundle._stage4_precedent = (z4_c, risk_c, age)
                 decay = math.exp(-float(age) / AG.gate_pass_through_tau())
                 gate_override = (z4_c * decay, risk_c * decay)
+        # WS5-M0.2: deterministic shadow sampling for this decision (only
+        # meaningful when the decision log has a sink to receive it).
+        if AG.gate_log_enabled() and AG.shadow_sampled(
+            int(getattr(ctx.state_bus, "cycle_index", 0) or 0), AG.gate_shadow_rate()
+        ):
+            if gate_override is not None:
+                gate_shadow_skip = True
+            elif gate_decision.escalate and precedent is not None:
+                gate_shadow_esc = True
 
     # bf16 autocast on the forward only when the memory-efficient path is on (CUDA);
     # a nullcontext otherwise, so the fp32 / CPU / test path is byte-identical.
@@ -754,6 +784,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             self_prev=self_prev_fed,
             repself_prev=repself_fed,
             stage4_override=gate_override,
+            stage4_shadow=gate_shadow_skip,
         )
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -2179,6 +2210,71 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         diagnostics["gate_i_fast_path"] = 1 if gate_inputs.fast_path_threat else 0
         diagnostics["gate_i_novelty_source"] = gate_nov_src
         diagnostics.update(bundle._attention_gate.telemetry())
+        # --- WS5-M0.1: per-cycle decision log (training-data channel) -------
+        # Off by default; buffered, log-and-continue (see GateDecisionLog).
+        if AG.gate_log_enabled():
+            glog = getattr(bundle, "_gate_log", None)
+            if glog is None:
+                glog = AG.open_gate_log()
+                bundle._gate_log = glog
+            _pc = getattr(bundle.plasticity_state, "pc_ema", None)
+            row: dict[str, Any] = {
+                "cycle": int(getattr(ctx.state_bus, "cycle_index", 0) or 0),
+                # The 8 GateNet features (PRD ws5 3.1):
+                "novelty": round(float(gate_inputs.novelty), 6),
+                "pe": round(float(gate_inputs.prediction_error), 6),
+                "affect": round(float(gate_inputs.affect), 6),
+                "priority": round(float(gate_inputs.priority_investigate), 6),
+                "drive": round(
+                    float(getattr(ctx.state_bus, "prev_drive_pressure", 0.0) or 0.0), 6
+                ),
+                "esc_rate": round(float(attn_gate.escalation_rate), 6),
+                "latch": int(attn_gate._latch_remaining),
+                "precedent_age": int(precedent[2]) if precedent is not None else -1,
+                # Decision:
+                "fast_path": 1 if gate_inputs.fast_path_threat else 0,
+                "escalate": 1 if gate_decision.escalate else 0,
+                "reason": gate_decision.reason,
+                "score": round(float(gate_decision.score), 6),
+                "threshold_eff": round(float(gate_decision.threshold_effective), 6),
+                # Outcome taps (joined to forward windows offline, M1):
+                "pain": round(float(ctx.state_bus.pain_scalar), 6),
+                "viability": round(float(ctx.viability.value), 4),
+                "pc_ema": None if _pc is None else round(float(_pc), 6),
+            }
+            # Shadow deliberation results (M0.2). z4 divergences are per-dim
+            # RMS so they are comparable across presets/widths.
+            if gate_shadow_skip and out.get("shadow_z4") is not None:
+                _f = out["shadow_z4"].detach().float()
+                _u = out["z4"].detach().float()
+                row["shadow_kind"] = "skip"
+                row["shadow_regret_risk"] = round(
+                    abs(
+                        float(out["shadow_risk_logit"].detach().float().reshape(-1)[0])
+                        - float(out["risk_logit"].detach().float().reshape(-1)[0])
+                    ),
+                    6,
+                )
+                row["shadow_regret_z4"] = round(
+                    float(((_f - _u) ** 2).mean().sqrt()), 6
+                )
+            elif gate_shadow_esc and precedent is not None:
+                _z4c, _riskc, _age = precedent
+                _decay = math.exp(-float(_age + 1) / AG.gate_pass_through_tau())
+                _cf = (_z4c.detach().float() * _decay)
+                _f = out["z4"].detach().float()
+                row["shadow_kind"] = "esc"
+                row["shadow_waste_risk"] = round(
+                    abs(
+                        float(out["risk_logit"].detach().float().reshape(-1)[0])
+                        - float(_riskc.detach().float().reshape(-1)[0]) * _decay
+                    ),
+                    6,
+                )
+                row["shadow_waste_z4"] = round(
+                    float(((_f - _cf) ** 2).mean().sqrt()), 6
+                )
+            glog.log(row)
     if discovered:
         diagnostics["discovered_perception"] = True
         diagnostics.update(discovery_diag)

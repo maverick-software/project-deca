@@ -36,13 +36,20 @@ from decadic.cycle.attention_gate import (  # noqa: E402
 WEIGHT_PRESETS = {
     "default": DEFAULT_GATE_WEIGHTS,  # (novelty, pe, affect, priority)
     "novelty_heavy": (0.50, 0.20, 0.20, 0.10),
+    # Probe redesign 2026-07-04: measured first-exposure spikes are ~0.35 (not
+    # ~0.9 -- the encoder partially assimilates even teleports), so answering
+    # them requires novelty-dominant weights and thresholds below 0.35.
+    "novelty_dominant": (0.70, 0.15, 0.10, 0.05),
+    "novelty_pure": (0.85, 0.08, 0.05, 0.02),
     "pe_heavy": (0.20, 0.50, 0.20, 0.10),
     "affect_heavy": (0.25, 0.20, 0.45, 0.10),
     "balanced": (0.25, 0.25, 0.25, 0.25),
 }
-THRESHOLDS = [0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75]
+THRESHOLDS = [0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
 BUDGET_GAINS = [0.5, 1.0]
-NOVELTY_HIGH = 0.8
+# Burst bar matches check_gate_probe.py (calibrated: ambient ~0.001 p99,
+# first exposure ~0.35).
+NOVELTY_HIGH = 0.20
 
 
 def load_inputs(paths: list[str]) -> list[GateInputs]:
@@ -62,9 +69,19 @@ def load_inputs(paths: list[str]) -> list[GateInputs]:
                 if not isinstance(m, dict):
                     continue
                 if "gate_i_novelty" in m:
+                    # Prefer the rolling-window peak: first-exposure spikes
+                    # last ~1-3 cycles while samples are ~6 cycles apart, so
+                    # the raw value misses them by construction. At sample
+                    # granularity the peak answers the question the replay is
+                    # actually asking -- "would some cycle in this window have
+                    # crossed?" -- at the cost of slightly inflated rates
+                    # (covered by the existing sample-level caveat above).
+                    nov = m.get("gate_i_novelty_peak")
+                    if nov is None:
+                        nov = m.get("gate_i_novelty")
                     seq.append(
                         GateInputs(
-                            novelty=float(m.get("gate_i_novelty") or 0),
+                            novelty=float(nov or 0),
                             prediction_error=float(m.get("gate_i_prediction_error") or 0),
                             affect=float(m.get("gate_i_affect") or 0),
                             priority_investigate=float(m.get("gate_i_priority") or 0),

@@ -31,7 +31,6 @@ import json
 import math
 import sys
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -106,9 +105,6 @@ def main() -> int:
     base = args.base_url.rstrip("/")
     started = time.monotonic()
     deadline = started + args.max_minutes * 60.0
-
-    def time_left() -> float:
-        return deadline - time.monotonic()
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
     out_dir = Path(args.out_dir) if args.out_dir else Path("reports") / f"vast_e2e_{stamp}"

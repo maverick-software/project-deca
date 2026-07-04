@@ -15,9 +15,15 @@ Design constraints:
 
 from __future__ import annotations
 
+import json
+import logging
 import os
+import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # -- config (env-overridable, additive to decadic.config conventions) --------
@@ -77,6 +83,143 @@ def gate_novelty_source() -> str:
     """
     value = os.environ.get("DECADIC_GATE_NOVELTY_SOURCE", "full").strip().lower()
     return value if value in ("full", "percept") else "full"
+
+
+def gate_novelty_recency_horizon() -> int:
+    """Cycles of recent memory EXCLUDED from the percept-novelty search.
+
+    Probe 2026-07-04 finding: with write-through read-your-writes, the best
+    percept match is always the frame stored one cycle ago (consecutive-key
+    cosine p50 = 1.0000), so "1 - best similarity" degenerates into a
+    single-cycle delta detector -- novelty measured identically ~0 even during
+    injected events, while the stored keys were demonstrably discriminative
+    (event keys at cosine ~0.25 to their pre-event baseline). Excluding the
+    last N cycles restores the intended semantics: familiar means seen BEFORE
+    the recent past, so an event percept stays novel for ~N cycles instead of
+    one frame. The default (64) sits above the eval sampler's stride (event
+    novelty persists long enough to be observed) and below the 200-cycle
+    patrol lap (a repeated loop still reads familiar via the previous lap).
+    0 disables the horizon.
+    """
+    return max(0, int(os.environ.get("DECADIC_GATE_NOVELTY_RECENCY", "64")))
+
+
+def gate_novelty_peak_window() -> int:
+    """Cycles over which the novelty telemetry's rolling max is held.
+
+    A first-exposure novelty spike lasts ~1-3 cycles (top-down perception
+    assimilates the new percept almost immediately), while the eval sampler
+    reads metrics every ~6 cycles -- the raw per-cycle value is invisible to
+    offline verdicts. ``gate_i_novelty_peak`` holds the max over this many
+    cycles so any spike survives at least a few sampler reads. Decision
+    logic is untouched; this is telemetry only.
+    """
+    return max(1, int(os.environ.get("DECADIC_GATE_NOVELTY_PEAK_WINDOW", "32")))
+
+
+# -- WS5-M0: decision log + shadow deliberation config ------------------------
+
+
+def gate_log_enabled() -> bool:
+    """WS5-M0.1: per-cycle gate decision logging (training-data channel).
+    Default OFF -- zero new IO on existing runs."""
+    return os.environ.get("DECADIC_GATE_LOG", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def gate_log_dir() -> Path:
+    """Where decision logs land: DECADIC_GATE_LOG_DIR, else the run's
+    DECADIC_LOG_DIR (the probe/soak wrappers already set it), else ./logs."""
+    for var in ("DECADIC_GATE_LOG_DIR", "DECADIC_LOG_DIR"):
+        v = os.environ.get(var, "").strip()
+        if v:
+            return Path(v)
+    return Path("logs")
+
+
+def gate_shadow_rate() -> float:
+    """WS5-M0.2: fraction of gate decisions that also run shadow deliberation
+    (fresh stage-4 beside the substituted precedent, diagnostics only)."""
+    try:
+        v = float(os.environ.get("DECADIC_GATE_SHADOW_RATE", "0.05"))
+    except ValueError:
+        v = 0.05
+    return min(1.0, max(0.0, v))
+
+
+def shadow_sampled(cycle: int, rate: float) -> bool:
+    """Deterministic per-cycle sampling (reproducible runs, no RNG state):
+    Knuth multiplicative hash of the cycle index against the rate."""
+    if rate <= 0.0:
+        return False
+    if rate >= 1.0:
+        return True
+    h = ((int(cycle) * 2654435761) >> 16) & 0xFFFF
+    return h < int(rate * 65536.0)
+
+
+class GateDecisionLog:
+    """Buffered JSONL sink for per-cycle gate decisions (WS5-M0.1).
+
+    Log-and-continue: any IO failure disables the sink after one warning --
+    the cognitive loop must never pay for telemetry. Rows are buffered and
+    appended in batches (plus a time-based flush so a killed process loses at
+    most a couple of seconds of tail).
+    """
+
+    FLUSH_EVERY = 32
+    FLUSH_SECONDS = 2.0
+
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+        self._buf: list[str] = []
+        self._failed = False
+        self._last_flush = time.monotonic()
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning("gate decision log disabled (%s): %s", self.path, exc)
+            self._failed = True
+
+    def log(self, row: dict) -> None:
+        if self._failed:
+            return
+        try:
+            self._buf.append(json.dumps(row, separators=(",", ":"), default=float))
+        except (TypeError, ValueError):
+            return  # one malformed row is not worth a crash
+        if (
+            len(self._buf) >= self.FLUSH_EVERY
+            or (time.monotonic() - self._last_flush) >= self.FLUSH_SECONDS
+        ):
+            self.flush()
+
+    def flush(self) -> None:
+        if self._failed or not self._buf:
+            return
+        try:
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write("\n".join(self._buf) + "\n")
+            self._buf.clear()
+            self._last_flush = time.monotonic()
+        except OSError as exc:
+            logger.warning("gate decision log disabled (%s): %s", self.path, exc)
+            self._failed = True
+
+    def close(self) -> None:
+        self.flush()
+
+
+def open_gate_log() -> GateDecisionLog:
+    """New per-process log file (one live agent per probe/soak server)."""
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    return GateDecisionLog(
+        gate_log_dir() / f"gate_decisions_{stamp}_{os.getpid()}.jsonl"
+    )
 
 
 def gate_weights() -> tuple[float, float, float, float]:
@@ -143,6 +286,11 @@ class AttentionGate:
         self._latch_remaining = 0
         self.decisions = 0
         self.escalations = 0
+        # Telemetry-only rolling max of the novelty input (see
+        # gate_novelty_peak_window): (cycle, value) pairs inside the window.
+        self._novelty_peak_window = gate_novelty_peak_window()
+        self._novelty_hist: deque[tuple[int, float]] = deque()
+        self.novelty_peak = 0.0
 
     # -- observability -------------------------------------------------------
     @property
@@ -196,6 +344,20 @@ class AttentionGate:
             self.escalations += 1
         return decision
 
+    def note_novelty(self, novelty: float, cycle: int) -> float:
+        """Record this cycle's novelty input; returns the rolling-window max.
+
+        Telemetry only (never feeds ``decide``): keeps short spikes visible to
+        the sparsely-sampling eval harness via ``gate_i_novelty_peak``.
+        """
+        c = int(cycle)
+        self._novelty_hist.append((c, float(novelty)))
+        floor = c - self._novelty_peak_window
+        while self._novelty_hist and self._novelty_hist[0][0] < floor:
+            self._novelty_hist.popleft()
+        self.novelty_peak = max(v for _, v in self._novelty_hist)
+        return self.novelty_peak
+
     def telemetry(self) -> dict[str, float | int]:
         return {
             "gate_decisions": self.decisions,
@@ -203,6 +365,7 @@ class AttentionGate:
             "gate_escalation_rate": round(self.escalation_rate, 6),
             "gate_skip_streak": self.skip_streak,
             "gate_latch_remaining": self._latch_remaining,
+            "gate_i_novelty_peak": round(float(self.novelty_peak), 6),
         }
 
 

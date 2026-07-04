@@ -36,3 +36,19 @@ With WS4's `DECADIC_GATE_NOVELTY_SOURCE=percept` (novelty from the 16-d percept-
 ## Verdict
 
 Phase A ships: the flagship component exists, is flag-gated, measured, safe (fast path proven), and already produced two publishable observations (budget convergence; emergent hunger-vigilance) plus one signal-design finding that defines Phase B. Remaining before Phase B: V2 A/B soaks (gate-on/off via WS2 comparison mode) and the WS2 12-hour soak.
+
+## Addendum 2026-07-04: recency horizon + probe redesign -> first full PASS
+
+The WS4 cutover (full-corpus percept recall) exposed and fixed the last structural defect in the novelty channel, and a probe redesign made the criteria memory-honest. Result: **GATE_PROBE: PASS** (run `gateprobe_20260704_102610`) — the first full pass, all three criteria.
+
+**The chain of findings, in order:**
+
+1. **Write-through self-match (fixed).** With read-your-writes recall, the best percept match was always the frame stored one cycle earlier (consecutive-key cosine p50 = 1.0000): "1 − best similarity" had degenerated into a single-cycle delta detector, novelty identically ~0 even during injected events — while the stored keys were demonstrably discriminative (event keys at cosine ~0.25 to their pre-event baseline). Fix: `exclude_cycle_after` recency horizon (`DECADIC_GATE_NOVELTY_RECENCY`, default 64) — familiar now means seen BEFORE the recent past. Both backends, parity-tested.
+2. **Manifold saturation (measured, understood).** Offline replay of the gate computation over the stored corpus (`simulate_gate_novelty.py`) showed best old-match similarity ≥ 0.9995 for essentially every percept by cycle ~300: the synthetic percept manifold is covered during warmup, so ambient novelty is structurally ~0 (correct calm) and only genuinely unvisited targets can spike.
+3. **The probe punished correct memory (redesigned).** The original spec repeated the same teleport target: the second "novel" event was a de-facto revisit that full-corpus memory rightly recognized from 1,400 cycles earlier. Redesign: unique target per novel event (first exposure must spike), an explicit `revisit` event kind (must NOT spike), an exact burst-count contract (`--expect-novel`), threshold calibrated to measured spike magnitude (0.20 verdict bar vs ~0.001 ambient; escalation threshold 0.30 with weights 0.35/0.30/0.25/0.10 tuned offline), and `gate_i_novelty_peak` rolling-max telemetry (spikes last ~1–3 cycles — perceptual assimilation — vs ~6-cycle sampler stride).
+
+**PASS breakdown (percept source, horizon 64, lance+kuzu defaults):** threat reflex 1/1 · novelty 2/2 bursts answered, exactly as expected (both unique first exposures escalated; the revisit produced no third burst — episodic recognition across 1,400 cycles) · steady-state calm 0.000 quiet-sample escalation (350 samples).
+
+**Notable emergent observation:** first-exposure novelty measures ~0.35, not ~1.0, and decays within 1–3 cycles — top-down perception assimilates a new percept onto learned expectations almost immediately (schema assimilation falling out of the architecture, not programmed).
+
+**Disposition:** `DECADIC_GATE_NOVELTY_SOURCE=percept` + recency horizon is the validated novelty configuration for probe/eval work (process default remains `full` pending the owner call). MuJoCo re-runs this same contract on embodied percepts (together with the calm certification already moved there). WS5 (learned gate) M0 data collection now rides this probe: `DECADIC_GATE_LOG=1` banks per-cycle decision logs with shadow-deliberation regret labels.

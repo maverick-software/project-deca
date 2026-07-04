@@ -39,6 +39,35 @@ def test_novelty_source_config(monkeypatch):
     assert gate_novelty_source() == "full"  # unknown values fall back safely
 
 
+def test_novelty_recency_horizon_config(monkeypatch):
+    from decadic.cycle.attention_gate import (
+        gate_novelty_peak_window,
+        gate_novelty_recency_horizon,
+    )
+
+    monkeypatch.delenv("DECADIC_GATE_NOVELTY_RECENCY", raising=False)
+    assert gate_novelty_recency_horizon() == 64  # below the 200-cycle patrol lap
+    monkeypatch.setenv("DECADIC_GATE_NOVELTY_RECENCY", "0")
+    assert gate_novelty_recency_horizon() == 0  # disabled
+    monkeypatch.delenv("DECADIC_GATE_NOVELTY_PEAK_WINDOW", raising=False)
+    assert gate_novelty_peak_window() == 32
+
+
+def test_note_novelty_rolling_peak():
+    """Telemetry peak holds a 1-cycle spike for the window, then releases."""
+    g = _gate()
+    g._novelty_peak_window = 10
+    for c in range(5):
+        assert g.note_novelty(0.01, c) <= 0.011
+    assert g.note_novelty(0.85, 5) == 0.85  # the spike itself
+    for c in range(6, 15):  # within window: peak persists for the sampler
+        assert g.note_novelty(0.01, c) == 0.85
+    assert g.note_novelty(0.01, 16) < 0.05  # spike evicted past the window
+    # Never feeds decisions: decide() output is unaffected by peak state.
+    d = g.decide(GateInputs(novelty=0.1, prediction_error=0.1, affect=0.0))
+    assert d.escalate is False
+
+
 def test_quiet_input_skips():
     g = _gate()
     d = g.decide(GateInputs(novelty=0.1, prediction_error=0.1, affect=0.0))

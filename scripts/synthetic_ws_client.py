@@ -28,10 +28,13 @@ NOVEL_BURST_STEPS = 25  # how many steps a "novel" episode perturbs the stream
 
 
 def parse_events(spec: str | None) -> dict[int, str]:
-    """Parse an event spec like "collision:600,novel:1200,collision:1800"
+    """Parse an event spec like "collision:600,novel:1200,revisit:2400"
     into {step: kind}. Kinds: collision (fast-path threat), novel
-    (out-of-distribution proprioception burst). Used by the gate_probe
-    scenario (WS3-P1) to inject stimuli at known steps."""
+    (out-of-distribution burst at a target UNIQUE to its start step),
+    revisit (same burst dynamics at the FIRST novel event's target -- the
+    agent has genuinely seen this place before, so a healthy memory-backed
+    novelty channel must NOT spike; habituation-across-events is the
+    assertion, probe redesign 2026-07-04). Used by the gate_probe scenario."""
     out: dict[int, str] = {}
     if not spec:
         return out
@@ -41,9 +44,28 @@ def parse_events(spec: str | None) -> dict[int, str]:
             continue
         kind, _, step_s = part.partition(":")
         kind = kind.strip().lower()
-        if kind in ("collision", "novel") and step_s.strip().isdigit():
+        if kind in ("collision", "novel", "revisit") and step_s.strip().isdigit():
             out[int(step_s.strip())] = kind
     return out
+
+
+def _novel_target(seed_step: int) -> tuple[list[float], list[float], list[float]]:
+    """Deterministic OOD (position0, per-step stride, velocity), unique per
+    start step. Distinct novel events must land in distinct regions --
+    otherwise the second event is a de-facto revisit, and correct episodic
+    memory (full-corpus recall) rightly reads it as familiar, which is what
+    made the pre-redesign probe unpassable."""
+    import random as _random
+
+    rng = _random.Random(9700 + int(seed_step))
+    pos0 = [
+        rng.choice((-1.0, 1.0)) * rng.uniform(300.0, 900.0),
+        rng.uniform(5.0, 60.0),
+        rng.choice((-1.0, 1.0)) * rng.uniform(150.0, 600.0),
+    ]
+    stride = [rng.uniform(1.5, 4.5), 0.0, rng.uniform(2.0, 6.0)]
+    vel = [rng.uniform(-4.0, 4.0), rng.uniform(0.5, 3.0), rng.uniform(-4.0, 4.0)]
+    return pos0, stride, vel
 
 
 LAP_STEPS = 200  # closed patrol loop: the world repeats, so monotony is real
@@ -67,14 +89,26 @@ def _observation(step: int, events: dict[int, str] | None = None) -> dict:
                 {"type": "collision", "intensity": 0.9, "source": "probe_injected"}
             )
         # A novel episode perturbs the stream for a window of steps: the body
-        # is suddenly somewhere else, moving differently. Out-of-distribution
-        # relative to everything the agent has stored -> episodic similarity
-        # drops -> the gate's novelty input spikes.
-        for start, kind in events.items():
-            if kind == "novel" and start <= step < start + NOVEL_BURST_STEPS:
+        # is suddenly somewhere else, moving differently. Each novel event
+        # uses a target UNIQUE to its start step (first exposure -> novelty
+        # spike); a revisit event replays the FIRST novel target (seen before
+        # -> a healthy memory-backed channel stays quiet).
+        for start, kind in sorted(events.items()):
+            if kind in ("novel", "revisit") and start <= step < start + NOVEL_BURST_STEPS:
+                if kind == "revisit":
+                    novel_starts = sorted(
+                        s for s, kd in events.items() if kd == "novel"
+                    )
+                    seed = novel_starts[0] if novel_starts else start
+                else:
+                    seed = start
+                pos0, stride, velocity = _novel_target(seed)
                 k = step - start
-                position = [500.0 + 3.0 * k, 8.0, -250.0 + 5.0 * ((k * 7) % 11)]
-                velocity = [-2.5, 1.5, 3.0]
+                position = [
+                    pos0[0] + stride[0] * k,
+                    pos0[1],
+                    pos0[2] + stride[2] * ((k * 7) % 11),
+                ]
                 action = "falling"
                 break
     elif step == 5:

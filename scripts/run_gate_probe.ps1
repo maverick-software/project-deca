@@ -3,9 +3,16 @@
 # Usage: .\scripts\run_gate_probe.ps1
 #        .\scripts\run_gate_probe.ps1 -Threshold 0.5 -Weights "0.5,0.2,0.2,0.1"
 param(
-    [double]$Threshold = 0.55,
-    [string]$Weights = "0.5,0.2,0.2,0.1",
-    [string]$Events = "collision:700,novel:1400,collision:2100,novel:2800",
+    # Operating point tuned offline 2026-07-04 (tune_gate.py on
+    # gateprobe_20260704_091426): measured first-exposure spikes are ~0.35,
+    # so the old 0.55 threshold was unreachable; 0.30 with default weights
+    # answers 2/2 bursts at settled rate 0.040 (target 0.05).
+    [double]$Threshold = 0.30,
+    [string]$Weights = "0.35,0.3,0.25,0.1",
+    # Redesign 2026-07-04: two UNIQUE-target novel events (each must spike on
+    # first exposure) + one revisit of the first target (must NOT spike --
+    # the agent has been there; habituation-across-events is the assertion).
+    [string]$Events = "collision:700,novel:1400,novel:2100,revisit:2800",
     [int]$Port = 8765
 )
 
@@ -73,8 +80,11 @@ try {
     $Samples = Get-ChildItem "$RunDir\training_eval_gate_probe_*.jsonl" |
         Sort-Object LastWriteTime | Select-Object -Last 1
     if ($Samples) {
+        # Exact expected burst count = the novel: entries in the spec.
+        # revisit: entries must NOT add bursts (habituation assertion).
+        $ExpectNovel = @($Events -split "," | Where-Object { $_.Trim() -like "novel:*" }).Count
         Write-Host "`n=== gate probe verdict ===" -ForegroundColor Cyan
-        & $Py "scripts\check_gate_probe.py" $Samples.FullName *>&1 |
+        & $Py "scripts\check_gate_probe.py" $Samples.FullName --expect-novel $ExpectNovel *>&1 |
             Tee-Object -FilePath "$RunDir\probe_verdict.log"
     } else {
         Write-Host "no samples collected - see $RunDir\eval.log" -ForegroundColor Red

@@ -648,6 +648,7 @@ class NeuralCognitiveStack(nn.Module):
         self_prev: torch.Tensor | None = None,
         repself_prev: torch.Tensor | None = None,
         stage4_override: tuple[torch.Tensor, torch.Tensor] | None = None,
+        stage4_shadow: bool = False,
     ) -> dict[str, Any]:
         # Per-stage instrumentation: wall time of each block (in execution
         # order) is attributed to its conceptual Decadic stage number.
@@ -689,6 +690,8 @@ class NeuralCognitiveStack(nn.Module):
                 z2 = z2 + self.repself_ingress(rp)
         z3 = self.stage3(torch.cat([z2, ze, zm], dim=-1))
         mark(3)  # memory retrieval / heuristic fusion
+        shadow_z4: torch.Tensor | None = None
+        shadow_risk_logit: torch.Tensor | None = None
         if stage4_override is not None:
             # Stage 3->4 attention gate skip path (WS3): a decayed precedent
             # (cached z4 / risk_logit from the last escalated cycle) replaces
@@ -696,6 +699,14 @@ class NeuralCognitiveStack(nn.Module):
             # through risk_mlp on skipped cycles by design.
             z4 = stage4_override[0].to(device=z3.device, dtype=z3.dtype)
             risk_logit = stage4_override[1].to(device=z3.device, dtype=z3.dtype)
+            if stage4_shadow:
+                # WS5-M0.2 shadow deliberation: what WOULD fresh stage 4 have
+                # said? Diagnostics only -- no_grad on a detached z3, never
+                # substituted into the live path, so the forward's outputs are
+                # bit-identical with the tap on or off (regression-tested).
+                with torch.no_grad():
+                    shadow_z4 = self.risk_mlp(z3.detach())
+                    shadow_risk_logit = self.risk_scalar(shadow_z4)
         else:
             z4 = self.risk_mlp(z3)
             risk_logit = self.risk_scalar(z4)
@@ -785,7 +796,12 @@ class NeuralCognitiveStack(nn.Module):
             for s, a, p in zip(act_src.keys(), acts, pooled)
         ]
 
+        out_shadow: dict[str, Any] = {}
+        if shadow_z4 is not None:
+            out_shadow["shadow_z4"] = shadow_z4
+            out_shadow["shadow_risk_logit"] = shadow_risk_logit
         return {
+            **out_shadow,
             "z5": z5,
             "z4": z4,
             "risk_logit": risk_logit,

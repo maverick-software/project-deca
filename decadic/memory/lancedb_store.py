@@ -646,6 +646,7 @@ class LanceEpisodicStore:
         top_k: int,
         min_salience: float | None = None,
         exclude_cycle: int | None = None,
+        exclude_cycle_after: int | None = None,
     ) -> list[dict[str, Any]] | None:
         """Vectorized cosine ranking over the mirror.
 
@@ -653,6 +654,9 @@ class LanceEpisodicStore:
         the caller falls back to the Lance table path; otherwise the ranked
         hit list (possibly empty). Scoring matches the sqlite backend's
         ``_cosine_similarity``: any vector with norm < 1e-8 scores exactly 0.0.
+        ``exclude_cycle_after`` drops rows with ``cycle_index >=`` it (the
+        WS3 novelty recency horizon: "familiar" must mean seen BEFORE the
+        recent past, not one write-through frame ago).
         """
         self._ensure_mirror_locked()
         if self._mirror_disabled or not self._mirror_loaded:
@@ -663,6 +667,8 @@ class LanceEpisodicStore:
             mask &= self._mirror_salience[:n] >= float(min_salience)
         if exclude_cycle is not None:
             mask &= self._mirror_cycles[:n] != int(exclude_cycle)
+        if exclude_cycle_after is not None:
+            mask &= self._mirror_cycles[:n] < int(exclude_cycle_after)
         eligible = int(np.count_nonzero(mask))
         # Mirror-served counts as a hit even when the filters match nothing --
         # the mirror answered authoritatively (miss = lance-scan fallback).
@@ -827,19 +833,28 @@ class LanceEpisodicStore:
         self,
         key: np.ndarray,
         top_k: int = 5,
+        exclude_cycle_after: int | None = None,
     ) -> list[dict[str, Any]]:
         """Rank by cosine over the 16-d percept-key sub-vector only (WS4-M3.1).
 
         Same hit-dict shape as :meth:`search_similar`; ``similarity`` is the
         percept-key cosine. Side channel: ``last_best_percept_similarity``
-        (None when the store is empty).
+        (None when the store is empty). ``exclude_cycle_after`` excludes rows
+        with ``cycle_index >=`` it -- the WS3 novelty recency horizon: without
+        it the best match is always the previous write-through frame
+        (similarity ~1.0) and novelty is identically zero (probe 2026-07-04).
         """
         k = np.asarray(key, dtype=np.float32).reshape(-1)
         if k.size != PERCEPT_KEY_DIM:
             k = np.pad(k, (0, max(0, PERCEPT_KEY_DIM - k.size)))[:PERCEPT_KEY_DIM]
 
         with self._lock:
-            hits = self._mirror_search_locked(k, percept=True, top_k=max(1, int(top_k)))
+            hits = self._mirror_search_locked(
+                k,
+                percept=True,
+                top_k=max(1, int(top_k)),
+                exclude_cycle_after=exclude_cycle_after,
+            )
             if hits is not None:
                 self.last_best_percept_similarity = (
                     float(hits[0]["similarity"]) if hits else None
@@ -848,10 +863,21 @@ class LanceEpisodicStore:
 
             # Over the mirror cap: brute-force Lance search + pending merge.
             self._mirror_misses += 1
+            where = "has_embedding = true"
+            if exclude_cycle_after is not None:
+                where += f" AND cycle_index < {int(exclude_cycle_after)}"
             candidates = self._candidate_rows_locked(
-                k, column="percept_key", top_k=top_k, where="has_embedding = true"
+                k, column="percept_key", top_k=top_k, where=where
             )
-            candidates.extend(r for r in self._pending if r["has_embedding"])
+            candidates.extend(
+                r
+                for r in self._pending
+                if r["has_embedding"]
+                and (
+                    exclude_cycle_after is None
+                    or int(r["cycle_index"]) < int(exclude_cycle_after)
+                )
+            )
 
             ranked: list[tuple[float, dict[str, Any]]] = []
             for row in candidates:
