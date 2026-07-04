@@ -71,10 +71,99 @@ def _novel_target(seed_step: int) -> tuple[list[float], list[float], list[float]
 LAP_STEPS = 200  # closed patrol loop: the world repeats, so monotony is real
 
 
-def _observation(step: int, events: dict[int, str] | None = None) -> dict:
+# --- WS5-M0.4: binding-probe scenario (scripted multi-entity world) ----------
+
+
+def load_binding_scenario(path: str | None) -> dict | None:
+    """Load a binding scenario file: controlled entities + relation schedule.
+
+    Shape (see scripts/gen_binding_scenario.py):
+      entities: [{id, kind, appearance[16], home[3], orbit, period}]
+      schedule: [{start, steps, pair:[a,b], gap, event:{type,intensity,every}}]
+    The schedule is the serialized relation ground truth (WBS M0.4
+    acceptance); train/holdout pairing metadata rides in the same file for
+    the M5 verdict script and is ignored here.
+    """
+    if not path:
+        return None
+    import pathlib
+
+    return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+
+
+def _binding_world(step: int, scenario: dict) -> tuple[list[dict], list[dict]]:
+    """Entity list + extra events for this step under the relation schedule.
+
+    Default motion: each entity orbits its home slowly (distinct, boring,
+    familiar). During a scheduled phase the pair's second entity is placed
+    ADJACENT to the first (gap units away) -- the spatial relation whose
+    generalization the probe tests -- and the phase's event fires every
+    ``every`` steps, sourced to the first entity of the pair.
+    """
+    import math as _math
+
+    ents = {e["id"]: e for e in scenario.get("entities", [])}
+    positions: dict[str, list[float]] = {}
+    for i, (eid, e) in enumerate(sorted(ents.items())):
+        home = e.get("home", [0.0, 0.0, 0.0])
+        orbit = float(e.get("orbit", 2.0))
+        period = max(8, int(e.get("period", 400)))
+        ph = 2.0 * _math.pi * ((step + i * 37) % period) / period
+        positions[eid] = [
+            home[0] + orbit * _math.cos(ph),
+            home[1],
+            home[2] + orbit * _math.sin(ph),
+        ]
+
+    events: list[dict] = []
+    for phase in scenario.get("schedule", []):
+        start = int(phase.get("start", -1))
+        length = int(phase.get("steps", 0))
+        if not (start <= step < start + length):
+            continue
+        a, b = phase.get("pair", [None, None])[:2]
+        if a in positions and b in positions:
+            gap = float(phase.get("gap", 1.5))
+            pa = positions[a]
+            positions[b] = [pa[0] + gap, pa[1], pa[2]]
+            ev = phase.get("event") or {}
+            every = max(1, int(ev.get("every", 10)))
+            if ev.get("type") and (step - start) % every == 0:
+                events.append(
+                    {
+                        "type": str(ev["type"]),
+                        "intensity": float(ev.get("intensity", 0.6)),
+                        "entity": str(a),
+                        "source": str(a),
+                    }
+                )
+        break  # phases are non-overlapping by construction
+
+    out_entities = []
+    for eid, e in sorted(ents.items()):
+        out_entities.append(
+            {
+                "id": eid,
+                "kind": str(e.get("kind", "entity")),
+                "position": positions[eid],
+                "appearance": list(e.get("appearance", [])),
+            }
+        )
+    return out_entities, events
+
+
+def _observation(
+    step: int,
+    events: dict[int, str] | None = None,
+    scenario: dict | None = None,
+) -> dict:
     import math as _math
 
     obs_events: list[dict] = []
+    scenario_entities: list[dict] = []
+    if scenario is not None:
+        scenario_entities, scen_events = _binding_world(step, scenario)
+        obs_events.extend(scen_events)
     # Bounded circular walk instead of an unbounded line: an infinite straight
     # walk makes every observation mildly novel forever (episodic similarity
     # never rises), which defeats habituation and any steady-state-calm
@@ -123,7 +212,14 @@ def _observation(step: int, events: dict[int, str] | None = None) -> dict:
             "current_action": action,
         },
         "events": obs_events,
-        "world_state": {"nearby_entities": [], "agent_inventory": []},
+        # NB: the oracle seam reads world_state.entities (world_graph.py);
+        # "nearby_entities" was never consumed and is kept only for schema
+        # compatibility with old harness recordings.
+        "world_state": {
+            "entities": scenario_entities,
+            "nearby_entities": [],
+            "agent_inventory": [],
+        },
     }
 
 
@@ -136,6 +232,7 @@ async def _run(
     rate_s: float = 0.0,
     log_every: int = 1,
     events: dict[int, str] | None = None,
+    scenario: dict | None = None,
 ) -> None:
     scheme_http = "https" if ssl else "http"
     scheme_ws = "wss" if ssl else "ws"
@@ -177,7 +274,7 @@ async def _run(
                 async def _sender() -> None:
                     nonlocal sent
                     while sent < steps:
-                        await ws.send(json.dumps(_observation(sent, events)))
+                        await ws.send(json.dumps(_observation(sent, events, scenario)))
                         sent += 1
                         if log_every > 0 and sent % log_every == 0:
                             print(
@@ -227,6 +324,12 @@ def main() -> None:
         default=None,
         help='Injected stimuli for the gate probe, e.g. "collision:600,novel:1200,collision:1800"',
     )
+    parser.add_argument(
+        "--binding-scenario",
+        default=None,
+        help="WS5-M0.4: path to a binding scenario JSON (scripted entities + "
+        "relation schedule; see scripts/gen_binding_scenario.py)",
+    )
     args = parser.parse_args()
     asyncio.run(
         _run(
@@ -238,6 +341,7 @@ def main() -> None:
             rate_s=args.rate,
             log_every=args.log_every,
             events=parse_events(args.events),
+            scenario=load_binding_scenario(args.binding_scenario),
         )
     )
 

@@ -891,6 +891,37 @@ class LanceEpisodicStore:
             self.last_best_percept_similarity = ranked[0][0] if ranked else None
             return [r for _, r in ranked[: max(0, top_k)]]
 
+    def retrieval_context_tokens(
+        self,
+        query: np.ndarray,
+        k: int = 5,
+        *,
+        min_salience: float = 0.0,
+        exclude_cycle: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """WS5-M0.3: top-k recalled episodes as a (k, EMBEDDING_DIM) token
+        matrix + validity mask (see the sqlite facade's docstring; identical
+        semantics -- both backends rank through :meth:`search_similar`, so
+        parity is inherited, not re-implemented).
+        """
+        kk = max(0, int(k))
+        tokens = np.zeros((kk, EMBEDDING_DIM), dtype=np.float32)
+        mask = np.zeros((kk,), dtype=bool)
+        if kk == 0:
+            return tokens, mask
+        hits = self.search_similar(
+            query, top_k=kk, min_salience=min_salience, exclude_cycle=exclude_cycle
+        )
+        for i, h in enumerate(hits[:kk]):
+            emb = h.get("embedding")
+            if emb is None:
+                continue
+            v = np.asarray(emb, dtype=np.float32).reshape(-1)
+            n = min(v.size, EMBEDDING_DIM)
+            tokens[i, :n] = v[:n]
+            mask[i] = True
+        return tokens, mask
+
     def retrieval_context_vector(
         self,
         query: np.ndarray,

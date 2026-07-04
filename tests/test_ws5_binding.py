@@ -1,0 +1,293 @@
+"""WS5-M0: slot-tensor layout freeze + WorkingMemory.slot_tensor() adapter.
+
+The layout test pins the frozen offsets (docs/ws5_m0_wm_inventory.md) exactly
+as test_ws4_backends.py pins the episodic embedding layout: any drift is a
+deliberate PRD amendment, never an accident.
+"""
+
+import numpy as np
+import pytest
+
+from decadic.state.working_memory import (
+    SLOT_APPEARANCE_SLICE,
+    SLOT_SCALAR_SLICE,
+    SLOT_SPATIAL_SLICE,
+    SLOT_TENSOR_APPEARANCE_DIM,
+    SLOT_TENSOR_DIM,
+    SLOT_TENSOR_SCALAR_DIM,
+    SLOT_TENSOR_SPATIAL_DIM,
+    WorkingMemory,
+)
+
+
+def _node(eid: str, pos=(1.0, 2.0, 3.0), kind="entity_kind"):
+    return {"role": "entity", "id": eid, "kind": kind, "position": list(pos)}
+
+
+def _wm(capacity: int = 6) -> WorkingMemory:
+    return WorkingMemory(capacity=capacity)
+
+
+# ------------------------------------------------------------------ layout
+
+
+def test_slot_tensor_layout_frozen():
+    assert SLOT_TENSOR_APPEARANCE_DIM == 16
+    assert SLOT_TENSOR_SPATIAL_DIM == 11
+    assert SLOT_TENSOR_SCALAR_DIM == 13
+    assert SLOT_TENSOR_DIM == 40
+    assert SLOT_APPEARANCE_SLICE == slice(0, 16)
+    assert SLOT_SPATIAL_SLICE == slice(16, 27)
+    assert SLOT_SCALAR_SLICE == slice(27, 40)
+
+
+# ----------------------------------------------------------- slot_tensor
+
+
+def test_slot_tensor_empty_wm_shapes():
+    wm = _wm(capacity=5)
+    t, m = wm.slot_tensor()
+    assert t.shape == (5, SLOT_TENSOR_DIM) and t.dtype == np.float32
+    assert m.shape == (5,) and m.dtype == bool
+    assert not m.any() and float(np.abs(t).sum()) == 0.0
+    t0, m0 = wm.slot_tensor(k_max=0)
+    assert t0.shape == (0, SLOT_TENSOR_DIM) and m0.shape == (0,)
+
+
+def test_slot_tensor_mask_order_and_determinism():
+    wm = _wm(capacity=4)
+    wm.integrate([_node("ent-b"), _node("ent-a"), _node("ent-c")])
+    t1, m1 = wm.slot_tensor()
+    assert m1.tolist() == [True, True, True, False]
+    assert float(np.abs(t1[3]).sum()) == 0.0  # unfilled row stays zero
+
+    # All three refreshed this cycle -> salience ties at 1.0 -> the
+    # entity_id tie-break is load-bearing: order must be a, b, c.
+    # in_view scalar (last position of the scalar block) is 1 for all.
+    assert (t1[:3, SLOT_SCALAR_SLICE][:, -1] == 1.0).all()
+
+    # Determinism: identical state -> identical tensor, twice.
+    t2, m2 = wm.slot_tensor()
+    assert np.array_equal(t1, t2) and np.array_equal(m1, m2)
+
+    # Stable under dict-insertion order: a fresh WM fed in another order
+    # yields the same tensor for the same logical state.
+    wm2 = _wm(capacity=4)
+    wm2.integrate([_node("ent-c"), _node("ent-a"), _node("ent-b")])
+    t3, _ = wm2.slot_tensor()
+    assert np.array_equal(t1, t3)
+
+
+def test_slot_tensor_salience_ranking_and_staleness():
+    wm = _wm(capacity=4)
+    wm.integrate([_node("ent-old"), _node("ent-new")])
+    wm.integrate([_node("ent-new")])  # old decays, new refreshed
+    t, m = wm.slot_tensor()
+    assert m.tolist() == [True, True, False, False]
+    scalars = t[:, SLOT_SCALAR_SLICE]
+    # Row 0 = highest salience = the refreshed entity: salience 1, in_view 1,
+    # staleness 0. Row 1 = the decayed one: salience < 1, in_view 0,
+    # staleness > 0.
+    assert scalars[0, 0] == pytest.approx(1.0)
+    assert scalars[0, -1] == 1.0 and scalars[0, -2] == 0.0
+    assert scalars[1, 0] < 1.0
+    assert scalars[1, -1] == 0.0 and scalars[1, -2] > 0.0
+
+
+def test_slot_tensor_kmax_truncation_and_dslot_projection():
+    wm = _wm(capacity=8)
+    wm.integrate([_node(f"ent-{i}") for i in range(5)])
+    t, m = wm.slot_tensor(k_max=3)
+    assert t.shape == (3, SLOT_TENSOR_DIM) and m.all()
+
+    # d_slot larger: zero-padded tail; smaller: truncated prefix of the
+    # same frozen row (projection fixed, never re-laid-out).
+    big, _ = wm.slot_tensor(k_max=3, d_slot=64)
+    small, _ = wm.slot_tensor(k_max=3, d_slot=20)
+    assert np.array_equal(big[:, :SLOT_TENSOR_DIM], t)
+    assert float(np.abs(big[:, SLOT_TENSOR_DIM:]).sum()) == 0.0
+    assert np.array_equal(small, t[:, :20])
+
+
+# -------------------------------------------------- M0.3 retrieval tokens
+
+
+def _episodic_pair(tmp_path):
+    pytest.importorskip("lancedb")
+    from decadic.memory.episodic_store import EpisodicRecord, EpisodicStore
+    from decadic.memory.lancedb_store import LanceEpisodicStore
+
+    rng = np.random.default_rng(19)
+    embs = rng.normal(size=(8, 80)).astype(np.float32)
+    sq = EpisodicStore(tmp_path / "tok.sqlite")
+    lz = LanceEpisodicStore(tmp_path / "tok_lance")
+    for store in (sq, lz):
+        for i in range(8):
+            store.append(
+                EpisodicRecord(
+                    cycle_index=i, summary={"i": i}, salience=0.9, embedding=embs[i]
+                )
+            )
+    lz.flush()
+    return sq, lz, embs
+
+
+def test_retrieval_tokens_parity_and_k1_equivalence(tmp_path):
+    sq, lz, embs = _episodic_pair(tmp_path)
+    try:
+        q = embs[3]
+        tok_a, m_a = sq.retrieval_context_tokens(q, k=4)
+        tok_b, m_b = lz.retrieval_context_tokens(q, k=4)
+        assert tok_a.shape == (4, 80) and m_a.all()
+        assert m_a.tolist() == m_b.tolist()
+        assert np.allclose(tok_a, tok_b, atol=1e-5)  # backend parity
+        assert np.allclose(tok_a[0], embs[3], atol=1e-5)  # top hit = itself
+
+        # k=1 reproduces today's best-hit semantics EXACTLY: the token row
+        # equals the mean-pooled context vector of top_k=1 (mean of one).
+        for store in (sq, lz):
+            tok, m = store.retrieval_context_tokens(q, k=1)
+            rcv = store.retrieval_context_vector(q, 80, top_k=1)
+            assert m.tolist() == [True]
+            assert np.allclose(tok[0], rcv, atol=1e-6)
+    finally:
+        lz.close()
+
+
+def test_retrieval_tokens_empty_and_partial(tmp_path):
+    pytest.importorskip("lancedb")
+    from decadic.memory.episodic_store import EpisodicRecord, EpisodicStore
+    from decadic.memory.lancedb_store import LanceEpisodicStore
+
+    q = np.ones(80, dtype=np.float32)
+    empty_sq = EpisodicStore(tmp_path / "e.sqlite")
+    empty_lz = LanceEpisodicStore(tmp_path / "e_lance")
+    try:
+        for store in (empty_sq, empty_lz):
+            tok, m = store.retrieval_context_tokens(q, k=3)
+            assert tok.shape == (3, 80) and not m.any()
+            assert float(np.abs(tok).sum()) == 0.0
+            tok0, m0 = store.retrieval_context_tokens(q, k=0)
+            assert tok0.shape == (0, 80) and m0.shape == (0,)
+
+        # Partial fill: 2 episodes, k=5 -> mask [T, T, F, F, F].
+        embs = np.random.default_rng(4).normal(size=(2, 80)).astype(np.float32)
+        for store in (empty_sq, empty_lz):
+            for i in range(2):
+                store.append(
+                    EpisodicRecord(
+                        cycle_index=i, summary={}, salience=0.9, embedding=embs[i]
+                    )
+                )
+        empty_lz.flush()
+        for store in (empty_sq, empty_lz):
+            tok, m = store.retrieval_context_tokens(q, k=5)
+            assert m.tolist() == [True, True, False, False, False]
+            assert float(np.abs(tok[2:]).sum()) == 0.0
+    finally:
+        empty_lz.close()
+
+
+# ------------------------------------------- M0.4 oracle appearance seam
+
+
+def test_oracle_seam_carries_appearance_into_slots():
+    """world_state.entities[].appearance -> egocentric node -> WM slot ->
+    slot_tensor appearance block. The binding probe's injection path."""
+    from decadic.state.world_graph import egocentric_nodes_from_world_state
+
+    app = [round(0.1 * i, 3) for i in range(16)]
+    ws = {
+        "agent": {"id": "self", "position": [0, 0, 0]},
+        "entities": [
+            {"id": "ent-A", "kind": "entity", "position": [3, 0, 1], "appearance": app},
+            {"id": "ent-B", "kind": "entity", "position": [5, 0, 2]},  # none
+        ],
+    }
+    nodes = egocentric_nodes_from_world_state(ws)
+    ents = {n["id"]: n for n in nodes if n.get("role") == "entity"}
+    assert ents["ent-A"]["appearance"] == app
+    assert "appearance" not in ents["ent-B"]  # absent -> unchanged schema
+
+    wm = _wm(capacity=4)
+    wm.integrate(list(nodes))
+    assert wm.slots["ent-A"].appearance == app
+    assert wm.slots["ent-B"].appearance is None  # byte-identical legacy path
+
+    t, m = wm.slot_tensor()
+    # ent-A's appearance block reproduces the injected vector exactly.
+    a_row = [r for r in t[m] if abs(float(r[1]) - app[1]) < 1e-6]
+    assert a_row, "injected appearance must reach the slot tensor"
+    assert np.allclose(a_row[0][SLOT_APPEARANCE_SLICE], np.asarray(app, np.float32))
+
+    # Refresh path adopts an updated appearance too.
+    app2 = [v + 1.0 for v in app]
+    ws["entities"][0]["appearance"] = app2
+    wm.integrate(egocentric_nodes_from_world_state(ws))
+    assert wm.slots["ent-A"].appearance == app2
+
+
+def test_binding_world_schedule_adjacency_and_events():
+    """Client-side scenario engine: pair adjacency during phases, cadenced
+    events sourced to the first pair member, distinct orbits otherwise."""
+    import sys as _sys
+    from pathlib import Path as _P
+
+    _sys.path.insert(0, str(_P(__file__).resolve().parents[1] / "scripts"))
+    import synthetic_ws_client as swc
+
+    scenario = {
+        "entities": [
+            {"id": "ent-A", "appearance": [1.0] * 16, "home": [10, 0, 0]},
+            {"id": "ent-B", "appearance": [0.5] * 16, "home": [-10, 0, 0]},
+            {"id": "ent-C", "appearance": [0.2] * 16, "home": [0, 0, 10]},
+        ],
+        "schedule": [
+            {
+                "start": 100,
+                "steps": 40,
+                "pair": ["ent-A", "ent-B"],
+                "gap": 1.5,
+                "event": {"type": "threat_near", "intensity": 0.6, "every": 10},
+            }
+        ],
+    }
+    # Outside the phase: B orbits its own home, far from A.
+    ents, evs = swc._binding_world(50, scenario)
+    pos = {e["id"]: e["position"] for e in ents}
+    d = sum((a - b) ** 2 for a, b in zip(pos["ent-A"], pos["ent-B"])) ** 0.5
+    assert d > 10 and evs == []
+    assert all(len(e["appearance"]) == 16 for e in ents)
+
+    # Inside: adjacency at the configured gap; event on the cadence.
+    ents, evs = swc._binding_world(100, scenario)
+    pos = {e["id"]: e["position"] for e in ents}
+    d = sum((a - b) ** 2 for a, b in zip(pos["ent-A"], pos["ent-B"])) ** 0.5
+    assert d == pytest.approx(1.5, abs=1e-6)
+    assert evs and evs[0]["type"] == "threat_near" and evs[0]["entity"] == "ent-A"
+    _, evs_off = swc._binding_world(105, scenario)  # off-cadence step
+    assert evs_off == []
+
+    # Observation embeds the entities at the oracle key.
+    obs = swc._observation(100, None, scenario)
+    assert len(obs["world_state"]["entities"]) == 3
+
+
+def test_slot_tensor_appearance_and_bounds():
+    wm = _wm(capacity=2)
+    wm.integrate([_node("ent-x", pos=(500.0, -3.0, 9999.0))])
+    app = [0.5, -0.25] + [0.0] * 30  # longer than the 16-d appearance block
+    wm.slots["ent-x"].appearance = list(app)
+    wm.slots["ent-x"].affective_weight = 100.0  # must squash, not explode
+    t, m = wm.slot_tensor()
+    row = t[0]
+    assert m[0]
+    assert row[SLOT_APPEARANCE_SLICE][0] == pytest.approx(0.5)
+    assert row[SLOT_APPEARANCE_SLICE][1] == pytest.approx(-0.25)
+    # Everything bounded despite huge raw position/affect inputs.
+    assert np.isfinite(row).all()
+    assert float(np.abs(row).max()) <= 1.0 + 1e-6
+    # Read-side purity: building the tensor mutated nothing.
+    before = wm.snapshot()
+    wm.slot_tensor()
+    assert wm.snapshot() == before

@@ -36,6 +36,32 @@ AUDIO_DECAY = 0.6
 POS_HISTORY_LEN = 8
 SCENE_PREVIEW_BUCKETS = 32
 
+# --- WS5-M0 slot-tensor layout (FROZEN; see docs/ws5_m0_wm_inventory.md) -----
+# Fixed-dim per-slot projection so the neural stack can receive slots as a
+# (K, D_slot) token matrix instead of a pooled vector. Layout, in order:
+#   [ appearance 0:16 | spatial 16:27 | scalars 27:40 ]
+# spatial = relative(3, tanh-scaled) + bearing(2, /pi) + uv(2) + motion(2)
+#           + heading(sin, cos)
+# scalars = salience, tanh(affect), audio, agency, confidence, precision,
+#           evidence(cap 8), contradiction, looming, prediction_error,
+#           prediction_uncertainty, staleness(cap 32 cycles), in_view
+SLOT_TENSOR_APPEARANCE_DIM = 16
+SLOT_TENSOR_SPATIAL_DIM = 11
+SLOT_TENSOR_SCALAR_DIM = 13
+SLOT_TENSOR_DIM = (
+    SLOT_TENSOR_APPEARANCE_DIM + SLOT_TENSOR_SPATIAL_DIM + SLOT_TENSOR_SCALAR_DIM
+)
+SLOT_APPEARANCE_SLICE = slice(0, SLOT_TENSOR_APPEARANCE_DIM)
+SLOT_SPATIAL_SLICE = slice(
+    SLOT_TENSOR_APPEARANCE_DIM, SLOT_TENSOR_APPEARANCE_DIM + SLOT_TENSOR_SPATIAL_DIM
+)
+SLOT_SCALAR_SLICE = slice(
+    SLOT_TENSOR_APPEARANCE_DIM + SLOT_TENSOR_SPATIAL_DIM, SLOT_TENSOR_DIM
+)
+SLOT_POS_SCALE = 20.0  # tanh(x / scale): patrol-range positions stay linear-ish
+SLOT_STALENESS_HORIZON = 32.0  # cycles-unseen that saturate the staleness scalar
+SLOT_EVIDENCE_CAP = 8.0
+
 
 def _body_part_from_event(ev: dict[str, Any]) -> str | None:
     raw = str(ev.get("source") or ev.get("body_part") or ev.get("sensor") or "").lower()
@@ -247,6 +273,9 @@ class WorkingMemory:
             if not eid:
                 continue
             pos = _as_vec(node.get("position"))
+            # WS5-M0.4: oracle nodes may carry a controlled appearance vector
+            # (binding-probe injection); byte-identical when absent.
+            node_app = _as_floats(node.get("appearance"))
             existing = self.slots.get(eid)
             if existing is None:
                 slot = MemorySlot(
@@ -259,6 +288,8 @@ class WorkingMemory:
                     last_seen_cycle=self.cycle,
                     seen_count=1,
                 )
+                if node_app is not None:
+                    slot.appearance = node_app
                 if pos is not None:
                     slot.pos_history.append(pos)
                 self.slots[eid] = slot
@@ -270,6 +301,8 @@ class WorkingMemory:
                     existing.pos_history.append(pos)
                 if rel is not None:
                     existing.relative = rel
+                if node_app is not None:
+                    existing.appearance = node_app
                 existing.salience = 1.0
                 existing.affective_weight = float(affect.get(eid, existing.affective_weight))
                 existing.last_seen_cycle = self.cycle
@@ -644,6 +677,87 @@ class WorkingMemory:
 
     def active_slots(self) -> list[MemorySlot]:
         return sorted(self.slots.values(), key=lambda s: s.salience, reverse=True)
+
+    # ---------------------------------------------------------- WS5-M0.2
+    def _slot_row(self, s: MemorySlot) -> list[float]:
+        """One slot -> the frozen SLOT_TENSOR_DIM feature row (pure read)."""
+
+        def _t(x: float) -> float:  # bounded, finite
+            x = _as_float(x)
+            return math.tanh(x)
+
+        row = [0.0] * SLOT_TENSOR_DIM
+        # appearance [0:16] -- truncate/zero-pad the slot's latent fingerprint
+        if s.appearance:
+            for i, v in enumerate(s.appearance[:SLOT_TENSOR_APPEARANCE_DIM]):
+                row[i] = _as_float(v)
+        # spatial [16:27]
+        base = SLOT_TENSOR_APPEARANCE_DIM
+        rel = s.relative if s.relative is not None else s.position
+        if rel is not None:
+            for i in range(min(3, len(rel))):
+                row[base + i] = math.tanh(_as_float(rel[i]) / SLOT_POS_SCALE)
+        if s.bearing is not None:
+            row[base + 3] = _as_float(s.bearing[0]) / math.pi
+            row[base + 4] = _as_float(s.bearing[1]) / math.pi
+        if s.uv is not None:
+            row[base + 5] = _as_float(s.uv[0])
+            row[base + 6] = _as_float(s.uv[1])
+        if s.motion is not None:
+            row[base + 7] = _t(s.motion[0])
+            row[base + 8] = _t(s.motion[1])
+        h = s.heading()
+        if h is not None:
+            row[base + 9] = math.sin(h)
+            row[base + 10] = math.cos(h)
+        # scalars [27:40]
+        sc = SLOT_TENSOR_APPEARANCE_DIM + SLOT_TENSOR_SPATIAL_DIM
+        age = max(0.0, float(self.cycle - s.last_seen_cycle))
+        scalars = (
+            min(1.0, max(0.0, _as_float(s.salience))),
+            _t(s.affective_weight),
+            min(1.0, max(0.0, _as_float(s.audio_intensity))),
+            min(1.0, max(0.0, _as_float(s.agency))),
+            min(1.0, max(0.0, _as_float(s.confidence))),
+            min(1.0, max(0.0, _as_float(s.precision))),
+            min(1.0, _as_float(s.evidence_count) / SLOT_EVIDENCE_CAP),
+            min(1.0, max(0.0, _as_float(s.contradiction_pressure))),
+            min(1.0, max(0.0, _as_float(s.looming))),
+            min(1.0, max(0.0, _as_float(s.prediction_error))),
+            min(1.0, max(0.0, _as_float(s.prediction_uncertainty))),
+            min(1.0, age / SLOT_STALENESS_HORIZON),
+            1.0 if s.last_seen_cycle == self.cycle else 0.0,
+        )
+        row[sc : sc + SLOT_TENSOR_SCALAR_DIM] = scalars
+        return row
+
+    def slot_tensor(self, k_max: int | None = None, d_slot: int = SLOT_TENSOR_DIM):
+        """WS5-M0.2: the slots as a (K, D_slot) float32 token matrix + mask.
+
+        Read-side adapter -- a pure function of existing slot state; slot
+        lifecycle is untouched. Ordering is salience-ranked with a stable,
+        deterministic tie-break on entity_id, so identical WM state always
+        yields an identical tensor (the parity culture's requirement for
+        anything that feeds the stack). Rows past the live slot count are
+        zero with mask False; ``d_slot`` other than the frozen layout dim
+        truncates/zero-pads the row (projection stays fixed).
+        """
+        import numpy as np
+
+        k = int(self.capacity if k_max is None else max(0, k_max))
+        out = np.zeros((k, int(d_slot)), dtype=np.float32)
+        mask = np.zeros((k,), dtype=bool)
+        if k == 0:
+            return out, mask
+        ordered = sorted(
+            self.slots.values(), key=lambda s: (-float(s.salience), s.entity_id)
+        )[:k]
+        for i, s in enumerate(ordered):
+            row = self._slot_row(s)
+            n = min(len(row), int(d_slot))
+            out[i, :n] = row[:n]
+            mask[i] = True
+        return out, mask
 
     def entity_nodes(self) -> list[dict[str, Any]]:
         """Persisted entity nodes (includes recently-unseen ones still in memory)."""

@@ -97,6 +97,15 @@ def egocentric_nodes_from_world_state(
         pos = _float_vec3(raw.get("position"))
         if pos:
             ent["position"] = pos
+        # WS5-M0.4: controlled appearance vectors ride the oracle seam so the
+        # binding probe can inject entities with known fingerprints without
+        # the (synthetic-starved) discovery pipeline. Absent -> unchanged.
+        app = raw.get("appearance")
+        if isinstance(app, list) and app:
+            try:
+                ent["appearance"] = [float(v) for v in app[:64]]
+            except (TypeError, ValueError):
+                pass
         if ent.get("relative") or ent.get("position"):
             out.append(ent)
 
