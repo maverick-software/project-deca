@@ -7,14 +7,20 @@ import {
   type VastOffer,
 } from "../../vastApi";
 
-const num = (v: number | null, digits = 2) =>
-  v == null ? "-" : v.toFixed(digits);
+const num = (v: number | null, digits = 2) => (v == null ? "-" : v.toFixed(digits));
 
 // VRAM is already in GB from the server; drop a trailing .0 (24 GB, 22.5 GB).
 const fmtGb = (v: number | null) =>
   v == null ? "-" : `${Number.isInteger(v) ? v : v.toFixed(1)} GB`;
 
-/** GPU offer search with a results table; Rent hands the offer id to the parent. */
+const fmtMbps = (v: number | null) => (v == null ? "-" : `${Math.round(v).toLocaleString()} Mbps`);
+
+// Standard "at least" VRAM tiers. Charles's list (10/12/16/24/32/64/96/128/240)
+// plus 48/80, common real datacenter-card sizes (A6000/L40, A100/H100) that
+// would otherwise fall through the gaps - trim if unwanted.
+const VRAM_TIERS = [10, 12, 16, 24, 32, 48, 64, 80, 96, 128, 240];
+
+/** GPU offer search: filter bar + a Vast-style card per offer. Rent hands the offer id to the parent. */
 export default function GpuSearch(props: {
   defaults: VastDefaults;
   disabled: boolean;
@@ -23,8 +29,6 @@ export default function GpuSearch(props: {
 }) {
   const { defaults } = props;
   const [gpu, setGpu] = useState(defaults.gpu_name);
-  const [numGpus, setNumGpus] = useState(defaults.num_gpus);
-  const [maxDph, setMaxDph] = useState(defaults.max_dph);
   const [minRam, setMinRam] = useState(defaults.min_gpu_ram);
   const [verified, setVerified] = useState(defaults.verified);
   const [offers, setOffers] = useState<VastOffer[]>([]);
@@ -63,8 +67,6 @@ export default function GpuSearch(props: {
     try {
       const res = await searchOffers({
         gpu_name: gpu.trim() || undefined,
-        num_gpus: numGpus,
-        max_dph: maxDph || undefined,
         min_gpu_ram: minRam || undefined,
         verified,
       });
@@ -124,37 +126,23 @@ export default function GpuSearch(props: {
             />
           )}
         </label>
+
         <label style={{ display: "grid", gap: 2 }}>
-          <span style={{ fontSize: 12, opacity: 0.8 }}># GPUs</span>
-          <input
-            type="number"
-            min={1}
-            value={numGpus}
-            onChange={(e) => setNumGpus(Number(e.target.value))}
-            style={{ width: 70 }}
-          />
+          <span style={{ fontSize: 12, opacity: 0.8 }}>VRAM</span>
+          <select
+            value={minRam || ""}
+            onChange={(e) => setMinRam(e.target.value ? Number(e.target.value) : 0)}
+            title="Minimum per-GPU VRAM. Real cards land on odd sizes (24, 48, 80, 141 GB) so this is an 'at least' filter, not exact."
+          >
+            <option value="">Any</option>
+            {VRAM_TIERS.map((gb) => (
+              <option key={gb} value={gb}>
+                At least {gb} GB
+              </option>
+            ))}
+          </select>
         </label>
-        <label style={{ display: "grid", gap: 2 }}>
-          <span style={{ fontSize: 12, opacity: 0.8 }}>Max $/hr</span>
-          <input
-            type="number"
-            step={0.05}
-            min={0}
-            value={maxDph}
-            onChange={(e) => setMaxDph(Number(e.target.value))}
-            style={{ width: 80 }}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 2 }}>
-          <span style={{ fontSize: 12, opacity: 0.8 }}>Min GPU RAM (GB)</span>
-          <input
-            type="number"
-            min={0}
-            value={minRam}
-            onChange={(e) => setMinRam(Number(e.target.value))}
-            style={{ width: 80 }}
-          />
-        </label>
+
         <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 13 }}>
           <input
             type="checkbox"
@@ -171,47 +159,73 @@ export default function GpuSearch(props: {
       {error && <div className="error-banner" style={{ margin: 0 }}>{error}</div>}
 
       {offers.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", opacity: 0.7 }}>
-                <th>GPU</th>
-                <th>#</th>
-                <th>VRAM</th>
-                <th>$/hr</th>
-                <th>dlperf</th>
-                <th>dlperf/$</th>
-                <th>Location</th>
-                <th>Rel.</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {offers.map((o) => (
-                <tr key={o.id} style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-                  <td>{o.gpu_name ?? "?"}</td>
-                  <td>{o.num_gpus ?? "?"}</td>
-                  <td>{fmtGb(o.gpu_ram_gb)}</td>
-                  <td>${num(o.dph_total, 3)}</td>
-                  <td>{num(o.dlperf, 1)}</td>
-                  <td>{num(o.dlperf_per_usd, 1)}</td>
-                  <td>{o.geolocation ?? "?"}</td>
-                  <td>{num(o.reliability, 2)}</td>
-                  <td>
-                    <button
-                      onClick={() => props.onRent(o)}
-                      disabled={props.renting || props.disabled}
-                      title={`Rent offer ${o.id}`}
-                    >
-                      Rent
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: "grid", gap: 8 }}>
+          {offers.map((o) => (
+            <OfferCard key={o.id} offer={o} renting={props.renting || props.disabled} onRent={props.onRent} />
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function OfferCard(props: { offer: VastOffer; renting: boolean; onRent: (o: VastOffer) => void }) {
+  const o = props.offer;
+  const count = o.num_gpus ?? 1;
+  return (
+    <div
+      style={{
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 6,
+        padding: "10px 12px",
+        display: "grid",
+        gap: 6,
+        fontSize: 13,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <strong style={{ fontSize: 14 }}>
+          {count}x {o.gpu_name ?? "?"}
+        </strong>
+        {o.verified && (
+          <span style={{ fontSize: 11, color: "#3fb950" }}>verified</span>
+        )}
+        {o.is_datacenter != null && (
+          <span style={{ fontSize: 11, opacity: 0.7 }}>
+            {o.is_datacenter ? "datacenter" : "community"}
+          </span>
+        )}
+        {o.days_remaining != null && (
+          <span style={{ fontSize: 11, opacity: 0.7 }}>max ~{Math.round(o.days_remaining)}d</span>
+        )}
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontWeight: 600 }}>${num(o.dph_total, 3)}/hr</span>
+          <button onClick={() => props.onRent(o)} disabled={props.renting} title={`Rent offer ${o.id}`}>
+            Rent
+          </button>
+        </span>
+      </div>
+
+      <div style={{ opacity: 0.85 }}>
+        {num(o.total_flops, 1)} TFLOPS &middot; {fmtGb(o.gpu_ram_gb)} VRAM
+        {o.gpu_mem_bw_gbps != null && <> &middot; {num(o.gpu_mem_bw_gbps, 0)} GB/s mem</>}
+      </div>
+
+      <div style={{ opacity: 0.7, fontSize: 12 }}>
+        {o.cpu_name ?? "CPU ?"}
+        {o.cpu_cores != null && ` (${o.cpu_cores} cores)`}
+        {" · "}
+        {"↑"}
+        {fmtMbps(o.inet_up_mbps)} {"↓"}
+        {fmtMbps(o.inet_down_mbps)}
+        {o.direct_port_count != null && <> &middot; {o.direct_port_count} ports</>}
+      </div>
+
+      <div style={{ opacity: 0.7, fontSize: 12 }}>
+        DLPerf {num(o.dlperf, 1)} &middot; DLPerf/$ {num(o.dlperf_per_usd, 1)} &middot; Reliability{" "}
+        {o.reliability != null ? `${(o.reliability * 100).toFixed(1)}%` : "-"}
+        {o.geolocation && <> &middot; {o.geolocation}</>}
+      </div>
     </div>
   );
 }

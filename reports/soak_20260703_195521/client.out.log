@@ -1,0 +1,38 @@
+{"agent_id": "3a16307d-8f85-496e-bb98-2fa46f03927b"}
+{"recv": 0, "action": {"type": "motor", "parameters": {"ctrl": [0.02393, -0.04053, -0.00233, 0.02527, -0.02075, -0.00397, 0.01544, -0.00389, -0.02612, 0.02576, 0.04102, -0.03833, 0.03442, 0.05371, 0.02649, 0.00958, -0.01416, 0.01105, 0.01611, -0.04297, -0.03662], "joint_pe": [], "assist_gain": 0.0, "direction": [-0.02880859375, 0.0478515625, 0.059326171875], "speed": 0.9765625, "risk": 0.49060168862342834, "babble_sigma": 0.0, "curriculum_mode": "legacy", "reservoirs": {"hydration": 1.0, "energy": 1.0, "integrity": 1.0}}}}
+{"reconnect": 1, "after_sent": 1457, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 2, "after_sent": 2355, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 3, "after_sent": 3246, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 4, "after_sent": 4105, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"sent": 5000, "received": 3222}
+{"reconnect": 5, "after_sent": 5398, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 6, "after_sent": 6476, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 7, "after_sent": 7454, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 8, "after_sent": 8272, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"recv": 5000, "action": {"type": "motor", "parameters": {"ctrl": [-0.78271, -0.99064, -0.97887, 0.8447, -0.92606, -1.0, 0.86613, -0.39576, -1.0, -0.17533, -0.94628, 1.0, -1.0, 0.76464, 0.39905, 0.80127, -0.79568, -0.70884, -0.69435, 0.91039, -0.93062], "joint_pe": [0.00036, 0.000723, 3e-05, 5.8e-05, 0.001637, 0.022349, 0.005689, 0.002451, 0.004747, 0.000367, 0.002776, 0.00407, 0.038646, 0.013654, 3.3e-05, 0.000227, 0.00038, 0.002613, 0.062242, 0.006009, 0.002347], "assist_gain": 0.0, "direction": [0.76953125, 0.55078125, -0.01324462890625], "speed": 0.94921875, "risk": 0.48620954155921936, "babble_sigma": 0.19866, "curriculum_mode": "legacy", "reservoirs": {"hydration": 0.9956, "energy": 0.9994, "integrity": 0.7905}}}}
+{"reconnect": 9, "after_sent": 9134, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"sent": 10000, "received": 6037}
+{"reconnect": 10, "after_sent": 10467, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 11, "after_sent": 11610, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 12, "after_sent": 12724, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 13, "after_sent": 13792, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"sent": 15000, "received": 8680}
+{"reconnect": 14, "after_sent": 15429, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 15, "after_sent": 16225, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 16, "after_sent": 17032, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"recv": 10000, "action": {"type": "motor", "parameters": {"ctrl": [0.86262, 0.93643, -0.55599, 0.92252, -0.43695, -1.0, 0.58196, 0.9838, -0.67208, -0.39143, -1.0, -1.0, -1.0, -0.71339, -0.48136, 1.0, -0.95063, 0.21354, -0.50593, 1.0, -0.53974], "joint_pe": [0.006828, 0.002854, 0.000123, 0.001608, 0.000967, 0.002327, 9.4e-05, 0.017852, 0.000743, 0.027348, 0.001438, 0.008466, 0.000584, 0.001961, 0.002132, 0.003182, 0.085689, 0.00079, 0.014274, 0.002326, 0.006959], "assist_gain": 0.0, "direction": [-0.1240234375, -0.13671875, -0.12060546875], "speed": 0.83984375, "risk": 0.5520567893981934, "babble_sigma": 0.26623, "curriculum_mode": "legacy", "reservoirs": {"hydration": 0.9903, "energy": 0.9986, "integrity": 0.794}}}}
+{"reconnect": 17, "after_sent": 17908, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 18, "after_sent": 18965, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 19, "after_sent": 19970, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"sent": 20000, "received": 11236}
+{"reconnect": 20, "after_sent": 21013, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 21, "after_sent": 22018, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 22, "after_sent": 23027, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 23, "after_sent": 24069, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"sent": 25000, "received": 13825}
+{"reconnect": 24, "after_sent": 25149, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 25, "after_sent": 25919, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 26, "after_sent": 26760, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"recv": 15000, "action": {"type": "motor", "parameters": {"ctrl": [-0.51148, -0.44965, -0.60231, -1.0, 0.76235, 1.0, -1.0, -1.0, 1.0, -1.0, 0.69614, -0.96536, -0.90351, -0.16656, 1.0, -0.57223, 0.11999, 1.0, 0.65557, -0.38184, -0.07666], "joint_pe": [0.028528, 0.001641, 0.009966, 0.005502, 0.00395, 0.010281, 0.000813, 0.057106, 3.9e-05, 0.000381, 0.055206, 0.003489, 0.026294, 0.023351, 0.001698, 4.9e-05, 0.013262, 0.031603, 0.015248, 0.009948, 0.06048], "assist_gain": 0.0, "direction": [0.40234375, 0.078125, 0.060546875], "speed": 0.74609375, "risk": 0.53946852684021, "babble_sigma": 0.3, "curriculum_mode": "legacy", "reservoirs": {"hydration": 0.9841, "energy": 0.9977, "integrity": 0.7982}}}}
+{"reconnect": 27, "after_sent": 27892, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}
+{"reconnect": 28, "after_sent": 28812, "reason": "received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout"}

@@ -1,0 +1,38 @@
+{
+ "passed": false,
+ "gates": [
+  {
+   "name": "no stalls",
+   "ok": true,
+   "detail": "stall_events=0"
+  },
+  {
+   "name": "cycle rate holds",
+   "ok": false,
+   "detail": "first-hour=3.98Hz worst-later=0.00Hz floor=1.99Hz"
+  },
+  {
+   "name": "no NaN recoveries",
+   "ok": true,
+   "detail": "nan_recovery_events=0"
+  },
+  {
+   "name": "pc loss decreases",
+   "ok": false,
+   "detail": "half-means 0.3217 -> 0.3753"
+  },
+  {
+   "name": "growth events observed (informational)",
+   "ok": true,
+   "detail": "growth_events=1"
+  }
+ ],
+ "config": {
+  "max_stall_events": 0,
+  "cycle_rate_floor_fraction": 0.5,
+  "max_nan_recovery_events": 0,
+  "max_rss_growth_fraction": 0.2,
+  "require_pc_loss_decrease": true,
+  "note_growth_events": true
+ }
+}

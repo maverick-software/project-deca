@@ -1,0 +1,29 @@
+{
+ "started": "2026-07-03T18:40:26.116632",
+ "git_sha": "90fd139",
+ "hours": 1.0,
+ "obs_rate_s": 0.1,
+ "sample_interval_s": 2.0,
+ "stall_policy": "abort",
+ "env": {
+  "DECADIC_SELF_HOST": "127.0.0.1",
+  "DECADIC_NEURAL_PRESET": "full",
+  "DECADIC_PLASTICITY_ENABLED": "1",
+  "DECADIC_SPARSE_ENABLED": "1",
+  "DECADIC_GROWTH_ENABLED": "1",
+  "DECADIC_ENCODER_MODE": "hf",
+  "DECADIC_DEVICE": "cuda",
+  "DECADIC_EPISODIC_ASYNC": "1",
+  "DECADIC_N_ACTUATORS": "21",
+  "DECADIC_CURRICULUM_MODE": "legacy",
+  "DECADIC_SELF_MODEL_FEEDBACK": "1",
+  "DECADIC_GWT_ENABLED": "1",
+  "DECADIC_INTEGRATION_WINDOW_MS": "200",
+  "DECADIC_PREDICTIVE_AFFECT": "1",
+  "DECADIC_REPRESENTED_SELF": "1",
+  "DECADIC_MEMORY_EFFICIENT_TRAINING": "1",
+  "DECADIC_PREFETCH_OVERLOAD_POLICY": "drop_oldest",
+  "DECADIC_SELF_PORT": "8765",
+  "DECADIC_LOG_DIR": "D:\\Users\\charl\\software\\Self-Determination Model\\reports\\soak_20260703_184026"
+ }
+}

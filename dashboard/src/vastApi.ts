@@ -48,6 +48,22 @@ export type VastOffer = {
   geolocation: string | null;
   reliability: number | null;
   verified: boolean;
+  // Total theoretical GPU compute across all GPUs on the offer.
+  total_flops: number | null;
+  gpu_mem_bw_gbps: number | null;
+  // Network bandwidth, Mbps (server converts from Vast's documented MB/s -
+  // see the _mbps() docstring in routes.py for the unit-assumption caveat).
+  inet_up_mbps: number | null;
+  inet_down_mbps: number | null;
+  cpu_name: string | null;
+  cpu_cores: number | null;
+  direct_port_count: number | null;
+  host_id: number | null;
+  machine_id: number | null;
+  // Best-effort; null means unknown, not "community" (see _is_datacenter()).
+  is_datacenter: boolean | null;
+  // Days until the offer's listed end_date; null if unknown or already past.
+  days_remaining: number | null;
 };
 
 export type DeploymentPhase =
@@ -156,16 +172,16 @@ export function fetchVastAccount(): Promise<VastAccount> {
 
 export function searchOffers(params: {
   gpu_name?: string;
-  num_gpus?: number;
-  max_dph?: number;
   min_gpu_ram?: number;
   verified?: boolean;
   limit?: number;
 }): Promise<{ query: string; offers: VastOffer[] }> {
   const q = new URLSearchParams();
   if (params.gpu_name) q.set("gpu_name", params.gpu_name);
-  if (params.num_gpus != null) q.set("num_gpus", String(params.num_gpus));
-  if (params.max_dph != null) q.set("max_dph", String(params.max_dph));
+  // Always a single GPU: the neural stack has no multi-GPU/sharded training
+  // path, so renting more than one has no use, and locking to 1 also makes
+  // gpu_ram_gb (per-card) unambiguous - no aggregate-vs-per-card confusion.
+  q.set("num_gpus", "1");
   if (params.min_gpu_ram != null) q.set("min_gpu_ram", String(params.min_gpu_ram));
   if (params.verified != null) q.set("verified", params.verified ? "true" : "false");
   if (params.limit != null) q.set("limit", String(params.limit));

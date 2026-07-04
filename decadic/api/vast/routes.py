@@ -14,6 +14,7 @@ Endpoints (all local-only; the server must stay bound to 127.0.0.1):
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,59 @@ def _mb_to_gb(mb: Any) -> float | None:
     return round(v / 1024.0, 1)
 
 
+def _mbps(mb_per_s: Any) -> float | None:
+    """Convert Vast's documented `inet_up`/`inet_down` unit (MB/s) to Mbps.
+
+    ASSUMPTION pending live confirmation (docs/gpu_offer_search_wbs.md Phase D0):
+    Vast's own site displays bandwidth numbers that look ~8x smaller than a raw
+    MB/s value would (e.g. "3047 Mbps" for what would be an implausible 3047
+    MB/s == ~24 Gbps residential-grade uplink); the most likely explanation is
+    the site shows Mbps (the conventional unit for network speed) computed as
+    MB/s * 8. If a live sample shows otherwise, fix here only - one place.
+    """
+    try:
+        v = float(mb_per_s)
+    except (TypeError, ValueError):
+        return None
+    if v < 0:
+        return None
+    return round(v * 8.0, 1)
+
+
+def _is_datacenter(o: dict[str, Any]) -> bool | None:
+    """Best-effort datacenter/community host flag.
+
+    Vast's API has a `datacenter` *filter* ("show only datacenter offers") but
+    the offer *response* schema (per docs.vast.ai) only documents a numeric
+    `hosting_type` with no published legend. Treat a present, nonzero
+    `hosting_type` as datacenter; if the field is entirely absent, return None
+    (unknown) rather than guessing - never claim community/datacenter when we
+    don't actually know. Confirm the real encoding via Phase D0 and simplify
+    this once known.
+    """
+    if "hosting_type" in o and o.get("hosting_type") is not None:
+        try:
+            return int(o["hosting_type"]) != 0
+        except (TypeError, ValueError):
+            return None
+    if "datacenter" in o and o.get("datacenter") is not None:
+        return bool(o["datacenter"])
+    return None
+
+
+def _days_remaining(end_date: Any) -> float | None:
+    """Days until `end_date` (unix seconds), Vast's likely source for the "Max
+    Duration" badge shown on their own site (not itself a documented offer
+    field - docs.vast.ai only documents `end_date`/`duration` as inputs, not a
+    duration-in-days output). None if `end_date` is missing or already past."""
+    try:
+        end = float(end_date)
+    except (TypeError, ValueError):
+        return None
+    remaining = (end - time.time()) / 86400.0
+    return round(remaining, 1) if remaining > 0 else None
+
+
 def _normalize_offer(o: dict[str, Any]) -> dict[str, Any]:
     dph = o.get("dph_total")
     dlperf = o.get("dlperf")
@@ -108,6 +162,17 @@ def _normalize_offer(o: dict[str, Any]) -> dict[str, Any]:
         "geolocation": o.get("geolocation"),
         "reliability": o.get("reliability2", o.get("reliability")),
         "verified": verification == "verified",
+        "total_flops": o.get("total_flops"),
+        "gpu_mem_bw_gbps": o.get("gpu_mem_bw"),
+        "inet_up_mbps": _mbps(o.get("inet_up")),
+        "inet_down_mbps": _mbps(o.get("inet_down")),
+        "cpu_name": o.get("cpu_name"),
+        "cpu_cores": o.get("cpu_cores"),
+        "direct_port_count": o.get("direct_port_count"),
+        "host_id": o.get("host_id"),
+        "machine_id": o.get("machine_id"),
+        "is_datacenter": _is_datacenter(o),
+        "days_remaining": _days_remaining(o.get("end_date")),
     }
 
 
