@@ -1,0 +1,38 @@
+Traceback (most recent call last):
+  File "C:\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 190, in _run
+    await _sender()
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 186, in _sender
+    await asyncio.sleep(rate_s if rate_s > 0 else 0.01)
+  File "C:\Python313\Lib\asyncio\tasks.py", line 718, in sleep
+    return await future
+           ^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 246, in <module>
+    main()
+    ~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\synthetic_ws_client.py", line 231, in main
+    asyncio.run(
+    ~~~~~~~~~~~^
+        _run(
+        ^^^^^
+    ...<8 lines>...
+        )
+        ^
+    )
+    ^
+  File "C:\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\runners.py", line 123, in run
+    raise KeyboardInterrupt()
+KeyboardInterrupt
