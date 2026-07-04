@@ -43,6 +43,21 @@ def main() -> int:
 
     scen = json.loads(Path(args.scenario).read_text(encoding="utf-8"))
     steps = args.steps or int(scen.get("total_steps_hint", 4000))
+    probe_order = scen.get("probe_order", [])
+    first_train = min(
+        (int(p["start"]) for p in scen.get("schedule", []) if p.get("kind") == "train"),
+        default=0,
+    )
+    first_probe = min(
+        (int(p["start"]) for p in probe_order), default=steps
+    )
+
+    def _segment(step_est: float) -> str:
+        if step_est < first_train:
+            return "warmup"
+        if step_est < first_probe:
+            return "train"
+        return "PROBE"
     base = f"http://{args.host}:{args.port}"
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -69,13 +84,21 @@ def main() -> int:
                     src = m.get("metrics") if isinstance(m.get("metrics"), dict) else m
                     row = {k: src.get(k) for k in KEEP if src.get(k) is not None}
                     row["t"] = round(time.time() - t0, 2)
+                    # Client-step clock: drop_oldest keeps the server current
+                    # with the freshest sent frame, so t/rate maps samples to
+                    # scenario steps (the verdict windows on this).
+                    row["step_est"] = round(row["t"] / max(0.01, args.rate), 1)
                     f.write(json.dumps(row) + "\n")
                     n += 1
-                    if n % 120 == 0:
+                    if n % 60 == 0:
                         f.flush()
+                        step_est = row["t"] / max(0.01, args.rate)
+                        pct = min(100.0, 100.0 * step_est / max(1, steps))
                         print(
-                            f"[probe] t={row['t']:.0f}s samples={n} "
-                            f"prio={row.get('priority_scalar')}",
+                            f"[probe] {pct:5.1f}% ({_segment(step_est)}) "
+                            f"t={row['t']:.0f}s step~{step_est:.0f}/{steps} "
+                            f"prio={row.get('priority_scalar')} "
+                            f"pain={row.get('pain_scalar')}",
                             flush=True,
                         )
                 time.sleep(args.poll_s)

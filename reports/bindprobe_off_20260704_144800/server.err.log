@@ -1,0 +1,177 @@
+INFO:     Started server process [45464]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8767 (Press CTRL+C to quit)
+{"time": "2026-07-04T21:48:02.301581+00:00", "level": "INFO", "logger": "decadic.nn.bundle", "message": "neural compute device=cuda gpu=NVIDIA GeForce RTX 3080 vram_free_gb=8.9 vram_total_gb=10.0 bf16=True"}
+{"time": "2026-07-04T21:48:04.662177+00:00", "level": "INFO", "logger": "decadic.nn.frozen_encoders", "message": "loading frozen CLIP + Whisper (first run may download weights)"}
+{"time": "2026-07-04T21:48:04.966704+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-04T21:48:04.988960+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/clip-vit-base-patch32/3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268/config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:05.085238+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/model.safetensors \"HTTP/1.1 404 Not Found\""}
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+{"time": "2026-07-04T21:48:05.085469+00:00", "level": "WARNING", "logger": "huggingface_hub.utils._http", "message": "Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads."}
+{"time": "2026-07-04T21:48:05.179726+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/model.safetensors.index.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:05.279547+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/pytorch_model.bin \"HTTP/1.1 302 Found\""}
+{"time": "2026-07-04T21:48:05.377323+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/model.safetensors \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:05.477551+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/clip-vit-base-patch32 \"HTTP/1.1 200 OK\""}
+Loading weights:   0%|          | 0/200 [00:00<?, ?it/s]Loading weights: 100%|##########| 200/200 [00:00<00:00, 49070.54it/s]
+[transformers] [1mCLIPVisionModelWithProjection LOAD REPORT[0m from: openai/clip-vit-base-patch32
+Key                                                          | Status     |  | 
+-------------------------------------------------------------+------------+--+-
+text_model.encoder.layers.{0...11}.layer_norm2.bias          | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.out_proj.weight | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.v_proj.weight   | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.mlp.fc2.bias              | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.q_proj.weight   | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.k_proj.bias     | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.k_proj.weight   | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.layer_norm1.bias          | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.q_proj.bias     | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.mlp.fc1.bias              | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.out_proj.bias   | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.mlp.fc1.weight            | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.layer_norm1.weight        | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.mlp.fc2.weight            | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.self_attn.v_proj.bias     | UNEXPECTED |  | 
+text_model.final_layer_norm.weight                           | UNEXPECTED |  | 
+text_model.encoder.layers.{0...11}.layer_norm2.weight        | UNEXPECTED |  | 
+text_model.final_layer_norm.bias                             | UNEXPECTED |  | 
+text_model.embeddings.token_embedding.weight                 | UNEXPECTED |  | 
+logit_scale                                                  | UNEXPECTED |  | 
+text_model.embeddings.position_embedding.weight              | UNEXPECTED |  | 
+text_projection.weight                                       | UNEXPECTED |  | 
+
+Notes:
+- UNEXPECTED:	can be ignored when loading from different task/architecture; not ok if you expect identical arch.
+{"time": "2026-07-04T21:48:05.595479+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/clip-vit-base-patch32/commits/main \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:05.781919+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/processor_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:05.874325+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/preprocessor_config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-04T21:48:05.898456+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/clip-vit-base-patch32/3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268/preprocessor_config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:05.960857+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/clip-vit-base-patch32/discussions?p=0 \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:05.994636+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-04T21:48:06.017354+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:06.070210+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/clip-vit-base-patch32/commits/refs%2Fpr%2F66 \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:06.129314+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/model.safetensors \"HTTP/1.1 302 Found\""}
+Loading weights:   0%|          | 0/479 [00:00<?, ?it/s]{"time": "2026-07-04T21:48:06.190397+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/refs%2Fpr%2F66/model.safetensors.index.json \"HTTP/1.1 404 Not Found\""}
+Loading weights: 100%|##########| 479/479 [00:00<00:00, 10573.89it/s]
+{"time": "2026-07-04T21:48:06.383981+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/clip-vit-base-patch32/resolve/refs%2Fpr%2F66/model.safetensors \"HTTP/1.1 302 Found\""}
+{"time": "2026-07-04T21:48:06.460841+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/whisper-small/tree/main/additional_chat_templates?recursive=false&expand=false \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:06.560669+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/processor_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:06.657857+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/chat_template.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:06.770942+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/chat_template.jinja \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:06.869732+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/audio_tokenizer_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:06.966133+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/processor_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:07.059480+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/preprocessor_config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-04T21:48:07.081390+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/preprocessor_config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:07.179725+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/processor_config.json \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:07.278815+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/preprocessor_config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-04T21:48:07.298639+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/preprocessor_config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:07.396331+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-04T21:48:07.419129+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:07.517561+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/openai/whisper-small/resolve/main/tokenizer_config.json \"HTTP/1.1 307 Temporary Redirect\""}
+{"time": "2026-07-04T21:48:07.541964+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/openai/whisper-small/973afd24965f72e36ca33b3055d56a652f456b4d/tokenizer_config.json \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:07.645394+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/whisper-small/tree/main/additional_chat_templates?recursive=false&expand=false \"HTTP/1.1 404 Not Found\""}
+{"time": "2026-07-04T21:48:07.742543+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET https://huggingface.co/api/models/openai/whisper-small/tree/main?recursive=true&expand=false \"HTTP/1.1 200 OK\""}
+{"time": "2026-07-04T21:48:07.941174+00:00", "level": "WARNING", "logger": "decadic.nn.optim", "message": "memory-efficient training requested but 8-bit Adam unavailable (No module named 'bitsandbytes'); falling back to fp32 Adam"}
+{"time": "2026-07-04T21:48:07.941749+00:00", "level": "INFO", "logger": "decadic.nn.bundle", "message": "NeuralBundle agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 device=cuda encoder_mode=hf preset=full trainable_params=203276005 perception_feedback=True perception_mode=oracle plasticity=True sparse=True growth=True"}
+{"time": "2026-07-04T21:48:08.380540+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=1 wall_ms=298.099 action_type=motor"}
+{"time": "2026-07-04T21:48:08.479401+00:00", "level": "INFO", "logger": "decadic.consolidation.consolidator", "message": "consolidation_start agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 interval_s=30.00 batch=32 tau=0.050 steps=4"}
+{"time": "2026-07-04T21:48:08.541521+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=2 wall_ms=61.462 action_type=motor"}
+{"time": "2026-07-04T21:48:08.592727+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=3 wall_ms=49.112 action_type=motor"}
+{"time": "2026-07-04T21:48:08.643793+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "curiosity_investigate_enter agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=4 drive=0.2620 learning_progress=0.0608 pleasure=0.2620"}
+{"time": "2026-07-04T21:48:08.644111+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=4 wall_ms=50.602 action_type=motor"}
+{"time": "2026-07-04T21:48:08.694916+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=5 wall_ms=49.399 action_type=motor"}
+{"time": "2026-07-04T21:48:08.754499+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=6 wall_ms=59.008 action_type=motor"}
+{"time": "2026-07-04T21:48:08.802227+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=7 wall_ms=47.029 action_type=motor"}
+{"time": "2026-07-04T21:48:08.849693+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=8 wall_ms=46.747 action_type=motor"}
+{"time": "2026-07-04T21:48:08.901027+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "curiosity_investigate_exit agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=9 drive=0.2436 learning_progress=0.0455"}
+{"time": "2026-07-04T21:48:08.901302+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=9 wall_ms=50.905 action_type=motor"}
+{"time": "2026-07-04T21:48:08.952643+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=10 wall_ms=50.787 action_type=motor"}
+{"time": "2026-07-04T21:48:09.013829+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=11 wall_ms=60.309 action_type=motor"}
+{"time": "2026-07-04T21:48:09.076354+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=12 wall_ms=58.764 action_type=motor"}
+{"time": "2026-07-04T21:48:09.141699+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=13 wall_ms=64.652 action_type=motor"}
+{"time": "2026-07-04T21:48:09.217671+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=14 wall_ms=73.351 action_type=motor"}
+{"time": "2026-07-04T21:48:09.270760+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=15 wall_ms=52.039 action_type=motor"}
+INFO:     127.0.0.1:55071 - "WebSocket /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/cycle" [accepted]
+{"time": "2026-07-04T21:48:09.323483+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=16 wall_ms=51.357 action_type=motor"}
+INFO:     connection open
+{"time": "2026-07-04T21:48:09.377490+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=17 wall_ms=52.765 action_type=motor"}
+{"time": "2026-07-04T21:48:09.432548+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=18 wall_ms=54.382 action_type=motor"}
+{"time": "2026-07-04T21:48:09.487444+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=19 wall_ms=54.238 action_type=motor"}
+{"time": "2026-07-04T21:48:09.540162+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=20 wall_ms=51.977 action_type=motor"}
+{"time": "2026-07-04T21:48:09.593786+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=21 wall_ms=53.017 action_type=motor"}
+{"time": "2026-07-04T21:48:09.682177+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "curiosity_investigate_enter agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=22 drive=0.2599 learning_progress=0.2653 pleasure=0.2599"}
+{"time": "2026-07-04T21:48:09.682615+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=22 wall_ms=82.342 action_type=motor"}
+{"time": "2026-07-04T21:48:09.755889+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=23 wall_ms=72.624 action_type=motor"}
+{"time": "2026-07-04T21:48:09.877881+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=24 wall_ms=121.331 action_type=motor"}
+{"time": "2026-07-04T21:48:09.881854+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "fast_path_damage agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 damage=21.2500 integrity=78.7500 viability=78.7500"}
+{"time": "2026-07-04T21:48:09.956375+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "curiosity_investigate_exit agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=25 drive=0.0000 learning_progress=0.9749"}
+{"time": "2026-07-04T21:48:09.956801+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=25 wall_ms=66.879 action_type=motor"}
+{"time": "2026-07-04T21:48:10.046390+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=26 wall_ms=88.595 action_type=motor"}
+{"time": "2026-07-04T21:48:10.116794+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=27 wall_ms=69.708 action_type=motor"}
+{"time": "2026-07-04T21:48:10.202659+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=28 wall_ms=80.772 action_type=motor"}
+{"time": "2026-07-04T21:48:10.277984+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=29 wall_ms=74.641 action_type=motor"}
+{"time": "2026-07-04T21:48:10.361116+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=30 wall_ms=79.167 action_type=motor"}
+{"time": "2026-07-04T21:48:10.439857+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=31 wall_ms=75.017 action_type=motor"}
+{"time": "2026-07-04T21:48:10.557915+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=32 wall_ms=110.141 action_type=motor"}
+{"time": "2026-07-04T21:48:10.665036+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=33 wall_ms=102.738 action_type=motor"}
+{"time": "2026-07-04T21:48:10.737266+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=34 wall_ms=68.326 action_type=motor"}
+{"time": "2026-07-04T21:48:10.816340+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=35 wall_ms=73.238 action_type=motor"}
+{"time": "2026-07-04T21:48:10.929716+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=36 wall_ms=67.884 action_type=motor"}
+{"time": "2026-07-04T21:48:11.045528+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=37 wall_ms=74.999 action_type=motor"}
+{"time": "2026-07-04T21:48:11.160054+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=38 wall_ms=80.024 action_type=motor"}
+{"time": "2026-07-04T21:48:11.265303+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=39 wall_ms=77.332 action_type=motor"}
+{"time": "2026-07-04T21:48:11.390203+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=40 wall_ms=93.086 action_type=motor"}
+{"time": "2026-07-04T21:48:11.473163+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=41 wall_ms=67.606 action_type=motor"}
+{"time": "2026-07-04T21:48:11.595562+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=42 wall_ms=78.899 action_type=motor"}
+{"time": "2026-07-04T21:48:11.718941+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=43 wall_ms=91.429 action_type=motor"}
+{"time": "2026-07-04T21:48:11.813074+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=44 wall_ms=75.033 action_type=motor"}
+{"time": "2026-07-04T21:48:11.937823+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=45 wall_ms=89.981 action_type=motor"}
+{"time": "2026-07-04T21:48:12.024631+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=46 wall_ms=81.753 action_type=motor"}
+{"time": "2026-07-04T21:48:12.141039+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=47 wall_ms=71.931 action_type=motor"}
+{"time": "2026-07-04T21:48:12.272584+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=48 wall_ms=92.295 action_type=motor"}
+{"time": "2026-07-04T21:48:12.359867+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=49 wall_ms=68.389 action_type=motor"}
+{"time": "2026-07-04T21:48:12.480363+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=50 wall_ms=78.346 action_type=motor"}
+{"time": "2026-07-04T21:48:12.590356+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=51 wall_ms=76.326 action_type=motor"}
+{"time": "2026-07-04T21:48:12.724709+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=52 wall_ms=100.603 action_type=motor"}
+{"time": "2026-07-04T21:48:12.827058+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=53 wall_ms=92.509 action_type=motor"}
+{"time": "2026-07-04T21:48:12.920153+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=54 wall_ms=76.418 action_type=motor"}
+{"time": "2026-07-04T21:48:13.029917+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=55 wall_ms=74.408 action_type=motor"}
+{"time": "2026-07-04T21:48:13.163899+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=56 wall_ms=97.168 action_type=motor"}
+{"time": "2026-07-04T21:48:13.249046+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=57 wall_ms=71.244 action_type=motor"}
+{"time": "2026-07-04T21:48:13.371568+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=58 wall_ms=83.570 action_type=motor"}
+{"time": "2026-07-04T21:48:13.467375+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=59 wall_ms=83.102 action_type=motor"}
+{"time": "2026-07-04T21:48:13.585096+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=60 wall_ms=91.305 action_type=motor"}
+{"time": "2026-07-04T21:48:13.679447+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=61 wall_ms=76.632 action_type=motor"}
+{"time": "2026-07-04T21:48:13.795744+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=62 wall_ms=81.488 action_type=motor"}
+{"time": "2026-07-04T21:48:13.899446+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=63 wall_ms=73.715 action_type=motor"}
+{"time": "2026-07-04T21:48:14.043643+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=64 wall_ms=106.360 action_type=motor"}
+{"time": "2026-07-04T21:48:14.136696+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=65 wall_ms=73.495 action_type=motor"}
+{"time": "2026-07-04T21:48:14.211709+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=66 wall_ms=70.945 action_type=motor"}
+{"time": "2026-07-04T21:48:14.350941+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=67 wall_ms=84.486 action_type=motor"}
+{"time": "2026-07-04T21:48:14.452427+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=68 wall_ms=90.510 action_type=motor"}
+{"time": "2026-07-04T21:48:14.536758+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=69 wall_ms=79.371 action_type=motor"}
+{"time": "2026-07-04T21:48:14.682903+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=70 wall_ms=99.443 action_type=motor"}
+{"time": "2026-07-04T21:48:14.764331+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=71 wall_ms=70.265 action_type=motor"}
+{"time": "2026-07-04T21:48:14.925767+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=72 wall_ms=121.157 action_type=motor"}
+{"time": "2026-07-04T21:48:15.029028+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=73 wall_ms=84.179 action_type=motor"}
+{"time": "2026-07-04T21:48:15.111023+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "curiosity_investigate_enter agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=74 drive=0.1121 learning_progress=0.1389 pleasure=0.1121"}
+{"time": "2026-07-04T21:48:15.111474+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=74 wall_ms=71.984 action_type=motor"}
+{"time": "2026-07-04T21:48:15.195377+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=75 wall_ms=76.321 action_type=motor"}
+{"time": "2026-07-04T21:48:15.306169+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=76 wall_ms=77.232 action_type=motor"}
+{"time": "2026-07-04T21:48:15.414231+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=77 wall_ms=74.878 action_type=motor"}
+{"time": "2026-07-04T21:48:15.526232+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=78 wall_ms=75.369 action_type=motor"}
+{"time": "2026-07-04T21:48:15.647249+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=79 wall_ms=85.907 action_type=motor"}
+{"time": "2026-07-04T21:48:15.777677+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=80 wall_ms=120.103 action_type=motor"}
+{"time": "2026-07-04T21:48:15.860696+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=81 wall_ms=78.328 action_type=motor"}
+{"time": "2026-07-04T21:48:15.978580+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=82 wall_ms=103.580 action_type=motor"}
+{"time": "2026-07-04T21:48:16.083191+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=83 wall_ms=98.457 action_type=motor"}
+{"time": "2026-07-04T21:48:16.187705+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=84 wall_ms=92.372 action_type=motor"}
+{"time": "2026-07-04T21:48:16.301088+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=85 wall_ms=94.895 action_type=motor"}
+{"time": "2026-07-04T21:48:16.427825+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=86 wall_ms=110.798 action_type=motor"}
+{"time": "2026-07-04T21:48:16.517893+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=87 wall_ms=74.799 action_type=motor"}
+{"time": "2026-07-04T21:48:16.632117+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=88 wall_ms=94.859 action_type=motor"}
+{"time": "2026-07-04T21:48:16.718800+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=89 wall_ms=71.575 action_type=motor"}
+{"time": "2026-07-04T21:48:16.836060+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=90 wall_ms=76.826 action_type=motor"}
+{"time": "2026-07-04T21:48:16.945247+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=91 wall_ms=75.461 action_type=motor"}
+{"time": "2026-07-04T21:48:17.051888+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=92 wall_ms=71.573 action_type=motor"}
+{"time": "2026-07-04T21:48:17.180966+00:00", "level": "INFO", "logger": "decadic.agents.runtime", "message": "cycle_completed agent_id=eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37 cycle=93 wall_ms=91.151 action_type=motor"}

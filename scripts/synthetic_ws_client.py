@@ -200,8 +200,10 @@ def _observation(
                 ]
                 action = "falling"
                 break
-    elif step == 5:
-        # Legacy default: one collision early (kept for existing harness runs).
+    elif step == 5 and scenario is None:
+        # Legacy default: one collision early (kept for existing harness runs;
+        # suppressed in scenario mode -- the binding probe needs a clean pain
+        # channel, and this decaying spike polluted the whole first run).
         obs_events.append({"type": "collision", "intensity": 0.85, "source": "wall_test"})
     return {
         "timestamp": f"2026-05-07T12:{step % 60:02d}:00Z",

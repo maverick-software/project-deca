@@ -1,0 +1,17 @@
+INFO:     127.0.0.1:61287 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61287 - "POST /agent HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55067 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55072 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55073 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55074 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55075 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56130 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56131 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56132 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57255 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57256 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57257 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57258 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57259 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57260 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57261 - "GET /agent/eb90ad52-c0d5-4c7f-a57a-8bf1b95c8e37/metrics HTTP/1.1" 200 OK

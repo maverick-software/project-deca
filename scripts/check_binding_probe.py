@@ -83,31 +83,58 @@ def main() -> int:
         print(f"FAIL: unusable inputs (samples={len(rows)}, probe phases={len(order)})")
         return 1
 
-    prio = [float(r["priority_scalar"]) for r in rows]
-    pain = [float(r.get("pain_scalar", 0.0) or 0.0) for r in rows]
+    # v2 (2026-07-04, after the first off-leg run): segmentation by SCENARIO
+    # STEP WINDOWS, not pain anchors -- threat_near raises anticipatory
+    # stress, not pain, so the pain-spike anchor collapsed and swallowed the
+    # train segment. step_est (t/rate) maps each sample onto the schedule;
+    # drop_oldest keeps the server current with the freshest frame, so the
+    # clock holds within a phase-gap tolerance.
+    def _step(r: dict) -> float:
+        if r.get("step_est") is not None:
+            return float(r["step_est"])
+        return float(r.get("t", 0.0)) / 0.1  # legacy samples: rate was 0.1
 
-    # Baseline: pre-train warmup = samples before the FIRST pain spike.
-    first_pain = next((i for i, p in enumerate(pain) if p > PAIN_SPIKE), len(rows) // 4)
-    base = prio[: max(10, first_pain)]
-    mean = sum(base) / len(base)
-    var = sum((x - mean) ** 2 for x in base) / len(base)
+    prio_by_step = [(_step(r), float(r["priority_scalar"])) for r in rows]
+    phase_len = int(scen["schedule"][0].get("steps", 120)) if scen.get("schedule") else 120
+
+    # Baseline: samples inside probe-segment GAPS (between probe phases) --
+    # local to the segment, immune to slow drift across the run.
+    probe_start = min(int(p["start"]) for p in order)
+    gap_vals = [
+        v
+        for s, v in prio_by_step
+        if s >= probe_start - 200
+        and not any(
+            int(p["start"]) - 20 <= s <= int(p["start"]) + phase_len + 60 for p in order
+        )
+    ]
+    if len(gap_vals) < 20:
+        print(f"FAIL: too few gap-baseline samples ({len(gap_vals)})")
+        return 1
+    mean = sum(gap_vals) / len(gap_vals)
+    var = sum((x - mean) ** 2 for x in gap_vals) / len(gap_vals)
     std = max(0.01, var**0.5)
     thresh = mean - args.sigma * std
 
-    # Probe segment: after the LAST pain spike, plus a recovery margin.
-    last_pain = max(
-        (i for i, p in enumerate(pain) if p > PAIN_SPIKE), default=first_pain
-    )
-    seg_start = min(len(rows) - 1, last_pain + 20)
-    seg = [p < thresh for p in prio[seg_start:]]
-    eps = episodes(seg)
-
-    # Order-based mapping to the interleaved probe phases.
+    # Per-phase decision: does priority deflect toward avoid INSIDE the
+    # phase's own window? (No order mapping, no episode counting.)
     hits = {"probe_trained": 0, "probe_novel": 0}
-    for i, _ in enumerate(eps):
-        if i < len(order):
-            hits[order[i]["kind"]] += 1
-    total = len(eps)
+    details = []
+    for p in order:
+        lo, hi = int(p["start"]) + 5, int(p["start"]) + phase_len + 40
+        w = [v for s, v in prio_by_step if lo <= s <= hi]
+        if not w:
+            details.append((p["kind"], p["pair"], None, False))
+            continue
+        wmin = min(w)
+        deflected = wmin < thresh
+        if deflected:
+            hits[p["kind"]] += 1
+        details.append((p["kind"], p["pair"], round(wmin, 4), deflected))
+    total = sum(hits.values())
+    eps = []  # retained for the summary line's episode count semantics
+    for kind, pair, wmin, ok in details:
+        print(f"  {kind:14s} {str(pair):24s} min={wmin} deflected={ok}")
 
     if total == 0:
         verdict = "BLIND"
@@ -119,14 +146,13 @@ def main() -> int:
         verdict = "PARTIAL"
 
     print(
-        f"baseline: mean={mean:.4f} std={std:.4f} thresh={thresh:.4f} "
-        f"(warmup n={len(base)})"
+        f"gap baseline: mean={mean:.4f} std={std:.4f} thresh={thresh:.4f} "
+        f"(n={len(gap_vals)})"
     )
     print(
-        f"probe segment: samples={len(seg)} episodes={total} "
-        f"(expected {n_trained} trained + {n_novel} novel) "
-        f"hits: trained={hits['probe_trained']}/{n_trained} "
-        f"novel={hits['probe_novel']}/{n_novel}"
+        f"probe phases deflected: {total}/{len(order)} "
+        f"(trained={hits['probe_trained']}/{n_trained} "
+        f"novel={hits['probe_novel']}/{n_novel})"
     )
     print(f"BINDING_PROBE: {verdict}")
 

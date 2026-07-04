@@ -1,5 +1,5 @@
 {
-  "workstream": "WS5-M0.4",
+  "workstream": "WS5-M5.1",
   "relation": "threat_adjacency",
   "seed": 42,
   "entities": [
@@ -186,6 +186,7 @@
         "ent-E",
         "ent-F"
       ],
+      "kind": "train",
       "gap": 1.5,
       "event": {
         "type": "threat_near",
@@ -200,6 +201,7 @@
         "ent-B",
         "ent-E"
       ],
+      "kind": "train",
       "gap": 1.5,
       "event": {
         "type": "threat_near",
@@ -214,6 +216,7 @@
         "ent-A",
         "ent-F"
       ],
+      "kind": "train",
       "gap": 1.5,
       "event": {
         "type": "threat_near",
@@ -228,6 +231,7 @@
         "ent-B",
         "ent-C"
       ],
+      "kind": "train",
       "gap": 1.5,
       "event": {
         "type": "threat_near",
@@ -242,6 +246,7 @@
         "ent-B",
         "ent-F"
       ],
+      "kind": "train",
       "gap": 1.5,
       "event": {
         "type": "threat_near",
@@ -256,6 +261,7 @@
         "ent-C",
         "ent-D"
       ],
+      "kind": "train",
       "gap": 1.5,
       "event": {
         "type": "threat_near",
@@ -270,6 +276,7 @@
         "ent-A",
         "ent-C"
       ],
+      "kind": "train",
       "gap": 1.5,
       "event": {
         "type": "threat_near",
@@ -284,12 +291,153 @@
         "ent-D",
         "ent-E"
       ],
+      "kind": "train",
       "gap": 1.5,
       "event": {
         "type": "threat_near",
         "intensity": 0.6,
         "every": 10
       }
+    },
+    {
+      "start": 3800,
+      "steps": 120,
+      "pair": [
+        "ent-E",
+        "ent-F"
+      ],
+      "kind": "probe_trained",
+      "gap": 1.5
+    },
+    {
+      "start": 4200,
+      "steps": 120,
+      "pair": [
+        "ent-B",
+        "ent-D"
+      ],
+      "kind": "probe_novel",
+      "gap": 1.5
+    },
+    {
+      "start": 4600,
+      "steps": 120,
+      "pair": [
+        "ent-B",
+        "ent-E"
+      ],
+      "kind": "probe_trained",
+      "gap": 1.5
+    },
+    {
+      "start": 5000,
+      "steps": 120,
+      "pair": [
+        "ent-D",
+        "ent-F"
+      ],
+      "kind": "probe_novel",
+      "gap": 1.5
+    },
+    {
+      "start": 5400,
+      "steps": 120,
+      "pair": [
+        "ent-A",
+        "ent-F"
+      ],
+      "kind": "probe_trained",
+      "gap": 1.5
+    },
+    {
+      "start": 5800,
+      "steps": 120,
+      "pair": [
+        "ent-C",
+        "ent-F"
+      ],
+      "kind": "probe_novel",
+      "gap": 1.5
+    },
+    {
+      "start": 6200,
+      "steps": 120,
+      "pair": [
+        "ent-B",
+        "ent-C"
+      ],
+      "kind": "probe_trained",
+      "gap": 1.5
+    },
+    {
+      "start": 6600,
+      "steps": 120,
+      "pair": [
+        "ent-C",
+        "ent-E"
+      ],
+      "kind": "probe_novel",
+      "gap": 1.5
+    },
+    {
+      "start": 7000,
+      "steps": 120,
+      "pair": [
+        "ent-B",
+        "ent-F"
+      ],
+      "kind": "probe_trained",
+      "gap": 1.5
+    },
+    {
+      "start": 7400,
+      "steps": 120,
+      "pair": [
+        "ent-A",
+        "ent-B"
+      ],
+      "kind": "probe_novel",
+      "gap": 1.5
+    },
+    {
+      "start": 7800,
+      "steps": 120,
+      "pair": [
+        "ent-C",
+        "ent-D"
+      ],
+      "kind": "probe_trained",
+      "gap": 1.5
+    },
+    {
+      "start": 8200,
+      "steps": 120,
+      "pair": [
+        "ent-A",
+        "ent-E"
+      ],
+      "kind": "probe_novel",
+      "gap": 1.5
+    },
+    {
+      "start": 8600,
+      "steps": 120,
+      "pair": [
+        "ent-A",
+        "ent-C"
+      ],
+      "kind": "probe_trained",
+      "gap": 1.5
+    },
+    {
+      "start": 9000,
+      "steps": 120,
+      "pair": [
+        "ent-A",
+        "ent-D"
+      ],
+      "kind": "probe_novel",
+      "gap": 1.5
     }
   ],
   "holdout_pairs": [
@@ -322,6 +470,120 @@
       "ent-D"
     ]
   ],
-  "total_steps_hint": 4200,
-  "notes": "Train phases schedule threat-adjacency for train pairs only; holdout_pairs are reserved for the M5 novel-pairing test phase. Balance/leakage checklist finalized at M5.1."
+  "probe_order": [
+    {
+      "start": 3800,
+      "kind": "probe_trained",
+      "pair": [
+        "ent-E",
+        "ent-F"
+      ]
+    },
+    {
+      "start": 4200,
+      "kind": "probe_novel",
+      "pair": [
+        "ent-B",
+        "ent-D"
+      ]
+    },
+    {
+      "start": 4600,
+      "kind": "probe_trained",
+      "pair": [
+        "ent-B",
+        "ent-E"
+      ]
+    },
+    {
+      "start": 5000,
+      "kind": "probe_novel",
+      "pair": [
+        "ent-D",
+        "ent-F"
+      ]
+    },
+    {
+      "start": 5400,
+      "kind": "probe_trained",
+      "pair": [
+        "ent-A",
+        "ent-F"
+      ]
+    },
+    {
+      "start": 5800,
+      "kind": "probe_novel",
+      "pair": [
+        "ent-C",
+        "ent-F"
+      ]
+    },
+    {
+      "start": 6200,
+      "kind": "probe_trained",
+      "pair": [
+        "ent-B",
+        "ent-C"
+      ]
+    },
+    {
+      "start": 6600,
+      "kind": "probe_novel",
+      "pair": [
+        "ent-C",
+        "ent-E"
+      ]
+    },
+    {
+      "start": 7000,
+      "kind": "probe_trained",
+      "pair": [
+        "ent-B",
+        "ent-F"
+      ]
+    },
+    {
+      "start": 7400,
+      "kind": "probe_novel",
+      "pair": [
+        "ent-A",
+        "ent-B"
+      ]
+    },
+    {
+      "start": 7800,
+      "kind": "probe_trained",
+      "pair": [
+        "ent-C",
+        "ent-D"
+      ]
+    },
+    {
+      "start": 8200,
+      "kind": "probe_novel",
+      "pair": [
+        "ent-A",
+        "ent-E"
+      ]
+    },
+    {
+      "start": 8600,
+      "kind": "probe_trained",
+      "pair": [
+        "ent-A",
+        "ent-C"
+      ]
+    },
+    {
+      "start": 9000,
+      "kind": "probe_novel",
+      "pair": [
+        "ent-A",
+        "ent-D"
+      ]
+    }
+  ],
+  "total_steps_hint": 9800,
+  "leakage_controls": "every entity appears in >=1 train AND >=1 holdout pair (marginal entity statistics uninformative); probe phases eventless (pain cannot carry the signal); probe_trained/probe_novel interleaved (drift cannot masquerade as generalization); pairs balanced by round-robin split of all C(n,2) pairings"
 }

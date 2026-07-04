@@ -2441,6 +2441,10 @@ class AgentRuntime:
             "loss_canary_jump_ratio",
             "drive_priority_gain_configured",
             "drive_priority_gain_effective",
+            # WS5-M5: the binding probe polls these from /metrics (the copy
+            # into metrics is allowlist-based; diagnostics alone don't surface).
+            "priority_scalar",
+            "pain_scalar",
         ):
             if diagnostics.get(key) is not None:
                 self.metrics[key] = float(diagnostics[key])

@@ -26,9 +26,12 @@
 ## M2 — Mouth: hardware and silence
 
 **M2.1 `voice_u` head** (flag `DECADIC_VOICE`): zero-init (silence at init), emitted in the action dict as `"voice"`; checkpoint compat via versioned bundle key.
-**M2.2 Vocal tract.** Body/world-side formant synthesizer, interpolation between cycle frames, mixed into `obs.audio` with attenuation; desk rig = speaker+mic path documented.
+**M2.2 Vocal tract + mixing bus (Rig 1, PRD 3.7).** Body/world-side formant synthesizer (pure numpy, ~1,600 samples/cycle at 16 kHz, param interpolation across cycle frames); world-side mixing bus sums agent voice + scheduled utterances with distance attenuation into the next `obs.audio` chunk. Optional monitor tee to operator speakers.
+*Accept:* unit tests — synth determinism, click-free interpolation at frame boundaries, bus attenuation math; loopback smoke ⚙ (`run_binding_smoke.ps1` pattern) shows the rendered waveform re-entering observation on the next cycle.
 **M2.3 Mouth in the body schema.** Articulator positions as proprio fields; body-map registration.
-*Accept:* suite green both flag states; a live run ⚙ shows rendered audio re-entering observation (loopback smoke, `run_binding_smoke.ps1` pattern).
+**M2.4 ⚙ Desk rig (Rig 2, PRD 3.7).** Callback-driven output stream + ring buffer to a physical speaker; microphone input stream chunked (~100–200 ms, cycle-aligned) into `obs.audio`; efference-aware self-masking hook.
+*Accept:* measured end-to-end loop latency (synth→speaker→mic→obs) under one cycle period; the M2.2 loopback smoke passes UNCHANGED on the physical rig — the rig-indifference principle, enforced. Not required for M3–M6 training (Rig 1 suffices); required before any live naming-game session.
+*Accept (M2 overall):* suite green both flag states.
 
 ## M3 — Babble and vocal agency
 
@@ -64,5 +67,6 @@
 M0.1 -> M0.2 -> M0.3 -> M0.4 (GATE)
 M0.4 -> M1.1 -> M1.2 -> M1.3 -> M1.4
 M0.4 -> M2.1 -> M2.2 -> M2.3 -> M3.1 -> M3.2 -> M3.3 -> M4.1 -> M4.2 -> M5 -> M6
+M2.2 -> M2.4 (desk rig: gates LIVE sessions only; M3-M6 train on Rig 1)
 M1 and M2+ parallelize after the M0.4 gate.
 ```
