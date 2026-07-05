@@ -466,8 +466,14 @@ def brace_ratchet(
 
 
 # Liveness: if no action arrives within this window (~7+ missed cognitive
-# cycles), assume the brain isn't driving and let the body go limp.
-COMMAND_STALE_S = 1.0
+# cycles AT FULL RATE), assume the brain isn't driving and let the body go
+# limp. Env-tunable (2026-07-04 finding): when the brain runs slower than
+# ~1 cycle/s, a fixed 1.0 s window marks it dead after nearly every action
+# and the body ragdolls permanently -- the watchdog must scale with the
+# actual cognitive cadence during diagnosis.
+COMMAND_STALE_S = max(
+    0.25, float(os.environ.get("DECADIC_BODY_COMMAND_STALE_S", "1.0"))
+)
 
 
 def _utc_iso() -> str:
@@ -3022,6 +3028,10 @@ async def _run(
             impact_cooldown: dict[str, int] = {}
             i = 0
             last_wall = time.perf_counter()
+            # 2026-07-04 body-loop budget ledger: the brain was starving at
+            # 0.37 obs/s and the ~2.7 s/iteration had no attribution. Phase
+            # times accumulate here and print every 50 steps.
+            phase_ms = {"physics": 0.0, "vision": 0.0, "views": 0.0, "audio": 0.0, "send": 0.0}
             while steps <= 0 or i < steps:
                 while pending_commands:
                     cmd = pending_commands.pop(0)
@@ -3152,6 +3162,7 @@ async def _run(
                     stale = (now - liveness["last_action"]) > COMMAND_STALE_S
                     sim.set_lifeless(bool(liveness["lifeless"]) or stale)
                 sim.step(dt)
+                phase_ms["physics"] += (time.perf_counter() - now) * 1000.0
                 last_wall = now
 
                 snap = sim.snapshot()
@@ -3200,23 +3211,44 @@ async def _run(
                     )
                 prev_contacts = {k: float(v) for k, v in snap.contacts.items()}
                 events.extend(sim.scene_events(i))
+                _t0 = time.perf_counter()
+                _vision = sim.render_vision_b64()
+                _t1 = time.perf_counter()
+                _views = sim.render_views_b64()
+                _t2 = time.perf_counter()
+                _audio = (
+                    audio_payload(synth_audio_window(events, snap.contacts))
+                    if audio
+                    else None
+                )
+                _t3 = time.perf_counter()
                 obs = build_body_observation(
                     snap,
                     events=events,
-                    vision_b64=sim.render_vision_b64(),
+                    vision_b64=_vision,
                     vision_resolution=(sim.vision_size, sim.vision_size),
-                    debug_views=sim.render_views_b64(),
-                    audio=audio_payload(synth_audio_window(events, snap.contacts))
-                    if audio
-                    else None,
+                    debug_views=_views,
+                    audio=_audio,
                     control_mode="active_inference",
                 )
                 await ws.send(json.dumps(obs))
+                _t4 = time.perf_counter()
+                phase_ms["vision"] += (_t1 - _t0) * 1000.0
+                phase_ms["views"] += (_t2 - _t1) * 1000.0
+                phase_ms["audio"] += (_t3 - _t2) * 1000.0
+                phase_ms["send"] += (_t4 - _t3) * 1000.0
                 if i % 50 == 0:
+                    _n = 50.0 if i else 1.0
                     print(
                         f"[body] step={i} pos=({snap.position[0]:.2f},{snap.position[1]:.2f},"
                         f"{snap.position[2]:.2f}) moving={snap.moving} events={len(obs['events'])}"
                     )
+                    print(
+                        "[body] budget ms/obs: "
+                        + " ".join(f"{k}={v / _n:.1f}" for k, v in phase_ms.items()),
+                        flush=True,
+                    )
+                    phase_ms = {k: 0.0 for k in phase_ms}
                 await asyncio.sleep(interval)
                 i += 1
             sim.close()
@@ -3298,7 +3330,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--ssl", action="store_true")
-    parser.add_argument("--steps", type=int, default=200, help="0 = run forever")
+    # Default flipped 200 -> 0 (2026-07-04, owner): a body is not a test
+    # fixture -- embodiment runs indefinitely unless explicitly bounded. The
+    # old smoke-test default silently ended runs at step 200.
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=0,
+        help="0 = run forever (default); N = bounded smoke/test run",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Synthetic snapshots; no MuJoCo")
     parser.add_argument(
         "--vision",

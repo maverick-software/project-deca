@@ -1,1 +1,1 @@
-error: No matching MSFT_NetTCPConnection objects found by CIM query for instances of the ROOT/StandardCimv2/MSFT_NetTCPConnection class on the  CIM server: SELECT * FROM MSFT_NetTCPConnection  WHERE ((LocalPort = 8765)) AND ((State = 2)). Verify query parameters and retry.
+killed 36856
