@@ -113,6 +113,25 @@ def _appearance_dim() -> int:
     return _env_int("DECADIC_KUZU_APPEARANCE_DIM", 16)
 
 
+def _flush_max_ops() -> int:
+    """Unbatched mutations accumulate until this many are pending (2026-07-04
+    MuJoCo disk-storm fix: the port flushed after EVERY mutation)."""
+    return max(1, int(os.environ.get("DECADIC_KUZU_FLUSH_OPS", "64")))
+
+
+def _flush_max_age_s() -> float:
+    """...or until the oldest pending mutation is this stale (durability
+    window; memory remains the live source of truth)."""
+    return max(0.1, float(os.environ.get("DECADIC_KUZU_FLUSH_S", "2.0")))
+
+
+def _rebuild_min_interval_s() -> float:
+    """Vector-index rebuilds are full DROP+CREATE passes; a busy embodied
+    world stales entities every frame, so the count trigger alone caused
+    rebuild storms. Wall-clock floor between rebuilds."""
+    return max(0.0, float(os.environ.get("DECADIC_KUZU_REBUILD_MIN_S", "60")))
+
+
 def _rebuild_interval() -> int:
     return _env_int("DECADIC_KUZU_VECTOR_REBUILD_INTERVAL", 128)
 
@@ -169,6 +188,8 @@ class KuzuLongTermGraph(LongTermGraph):
         self._index_built = False
         self._index_rebuilds = 0
         self._rebuild_interval = _rebuild_interval()
+        self._last_flush_s = time.perf_counter()
+        self._last_rebuild_s = 0.0
         self._ids_since_index: set[str] = set()
         if self._root is not None:
             with self._lock:
@@ -361,8 +382,20 @@ class KuzuLongTermGraph(LongTermGraph):
             return
         if not self._pending and self._kz_conn is None:
             return  # nothing to do; never create storage for a no-op
+        # Deferred-flush policy (2026-07-04 MuJoCo disk-storm fix): the sqlite
+        # backend's protection rules were write-behind + BATCHED commits; this
+        # port flushed the whole pending buffer after every unbatched mutation
+        # with per-op autocommit fsyncs -- 100% disk active time the first
+        # time discovered perception populated the graph. Memory is the source
+        # of truth (reads never touch kuzu on the hot path); kuzu is
+        # durability. Accumulate, flush when big or stale.
+        if not batch and self._pending:
+            age = time.perf_counter() - self._last_flush_s
+            if len(self._pending) < _flush_max_ops() and age < _flush_max_age_s():
+                return
         started = time.perf_counter()
         self._flush_pending_locked()
+        self._last_flush_s = time.perf_counter()
         self._sqlite_last_commit_ms = (time.perf_counter() - started) * 1000.0
         self._sqlite_commit_count += 1
         if batch:
@@ -380,18 +413,55 @@ class KuzuLongTermGraph(LongTermGraph):
                     self._commit_locked(batch=True)
 
     def _flush_pending_locked(self) -> None:
-        """Apply buffered upserts/deletes to kuzu (per-op autocommit; log-and-continue).
+        """Apply buffered upserts/deletes to kuzu in ONE explicit transaction.
 
-        Memory is the source of truth, so a failed op degrades durability only;
-        it never corrupts the live graph (same culture as the write-behind worker).
+        One WAL fsync per flush instead of one per op (the 2026-07-04 disk
+        storm). On any error the transaction rolls back, the membership caches
+        are restored from a snapshot, and the ops replay per-op autocommit
+        with log-and-continue -- memory is the source of truth, so a failed op
+        degrades durability only; it never corrupts the live graph.
         """
         if not self._pending:
             return
         conn = self._open_locked()
         ops = list(self._pending.values())
         self._pending = {}
+        snap = (
+            set(self._kuzu_node_ids),
+            set(self._kuzu_edge_keys),
+            set(self._kuzu_belief_pks),
+            set(self._kuzu_semantic_pks),
+            set(self._ids_since_index),
+        )
+        try:
+            conn.execute("BEGIN TRANSACTION;")
+            for kind, p in ops:
+                self._apply_op_locked(conn, kind, p)
+            conn.execute("COMMIT;")
+            return
+        except Exception:
+            logger.exception("kuzu batched flush failed; replaying per-op")
+            try:
+                conn.execute("ROLLBACK;")
+            except Exception:
+                pass
+            (
+                self._kuzu_node_ids,
+                self._kuzu_edge_keys,
+                self._kuzu_belief_pks,
+                self._kuzu_semantic_pks,
+                self._ids_since_index,
+            ) = snap
         for kind, p in ops:
             try:
+                self._apply_op_locked(conn, kind, p)
+            except Exception:  # pragma: no cover - durability must not kill the cycle
+                logger.exception("kuzu graph persist op failed (%s)", kind)
+
+    def _apply_op_locked(self, conn: Any, kind: str, p: dict[str, Any]) -> None:
+        """Apply ONE buffered mutation (no commit; caller owns the txn)."""
+        if True:
+            if True:
                 if kind == "node":
                     if p["id"] in self._kuzu_node_ids:
                         conn.execute(
@@ -477,8 +547,6 @@ class KuzuLongTermGraph(LongTermGraph):
                 elif kind == "del_sem":
                     conn.execute("MATCH (s:SemanticRecord) WHERE s.pk = $pk DELETE s", p)
                     self._kuzu_semantic_pks.discard(p["pk"])
-            except Exception:  # pragma: no cover - durability must not kill the cycle
-                logger.exception("kuzu graph persist op failed (%s)", kind)
 
     # ---- load (kuzu -> memory) ------------------------------------------
     def _rows_locked(self, query: str) -> list[Any]:
@@ -613,6 +681,15 @@ class KuzuLongTermGraph(LongTermGraph):
             return False
         if self._index_built and len(self._ids_since_index) < self._rebuild_interval:
             return True
+        # Wall-clock floor between full DROP+CREATE rebuilds (2026-07-04): an
+        # embodied world stales entities every frame, so the count trigger
+        # alone fired a rebuild storm. Between rebuilds the tail-scan over
+        # `_ids_since_index` covers freshly-changed rows, so recall stays
+        # correct -- just approximate on the newest handful until the next
+        # rebuild. A built index is never dropped early just for staleness.
+        if self._index_built and _rebuild_min_interval_s() > 0.0:
+            if (time.perf_counter() - self._last_rebuild_s) < _rebuild_min_interval_s():
+                return True
         self._flush_pending_locked()  # the index only sees committed rows
         if not self._kuzu_node_ids:
             return False  # empty table: nothing to index (tail scan covers it)
@@ -632,6 +709,7 @@ class KuzuLongTermGraph(LongTermGraph):
             return False
         self._index_built = True
         self._index_rebuilds += 1
+        self._last_rebuild_s = time.perf_counter()
         self._ids_since_index = set()
         return True
 

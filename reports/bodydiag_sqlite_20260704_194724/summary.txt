@@ -1,0 +1,21 @@
+body diag: graph_backend=sqlite seconds=150 stamp=20260704_194724
+cycle rate (steady window): 5.24 cycles/s  (38 -> 825 cycles over 150.2s)
+  t=10.3s cycles=38
+  t=20.6s cycles=95
+  t=31s cycles=152
+  t=41.5s cycles=204
+  t=52.1s cycles=253
+  t=63s cycles=304
+  t=73.9s cycles=371
+  t=84.8s cycles=425
+  t=95.4s cycles=478
+  t=105.8s cycles=538
+  t=117s cycles=599
+  t=127.9s cycles=648
+  t=138.3s cycles=700
+  t=149.6s cycles=762
+  t=160.5s cycles=825
+body budget (last 3):
+[body] budget ms/obs: physics=9.6 vision=4.7 views=7.2 audio=0.0 send=83.6
+[body] budget ms/obs: physics=9.1 vision=4.9 views=7.2 audio=0.0 send=75.8
+[body] budget ms/obs: physics=8.4 vision=4.7 views=7.2 audio=0.0 send=68.3

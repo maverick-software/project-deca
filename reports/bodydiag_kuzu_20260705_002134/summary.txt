@@ -1,0 +1,18 @@
+body diag: graph_backend=kuzu seconds=150 stamp=20260705_002134
+cycle rate (steady window): 2.05 cycles/s  (45 -> 309 cycles over 128.7s)
+  t=26.5s cycles=45
+  t=37s cycles=69
+  t=47.8s cycles=94
+  t=58s cycles=115
+  t=70.3s cycles=141
+  t=81.5s cycles=163
+  t=93.1s cycles=187
+  t=103.9s cycles=211
+  t=114.6s cycles=236
+  t=126.5s cycles=256
+  t=141s cycles=283
+  t=155.2s cycles=309
+body budget (last 3):
+[body] budget ms/obs: physics=10.7 vision=4.4 views=7.2 audio=0.0 send=428.4
+[body] budget ms/obs: physics=10.0 vision=4.2 views=7.3 audio=0.0 send=290.3
+[body] budget ms/obs: physics=11.5 vision=4.4 views=7.7 audio=0.0 send=448.6

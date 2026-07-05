@@ -1,0 +1,26 @@
+body diag: graph_backend=sqlite seconds=150 stamp=20260705_003113
+cycle rate (steady window): 4.89 cycles/s  (37 -> 720 cycles over 139.7s)
+  t=10.7s cycles=37
+  t=22.3s cycles=91
+  t=32.8s cycles=137
+  t=44.6s cycles=187
+  t=55.7s cycles=241
+  t=67s cycles=297
+  t=78.2s cycles=360
+  t=88.7s cycles=407
+  t=98.7s cycles=458
+  t=109.1s cycles=515
+  t=119.1s cycles=567
+  t=130s cycles=618
+  t=140.4s cycles=668
+  t=150.4s cycles=720
+body budget (last 3):
+[body] budget ms/obs: physics=7.6 vision=5.1 views=7.4 audio=0.0 send=94.2
+[body] budget ms/obs: physics=9.4 vision=4.6 views=6.9 audio=0.0 send=106.3
+[body] budget ms/obs: physics=9.6 vision=4.8 views=7.7 audio=0.0 send=77.1
+store telemetry:
+  "commit_lag_ms":  100.7957000110764
+  "ltm_match_ms":  0.06769999163225293
+  "sqlite_commit_count":  676
+  "sqlite_batch_commit_count":  676
+  "sqlite_last_commit_ms":  13.111899985233322
