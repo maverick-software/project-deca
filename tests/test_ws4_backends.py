@@ -463,6 +463,143 @@ def test_lance_mirror_write_through_before_flush(tmp_path, monkeypatch):
         store.close()
 
 
+# --------------------------------------------------------------------------
+# WS4B -- graph writes off the critical path (kuzu off-lock flusher)
+# --------------------------------------------------------------------------
+
+
+def test_ws4b_m01_dual_connection_probe(tmp_path):
+    """M0.1 GROUND-TRUTH PROBE: two connections on one kuzu Database, one
+    writing from a thread while the other reads. PASS = the dedicated-write-
+    connection upgrade is available; SKIP(recorded) = the io-lock fallback
+    (which WS4B ships with) remains mandatory. Either outcome is a finding."""
+    kuzu = pytest.importorskip("kuzu")
+    import threading
+
+    db = kuzu.Database(str(tmp_path / "probe_kuzu"))
+    c1 = kuzu.Connection(db)
+    c2 = kuzu.Connection(db)
+    c1.execute("CREATE NODE TABLE T(id INT64, PRIMARY KEY(id))")
+    errs: list[Exception] = []
+
+    def _writer() -> None:
+        try:
+            for i in range(50):
+                c2.execute("CREATE (:T {id: $i})", {"i": i})
+        except Exception as exc:  # noqa: BLE001 - the probe records, not raises
+            errs.append(exc)
+
+    t = threading.Thread(target=_writer)
+    t.start()
+    read_errs: list[Exception] = []
+    for _ in range(20):
+        try:
+            r = c1.execute("MATCH (t:T) RETURN count(t)")
+            r.get_next()
+        except Exception as exc:  # noqa: BLE001
+            read_errs.append(exc)
+    t.join(timeout=30)
+    for c in (c1, c2):
+        try:
+            c.close()
+        except Exception:
+            pass
+    if errs or read_errs:
+        pytest.skip(
+            f"M0.1 finding: dual-connection NOT safe on this kuzu build "
+            f"(write={errs[:1]} read={read_errs[:1]}); io-lock fallback stands"
+        )
+
+
+def _kuzu_graph(tmp_path, name):
+    from decadic.memory.kuzu_graph import KuzuLongTermGraph
+
+    return KuzuLongTermGraph(tmp_path / name)
+
+
+def _rand_apps(n, seed=61):
+    rng = np.random.default_rng(seed)
+    a = rng.normal(size=(n, 16)).astype(np.float32)
+    return a / np.linalg.norm(a, axis=1, keepdims=True)
+
+
+def test_ws4b_offlock_flush_drain_and_reopen(tmp_path, monkeypatch):
+    """Writes land through the flusher thread; drain() is a true barrier;
+    reopen sees everything (durability equivalence with the inline path)."""
+    pytest.importorskip("kuzu")
+    monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "1")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "3")  # force several batches
+    apps = _rand_apps(10)
+    g = _kuzu_graph(tmp_path, "offlock_kuzu")
+    ids = [g.upsert_node(apps[i], kind="npc", cycle=i) for i in range(10)]
+    assert len(set(ids)) == 10
+    assert g.drain(timeout=15) is True
+    m = g.persistence_metrics()
+    assert m["graph_flush_queue_depth"] == 0
+    assert m["graph_flush_error_batches"] == 0
+    # Resolve time under the lock must be tiny -- the whole point of WS4B.
+    assert m["graph_flush_lock_ms"] < 50.0
+    # Dedicated write connection engaged (M0.1 probe passed on this box):
+    # readers of the shared connection never queue behind a batch.
+    assert m["graph_dedicated_write_conn"] is True
+    g.close()
+
+    g2 = _kuzu_graph(tmp_path, "offlock_kuzu")
+    try:
+        assert len(g2._nodes) == 10
+    finally:
+        g2.close()
+
+
+def test_ws4b_flush_failure_replay_converges(tmp_path, monkeypatch):
+    """Failure drill (PRD criterion 4): an injected batch failure rolls back
+    and replays per-op; kuzu converges to what memory claims; later flushes
+    are healthy; the live in-memory graph is never touched."""
+    pytest.importorskip("kuzu")
+    monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "1")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")  # manual flush timing
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")  # no age-trigger races
+    apps = _rand_apps(6, seed=62)
+    g = _kuzu_graph(tmp_path, "replay_kuzu")
+    for i in range(5):
+        g.upsert_node(apps[i], kind="npc", cycle=i)
+    mem_node_ids = set(g._nodes)
+    g._test_fail_next_batch = True
+    assert g.drain(timeout=15) is True
+    m = g.persistence_metrics()
+    assert m["graph_flush_error_batches"] == 1
+    assert set(g._nodes) == mem_node_ids  # memory untouched by the failure path
+
+    # Subsequent writes flush cleanly.
+    g.upsert_node(apps[5], kind="npc", cycle=99)
+    assert g.drain(timeout=15) is True
+    assert g.persistence_metrics()["graph_flush_error_batches"] == 1
+    g.close()
+
+    g2 = _kuzu_graph(tmp_path, "replay_kuzu")
+    try:
+        assert len(g2._nodes) == 6  # replay + follow-up both durable
+    finally:
+        g2.close()
+
+
+def test_ws4b_inline_mode_still_works(tmp_path, monkeypatch):
+    """DECADIC_KUZU_OFFLOCK_FLUSH=0 restores the 07-04 inline path (A/B arm)."""
+    pytest.importorskip("kuzu")
+    monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "0")
+    apps = _rand_apps(4, seed=63)
+    g = _kuzu_graph(tmp_path, "inline_kuzu")
+    for i in range(4):
+        g.upsert_node(apps[i], kind="npc", cycle=i)
+    assert g.drain(timeout=15) is True
+    g.close()
+    g2 = _kuzu_graph(tmp_path, "inline_kuzu")
+    try:
+        assert len(g2._nodes) == 4
+    finally:
+        g2.close()
+
+
 def test_percept_recency_exclusion_parity(tmp_path, monkeypatch):
     """WS3 recency horizon: exclude_cycle_after behaves identically on both
     backends and restores 'familiar = seen BEFORE the recent past'.

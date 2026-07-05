@@ -534,12 +534,14 @@ def test_binding_checkpoint_roundtrip_bundle(monkeypatch, tmp_path):
     p_on = tmp_path / "brain_on.pt"
     on.save(p_on)
 
+    # NB: binding faculties default ON since the 2026-07-04 owner decision, so
+    # a flags-OFF build now requires env=0 explicitly (delenv would yield ON).
     for var in (
         "DECADIC_WM_SLOT_TENSOR",
         "DECADIC_MEMORY_TOKENS",
         "DECADIC_RELATIONAL_CORE",
     ):
-        monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv(var, "0")
     off_env = NeuralBundle.try_build("bind-ckpt-off-env")
     assert off_env is not None and off_env.stack.has_relational_core is False
     off_env.load(p_on)  # adopts the saved (on) faculties + weights verbatim

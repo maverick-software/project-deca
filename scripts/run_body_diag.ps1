@@ -114,8 +114,8 @@ $budget = Select-String -Path "$RunDir\body.out.log" -Pattern "budget ms/obs" -E
 if ($budget) { $sum += "body budget (last 3):"; $sum += $budget }
 if (Test-Path "$RunDir\metrics.json") {
     $gm = Select-String -Path "$RunDir\metrics.json" `
-        -Pattern '"(sqlite_last_commit_ms|sqlite_commit_count|sqlite_batch_commit_count|kuzu_vector_index_rebuilds|ltm_match_ms|commit_lag_ms|lance_last_commit_ms|match_cache_hits|match_cache_misses)[^,]*' |
-        ForEach-Object { $_.Matches.Value.Trim() } | Select-Object -First 12
+        -Pattern '"(graph_flush_ms|graph_flush_lock_ms|graph_flush_queue_depth|graph_flush_error_batches|sqlite_last_commit_ms|sqlite_commit_count|sqlite_batch_commit_count|kuzu_vector_index_rebuilds|ltm_match_ms|commit_lag_ms|lance_last_commit_ms|match_cache_hits|match_cache_misses)[^,]*' |
+        ForEach-Object { $_.Matches.Value.Trim() } | Select-Object -First 16
     if ($gm) { $sum += "store telemetry:"; $sum += ($gm | ForEach-Object { "  $_" }) }
 }
 $bodyTail = Get-Content "$RunDir\body.err.log" -Tail 5 -ErrorAction SilentlyContinue

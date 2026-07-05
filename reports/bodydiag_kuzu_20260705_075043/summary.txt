@@ -1,0 +1,30 @@
+body diag: graph_backend=kuzu seconds=150 stamp=20260705_075043
+cycle rate (steady window): 3.00 cycles/s  (36 -> 460 cycles over 141.1s)
+  t=11s cycles=36
+  t=23.6s cycles=72
+  t=35.6s cycles=114
+  t=48s cycles=147
+  t=61s cycles=181
+  t=71.5s cycles=217
+  t=81.6s cycles=251
+  t=92s cycles=278
+  t=105.2s cycles=308
+  t=116.6s cycles=348
+  t=127.2s cycles=384
+  t=139.5s cycles=424
+  t=152.1s cycles=460
+body budget (last 3):
+[body] budget ms/obs: physics=9.7 vision=4.4 views=7.7 audio=0.0 send=267.4
+[body] budget ms/obs: physics=8.2 vision=4.4 views=7.7 audio=0.0 send=186.0
+[body] budget ms/obs: physics=8.0 vision=4.3 views=7.6 audio=0.0 send=194.6
+store telemetry:
+  "commit_lag_ms":  67.68889998784289
+  "ltm_match_ms":  0.07650000043213367
+  "sqlite_commit_count":  415
+  "sqlite_batch_commit_count":  415
+  "sqlite_last_commit_ms":  13.59529999899678
+  "graph_flush_ms":  394.90899999509566
+  "graph_flush_lock_ms":  0.09970000246539712
+  "graph_flush_queue_depth":  39
+  "graph_flush_error_batches":  0
+  "kuzu_vector_index_rebuilds":  0

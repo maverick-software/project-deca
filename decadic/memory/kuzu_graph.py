@@ -76,7 +76,9 @@ import logging
 import os
 import shutil
 import tempfile
+import threading
 import time
+from collections import deque
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -100,6 +102,63 @@ _VECTOR_INDEX = "app_idx"
 # never loses a borderline row to the index's own (approximate) ordering.
 _INDEX_TOP_K = 8
 
+# --- WS4B: persistence statements (resolve/execute split) --------------------
+_Q_NODE_SET = (
+    "MATCH (e:Entity) WHERE e.id = $id "
+    "SET e.kind = $kind, e.appearance = $appearance, "
+    "e.appearance_json = $appearance_json, e.salience = $salience, "
+    "e.seen_count = $seen_count, e.first_cycle = $first_cycle, "
+    "e.last_cycle = $last_cycle, e.position_json = $position_json, "
+    "e.affect = $affect"
+)
+_Q_NODE_CREATE = (
+    "CREATE (:Entity {id: $id, kind: $kind, appearance: $appearance, "
+    "appearance_json: $appearance_json, salience: $salience, "
+    "seen_count: $seen_count, first_cycle: $first_cycle, "
+    "last_cycle: $last_cycle, position_json: $position_json, "
+    "affect: $affect})"
+)
+_Q_EDGE_SET = (
+    "MATCH (a:Entity)-[r:RELATES]->(b:Entity) "
+    "WHERE a.id = $src AND b.id = $dst AND r.kind = $kind "
+    "SET r.weight = $weight, r.count = $count, r.last_cycle = $last_cycle"
+)
+_Q_EDGE_CREATE = (
+    "MATCH (a:Entity), (b:Entity) WHERE a.id = $src AND b.id = $dst "
+    "CREATE (a)-[:RELATES {kind: $kind, weight: $weight, count: $count, "
+    "last_cycle: $last_cycle}]->(b)"
+)
+_Q_BELIEF_SET = (
+    "MATCH (b:PropertyBelief) WHERE b.pk = $pk "
+    "SET b.node_id = $node_id, b.property_key = $property_key, "
+    "b.value_json = $value_json, b.mean = $mean, b.variance = $variance, "
+    "b.confidence = $confidence, b.evidence_count = $evidence_count, "
+    "b.first_cycle = $first_cycle, b.last_cycle = $last_cycle, "
+    "b.source = $source, b.unstable = $unstable"
+)
+_Q_BELIEF_CREATE = (
+    "CREATE (:PropertyBelief {pk: $pk, node_id: $node_id, "
+    "property_key: $property_key, value_json: $value_json, mean: $mean, "
+    "variance: $variance, confidence: $confidence, "
+    "evidence_count: $evidence_count, first_cycle: $first_cycle, "
+    "last_cycle: $last_cycle, source: $source, unstable: $unstable})"
+)
+_Q_SEM_SET = (
+    "MATCH (s:SemanticRecord) WHERE s.pk = $pk "
+    "SET s.category = $category, s.id = $id, "
+    "s.payload_json = $payload_json, s.evidence_count = $evidence_count, "
+    "s.confidence = $confidence, s.first_cycle = $first_cycle, "
+    "s.last_cycle = $last_cycle, s.promoted = $promoted"
+)
+_Q_SEM_CREATE = (
+    "CREATE (:SemanticRecord {pk: $pk, category: $category, id: $id, "
+    "payload_json: $payload_json, evidence_count: $evidence_count, "
+    "confidence: $confidence, first_cycle: $first_cycle, "
+    "last_cycle: $last_cycle, promoted: $promoted})"
+)
+_Q_NODE_DEL = "MATCH (e:Entity) WHERE e.id = $id DETACH DELETE e"
+_Q_SEM_DEL = "MATCH (s:SemanticRecord) WHERE s.pk = $pk DELETE s"
+
 
 def _env_int(name: str, default: int, minimum: int = 1) -> int:
     try:
@@ -114,15 +173,58 @@ def _appearance_dim() -> int:
 
 
 def _flush_max_ops() -> int:
-    """Unbatched mutations accumulate until this many are pending (2026-07-04
-    MuJoCo disk-storm fix: the port flushed after EVERY mutation)."""
-    return max(1, int(os.environ.get("DECADIC_KUZU_FLUSH_OPS", "64")))
+    """Unbatched mutations accumulate until this many distinct keys are
+    pending. Sized UP 64->512 (2026-07-05): the pending dict dedupes per key,
+    and an embodied frame re-touches the same ~6 entities every cycle -- so a
+    LONGER window collapses ~5x more repeat updates into one statement each.
+    Kuzu absorbs ~2.5 statement-batches/s; the window is the statement-rate
+    lever, not just a latency knob."""
+    return max(1, int(os.environ.get("DECADIC_KUZU_FLUSH_OPS", "512")))
 
 
 def _flush_max_age_s() -> float:
     """...or until the oldest pending mutation is this stale (durability
-    window; memory remains the live source of truth)."""
-    return max(0.1, float(os.environ.get("DECADIC_KUZU_FLUSH_S", "2.0")))
+    window; memory remains the live source of truth and episodic memory is
+    the experiential ground truth -- a crash loses at most this many seconds
+    of GRAPH deltas, which re-derive from experience)."""
+    return max(0.1, float(os.environ.get("DECADIC_KUZU_FLUSH_S", "10.0")))
+
+
+def _flush_queue_cap() -> int:
+    """Max queued batches before new batches COALESCE into the tail batch
+    (2026-07-05: a drowning flusher grew the queue unboundedly at depth 39;
+    coalescing bounds memory and lets same-key statements land last-wins)."""
+    return max(1, int(os.environ.get("DECADIC_KUZU_FLUSH_QUEUE_CAP", "4")))
+
+
+def _offlock_flush_enabled() -> bool:
+    """WS4B: execute flush transactions on a background flusher thread so the
+    cognitive loop never waits on kuzu (measured 2026-07-05: 293 ms per batch
+    under the graph lock = the whole 2.27-vs-4.89 cycles/s gap). OFF restores
+    the 2026-07-04 inline behavior for A/B."""
+    return os.environ.get("DECADIC_KUZU_OFFLOCK_FLUSH", "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _drain_timeout_s() -> float:
+    return max(1.0, float(os.environ.get("DECADIC_KUZU_DRAIN_TIMEOUT_S", "30")))
+
+
+def _write_conn_enabled() -> bool:
+    """WS4B upgrade (M0.1 probe PASSED on the dev box): the flusher executes
+    on a DEDICATED write connection, so readers of the shared connection never
+    wait behind a ~300 ms batch. OFF -> shared-connection + io-lock fallback
+    (the behavior the probe's skip branch would have mandated)."""
+    return os.environ.get("DECADIC_KUZU_WRITE_CONN", "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def _rebuild_min_interval_s() -> float:
@@ -190,6 +292,30 @@ class KuzuLongTermGraph(LongTermGraph):
         self._rebuild_interval = _rebuild_interval()
         self._last_flush_s = time.perf_counter()
         self._last_rebuild_s = 0.0
+        # --- WS4B off-lock flusher state -------------------------------------
+        # Lock ORDER (deadlock discipline): self._lock -> {_kz_io_lock |
+        # _kz_write_lock}; the io and write locks are never nested in each
+        # other. READS use the shared connection under _kz_io_lock; the
+        # flusher WRITES on a dedicated connection under _kz_write_lock
+        # (M0.1 probe passed), so readers never queue behind a ~300 ms batch.
+        # Fallback (probe-skip machines / DECADIC_KUZU_WRITE_CONN=0): writes
+        # share the read connection under _kz_io_lock.
+        self._kz_io_lock = threading.Lock()
+        # Dedicated write connection (lazy; falls back to the shared conn +
+        # io-lock when creation fails or DECADIC_KUZU_WRITE_CONN=0).
+        self._kz_write_conn: Any | None = None
+        self._kz_write_lock = threading.Lock()
+        self._flush_mu = threading.Lock()  # guards queue + counters
+        self._flush_cv = threading.Condition(self._flush_mu)
+        self._flush_queue: deque[tuple[list[tuple[str, dict | None]], list[tuple[str, dict]]]] = deque()
+        self._flush_thread: threading.Thread | None = None
+        self._flush_stop = False
+        self._batches_enqueued = 0
+        self._batches_done = 0
+        self._flush_error_batches = 0
+        self._graph_flush_ms = 0.0  # off-lock execution time of the last batch
+        self._graph_flush_lock_ms = 0.0  # resolve time under self._lock (~0 target)
+        self._test_fail_next_batch = False  # failure-drill hook (tests only)
         self._ids_since_index: set[str] = set()
         if self._root is not None:
             with self._lock:
@@ -256,7 +382,8 @@ class KuzuLongTermGraph(LongTermGraph):
         if self._kz_conn is None:
             return
         try:
-            self._kz_conn.execute("CHECKPOINT;")
+            with self._kz_io_lock:
+                self._kz_conn.execute("CHECKPOINT;")
             self._sqlite_wal_checkpoint_count += 1
         except Exception:
             logger.debug("kuzu checkpoint unsupported/failed (harmless)", exc_info=True)
@@ -265,13 +392,15 @@ class KuzuLongTermGraph(LongTermGraph):
         # Explicit, hasattr-guarded close BEFORE any same-process reopen or file
         # copy: on some kuzu versions `del` alone leaves the file lock held
         # ("Could not set lock on file").
-        for h in (self._kz_conn, self._kz_db):
-            close = getattr(h, "close", None)
-            if callable(close):
-                try:
-                    close()
-                except Exception:
-                    pass
+        with self._kz_write_lock:
+            for h in (self._kz_write_conn, self._kz_conn, self._kz_db):
+                close = getattr(h, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
+            self._kz_write_conn = None
         self._kz_conn = None
         self._kz_db = None
         self._vector_loaded = False
@@ -286,9 +415,13 @@ class KuzuLongTermGraph(LongTermGraph):
                     self._kz_conn is not None
                     or (self._root is not None and not self._owns_tmp)
                 ):
-                    self._flush_pending_locked()
+                    self._drain_locked()
+                # Stop + join the flusher BEFORE handle release (WS4B drain
+                # barrier: the Windows file-lock discipline).
+                if self._flush_thread is not None:
+                    self._quiesce_flusher_locked()
             except Exception:  # pragma: no cover - close must never raise
-                logger.exception("kuzu graph close: flush failed")
+                logger.exception("kuzu graph close: drain failed")
             self._checkpoint_locked()
             self._close_handles_locked()
             if self._owns_tmp and self._root is not None:
@@ -389,14 +522,23 @@ class KuzuLongTermGraph(LongTermGraph):
         # time discovered perception populated the graph. Memory is the source
         # of truth (reads never touch kuzu on the hot path); kuzu is
         # durability. Accumulate, flush when big or stale.
-        if not batch and self._pending:
+        # 2026-07-05 finding: EVERY production flush arrived via write_batch()
+        # (batch_commit_count == commit_count in all diag arms), whose exit
+        # bypassed this deferral -- one forced flush per cycle, saturating the
+        # flusher regardless of window size. Under WS4B, write_batch marks a
+        # CONSISTENCY GROUPING, not urgency: memory is the source of truth and
+        # the pending dict is per-key last-wins, so the deferral window applies
+        # to batched and unbatched mutations alike. Only drain/close/backup
+        # force durability (they call _flush_pending_locked directly).
+        if self._pending:
             age = time.perf_counter() - self._last_flush_s
             if len(self._pending) < _flush_max_ops() and age < _flush_max_age_s():
                 return
         started = time.perf_counter()
         self._flush_pending_locked()
         self._last_flush_s = time.perf_counter()
-        self._sqlite_last_commit_ms = (time.perf_counter() - started) * 1000.0
+        self._graph_flush_lock_ms = (time.perf_counter() - started) * 1000.0
+        self._sqlite_last_commit_ms = self._graph_flush_lock_ms
         self._sqlite_commit_count += 1
         if batch:
             self._sqlite_batch_commit_count += 1
@@ -413,54 +555,259 @@ class KuzuLongTermGraph(LongTermGraph):
                     self._commit_locked(batch=True)
 
     def _flush_pending_locked(self) -> None:
-        """Apply buffered upserts/deletes to kuzu in ONE explicit transaction.
+        """WS4B two-phase flush: RESOLVE under self._lock, EXECUTE off it.
 
-        One WAL fsync per flush instead of one per op (the 2026-07-04 disk
-        storm). On any error the transaction rolls back, the membership caches
-        are restored from a snapshot, and the ops replay per-op autocommit
-        with log-and-continue -- memory is the source of truth, so a failed op
-        degrades durability only; it never corrupts the live graph.
+        Resolve is pure Python (microseconds): pending ops become fully-formed
+        (cypher, params) statements, membership sets are consulted AND updated
+        here. Execution -- one explicit transaction, one WAL fsync -- happens
+        on the flusher thread (or inline when DECADIC_KUZU_OFFLOCK_FLUSH=0),
+        so the cognitive loop never waits the ~300 ms a batch costs.
         """
         if not self._pending:
             return
-        conn = self._open_locked()
+        self._open_locked()  # connection must exist before the flusher needs it
         ops = list(self._pending.values())
         self._pending = {}
-        snap = (
-            set(self._kuzu_node_ids),
-            set(self._kuzu_edge_keys),
-            set(self._kuzu_belief_pks),
-            set(self._kuzu_semantic_pks),
-            set(self._ids_since_index),
-        )
-        try:
-            conn.execute("BEGIN TRANSACTION;")
-            for kind, p in ops:
-                self._apply_op_locked(conn, kind, p)
-            conn.execute("COMMIT;")
+        stmts = self._resolve_ops_locked(ops)
+        if not stmts:
             return
-        except Exception:
-            logger.exception("kuzu batched flush failed; replaying per-op")
-            try:
-                conn.execute("ROLLBACK;")
-            except Exception:
-                pass
-            (
-                self._kuzu_node_ids,
-                self._kuzu_edge_keys,
-                self._kuzu_belief_pks,
-                self._kuzu_semantic_pks,
-                self._ids_since_index,
-            ) = snap
+        if _offlock_flush_enabled():
+            with self._flush_mu:
+                if len(self._flush_queue) >= _flush_queue_cap():
+                    # Backpressure by coalescing: extend the tail batch
+                    # instead of growing the queue (same-key statements
+                    # execute in order, last wins -- correct, just merged).
+                    tail_stmts, tail_ops = self._flush_queue[-1]
+                    tail_stmts.extend(stmts)
+                    tail_ops.extend(ops)
+                else:
+                    self._flush_queue.append((stmts, ops))
+                    self._batches_enqueued += 1
+            self._ensure_flusher()
+        else:
+            self._execute_batch(stmts, ops)
+
+    def _resolve_ops_locked(
+        self, ops: list[tuple[str, dict]]
+    ) -> list[tuple[str, dict | None]]:
+        """Pure resolve: ops -> statements; sets updated; NO kuzu calls.
+
+        Set-consistency contract: sets reflect resolve-time intent. If the
+        batch later fails, the replay path re-probes existence per op, so a
+        successful replay converges kuzu to what the sets already claim. Only
+        a double failure leaves a divergence (logged loudly; memory unharmed).
+        """
+        stmts: list[tuple[str, dict | None]] = []
         for kind, p in ops:
+            if kind == "node":
+                if p["id"] in self._kuzu_node_ids:
+                    stmts.append((_Q_NODE_SET, p))
+                else:
+                    stmts.append((_Q_NODE_CREATE, p))
+                    self._kuzu_node_ids.add(p["id"])
+            elif kind == "edge":
+                key = (p["src"], p["dst"], p["kind"])
+                if key in self._kuzu_edge_keys:
+                    stmts.append((_Q_EDGE_SET, p))
+                else:
+                    stmts.append((_Q_EDGE_CREATE, p))
+                    self._kuzu_edge_keys.add(key)
+            elif kind == "belief":
+                if p["pk"] in self._kuzu_belief_pks:
+                    stmts.append((_Q_BELIEF_SET, p))
+                else:
+                    stmts.append((_Q_BELIEF_CREATE, p))
+                    self._kuzu_belief_pks.add(p["pk"])
+            elif kind == "sem":
+                if p["pk"] in self._kuzu_semantic_pks:
+                    stmts.append((_Q_SEM_SET, p))
+                else:
+                    stmts.append((_Q_SEM_CREATE, p))
+                    self._kuzu_semantic_pks.add(p["pk"])
+            elif kind == "del_node":
+                stmts.append((_Q_NODE_DEL, p))
+                self._kuzu_node_ids.discard(p["id"])
+                self._ids_since_index.discard(p["id"])
+            elif kind == "del_sem":
+                stmts.append((_Q_SEM_DEL, p))
+                self._kuzu_semantic_pks.discard(p["pk"])
+        return stmts
+
+    # -- execution side (flusher thread or inline; NEVER takes self._lock) ----
+    def _ensure_flusher(self) -> None:
+        t = self._flush_thread
+        if t is not None and t.is_alive():
+            with self._flush_cv:
+                self._flush_cv.notify_all()
+            return
+        self._flush_stop = False
+        t = threading.Thread(
+            target=self._flusher_loop, name="kuzu-flusher", daemon=True
+        )
+        self._flush_thread = t
+        t.start()
+
+    def _flusher_loop(self) -> None:
+        while True:
+            with self._flush_cv:
+                while not self._flush_queue and not self._flush_stop:
+                    self._flush_cv.wait(timeout=0.5)
+                if self._flush_stop and not self._flush_queue:
+                    return
+                batch = self._flush_queue.popleft() if self._flush_queue else None
+            if batch is None:
+                continue
+            stmts, ops = batch
             try:
-                self._apply_op_locked(conn, kind, p)
-            except Exception:  # pragma: no cover - durability must not kill the cycle
-                logger.exception("kuzu graph persist op failed (%s)", kind)
+                self._execute_batch(stmts, ops)
+            except Exception:  # pragma: no cover - flusher must never die
+                logger.exception("kuzu flusher: batch execution crashed")
+            with self._flush_cv:
+                self._batches_done += 1
+                self._flush_cv.notify_all()
+
+    def _acquire_write_channel(self) -> tuple[Any, Any]:
+        """(connection, lock) for batch execution.
+
+        Dedicated write connection when available (M0.1 probe passed:
+        cross-connection write+read is safe on this kuzu build), so readers
+        of the shared connection never queue behind a batch. Falls back to
+        the shared connection + io-lock on any failure -- the probe's skip
+        branch, always available."""
+        if _write_conn_enabled():
+            with self._kz_write_lock:
+                if self._kz_write_conn is None and self._kz_db is not None:
+                    try:
+                        import kuzu  # lazy, mirrors _open_locked
+
+                        self._kz_write_conn = kuzu.Connection(self._kz_db)
+                    except Exception:
+                        logger.warning(
+                            "kuzu dedicated write connection unavailable; "
+                            "sharing the read connection",
+                            exc_info=True,
+                        )
+            if self._kz_write_conn is not None:
+                return self._kz_write_conn, self._kz_write_lock
+        return self._kz_conn, self._kz_io_lock
+
+    def _execute_batch(
+        self, stmts: list[tuple[str, dict | None]], ops: list[tuple[str, dict]]
+    ) -> None:
+        started = time.perf_counter()
+        conn, channel_lock = self._acquire_write_channel()
+        with channel_lock:
+            if conn is None:
+                logger.warning("kuzu flush: connection gone; batch dropped (%d ops)", len(ops))
+                return
+            try:
+                if self._test_fail_next_batch:
+                    self._test_fail_next_batch = False
+                    raise RuntimeError("test-injected batch failure")
+                conn.execute("BEGIN TRANSACTION;")
+                for q, p in stmts:
+                    conn.execute(q, p) if p is not None else conn.execute(q)
+                conn.execute("COMMIT;")
+                self._graph_flush_ms = (time.perf_counter() - started) * 1000.0
+                return
+            except Exception:
+                self._flush_error_batches += 1
+                logger.exception("kuzu batched flush failed; replaying per-op")
+                try:
+                    conn.execute("ROLLBACK;")
+                except Exception:
+                    pass
+            for kind, p in ops:
+                try:
+                    self._replay_op(conn, kind, p)
+                except Exception:  # pragma: no cover - durability only
+                    logger.exception("kuzu replay op failed (%s)", kind)
+        self._graph_flush_ms = (time.perf_counter() - started) * 1000.0
+
+    def _replay_op(self, conn: Any, kind: str, p: dict) -> None:
+        """Set-agnostic single-op replay: probe existence, then write.
+
+        Used only after a rolled-back batch; converges kuzu to the state the
+        membership sets already claim (PRD ws4b 3.2)."""
+
+        def _exists(query: str, params: dict) -> bool:
+            res = conn.execute(query, params)
+            return bool(res.has_next())
+
+        if kind == "node":
+            hit = _exists("MATCH (e:Entity) WHERE e.id = $id RETURN e.id", {"id": p["id"]})
+            conn.execute(_Q_NODE_SET if hit else _Q_NODE_CREATE, p)
+        elif kind == "edge":
+            hit = _exists(
+                "MATCH (a:Entity)-[r:RELATES]->(b:Entity) "
+                "WHERE a.id = $src AND b.id = $dst AND r.kind = $kind RETURN r.kind",
+                {"src": p["src"], "dst": p["dst"], "kind": p["kind"]},
+            )
+            conn.execute(_Q_EDGE_SET if hit else _Q_EDGE_CREATE, p)
+        elif kind == "belief":
+            hit = _exists("MATCH (b:PropertyBelief) WHERE b.pk = $pk RETURN b.pk", {"pk": p["pk"]})
+            conn.execute(_Q_BELIEF_SET if hit else _Q_BELIEF_CREATE, p)
+        elif kind == "sem":
+            hit = _exists("MATCH (s:SemanticRecord) WHERE s.pk = $pk RETURN s.pk", {"pk": p["pk"]})
+            conn.execute(_Q_SEM_SET if hit else _Q_SEM_CREATE, p)
+        elif kind == "del_node":
+            conn.execute(_Q_NODE_DEL, p)
+        elif kind == "del_sem":
+            conn.execute(_Q_SEM_DEL, p)
+
+    def _drain_locked(self, timeout: float | None = None) -> bool:
+        """Flush pending and block until every enqueued batch has executed.
+
+        The barrier for callers that need COMMITTED state (backup, restore,
+        close, clear, index build). Safe under self._lock: the flusher only
+        needs _kz_io_lock, so it makes progress while we wait."""
+        if self._pending:
+            started = time.perf_counter()
+            self._flush_pending_locked()
+            self._last_flush_s = time.perf_counter()
+            self._graph_flush_lock_ms = (time.perf_counter() - started) * 1000.0
+            self._sqlite_commit_count += 1
+        if not _offlock_flush_enabled():
+            return True
+        deadline = time.perf_counter() + (timeout if timeout is not None else _drain_timeout_s())
+        with self._flush_cv:
+            while self._batches_done < self._batches_enqueued:
+                remain = deadline - time.perf_counter()
+                if remain <= 0:
+                    logger.warning(
+                        "kuzu drain timed out (%d/%d batches)",
+                        self._batches_done,
+                        self._batches_enqueued,
+                    )
+                    return False
+                self._flush_cv.wait(timeout=min(0.5, remain))
+        return True
+
+    def drain(self, timeout: float | None = None) -> bool:
+        """Public drain barrier (durability checkpoint for callers/tests)."""
+        with self._lock:
+            return self._drain_locked(timeout)
+
+    def _quiesce_flusher_locked(self) -> None:
+        """Drain, then stop and join the flusher (restore/close handle swaps)."""
+        self._drain_locked()
+        t = self._flush_thread
+        if t is not None and t.is_alive():
+            with self._flush_cv:
+                self._flush_stop = True
+                self._flush_cv.notify_all()
+            t.join(timeout=5.0)
+        self._flush_thread = None
+        self._flush_stop = False
 
     def _apply_op_locked(self, conn: Any, kind: str, p: dict[str, Any]) -> None:
-        """Apply ONE buffered mutation (no commit; caller owns the txn)."""
-        if True:
+        """Retired by WS4B (resolve/execute split) -- delegates to the
+        set-agnostic replay path for any residual caller. The statement text
+        lives in the module-level _Q_* constants; the dead branch below is
+        retained only until the next cleanup pass."""
+        self._replay_op(conn, kind, p)
+        return
+        if True:  # pragma: no cover - unreachable (retired inline path)
             if True:
                 if kind == "node":
                     if p["id"] in self._kuzu_node_ids:
@@ -551,10 +898,11 @@ class KuzuLongTermGraph(LongTermGraph):
     # ---- load (kuzu -> memory) ------------------------------------------
     def _rows_locked(self, query: str) -> list[Any]:
         conn = self._open_locked()
-        res = conn.execute(query)
-        out: list[Any] = []
-        while res.has_next():
-            out.append(res.get_next())
+        with self._kz_io_lock:
+            res = conn.execute(query)
+            out: list[Any] = []
+            while res.has_next():
+                out.append(res.get_next())
         return out
 
     def _load_kuzu_locked(self) -> None:
@@ -690,19 +1038,20 @@ class KuzuLongTermGraph(LongTermGraph):
         if self._index_built and _rebuild_min_interval_s() > 0.0:
             if (time.perf_counter() - self._last_rebuild_s) < _rebuild_min_interval_s():
                 return True
-        self._flush_pending_locked()  # the index only sees committed rows
+        self._drain_locked()  # the index only sees committed rows (WS4B barrier)
         if not self._kuzu_node_ids:
             return False  # empty table: nothing to index (tail scan covers it)
         conn = self._kz_conn
         try:
-            try:
-                conn.execute(f"CALL DROP_VECTOR_INDEX('Entity', '{_VECTOR_INDEX}')")
-            except Exception:
-                pass  # first build: no index to drop
-            conn.execute(
-                f"CALL CREATE_VECTOR_INDEX('Entity', '{_VECTOR_INDEX}', 'appearance', "
-                "metric := 'cosine')"
-            )
+            with self._kz_io_lock:
+                try:
+                    conn.execute(f"CALL DROP_VECTOR_INDEX('Entity', '{_VECTOR_INDEX}')")
+                except Exception:
+                    pass  # first build: no index to drop
+                conn.execute(
+                    f"CALL CREATE_VECTOR_INDEX('Entity', '{_VECTOR_INDEX}', 'appearance', "
+                    "metric := 'cosine')"
+                )
         except Exception as exc:
             logger.warning("kuzu vector index build failed; linear-scan fallback: %s", exc)
             self._vector_state = "unavailable"
@@ -746,13 +1095,14 @@ class KuzuLongTermGraph(LongTermGraph):
                 if self._ensure_index_locked():
                     k = min(32, _INDEX_TOP_K + len(exclude))
                     q = [float(x) for x in np.asarray(appearance, dtype=np.float32).reshape(-1)]
-                    res = self._kz_conn.execute(
-                        f"CALL QUERY_VECTOR_INDEX('Entity', '{_VECTOR_INDEX}', $q, {int(k)}) "
-                        "RETURN node.id, distance",
-                        {"q": q},
-                    )
-                    while res.has_next():
-                        candidates.add(str(res.get_next()[0]))
+                    with self._kz_io_lock:
+                        res = self._kz_conn.execute(
+                            f"CALL QUERY_VECTOR_INDEX('Entity', '{_VECTOR_INDEX}', $q, {int(k)}) "
+                            "RETURN node.id, distance",
+                            {"q": q},
+                        )
+                        while res.has_next():
+                            candidates.add(str(res.get_next()[0]))
                     indexed = True
             except Exception as exc:
                 logger.warning("kuzu vector query failed; linear-scan fallback: %s", exc)
@@ -786,16 +1136,18 @@ class KuzuLongTermGraph(LongTermGraph):
         with self._lock:
             super().clear()  # wipes the in-memory model (base sqlite branch is a no-op)
             self._pending.clear()
+            self._drain_locked()  # WS4B: no queued batch may land post-wipe
             if self._kz_conn is not None:
-                for q in (
-                    "MATCH (n:Entity) DETACH DELETE n",
-                    "MATCH (b:PropertyBelief) DELETE b",
-                    "MATCH (s:SemanticRecord) DELETE s",
-                ):
-                    try:
-                        self._kz_conn.execute(q)
-                    except Exception:
-                        logger.exception("kuzu graph clear failed (%s)", q)
+                with self._kz_io_lock:
+                    for q in (
+                        "MATCH (n:Entity) DETACH DELETE n",
+                        "MATCH (b:PropertyBelief) DELETE b",
+                        "MATCH (s:SemanticRecord) DELETE s",
+                    ):
+                        try:
+                            self._kz_conn.execute(q)
+                        except Exception:
+                            logger.exception("kuzu graph clear failed (%s)", q)
                 self._sqlite_commit_count += 1
             self._kuzu_node_ids.clear()
             self._kuzu_edge_keys.clear()
@@ -829,7 +1181,8 @@ class KuzuLongTermGraph(LongTermGraph):
         target.parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
             self._open_locked()  # materialize schema so empty graphs round-trip
-            self._flush_pending_locked()
+            self._drain_locked()
+            self._quiesce_flusher_locked()  # no writer may touch the dir mid-copy
             self._checkpoint_locked()
             src = self._storage_root_locked()
             self._close_handles_locked()
@@ -850,6 +1203,15 @@ class KuzuLongTermGraph(LongTermGraph):
             return
         with self._lock:
             self._pending.clear()  # pending writes describe pre-restore state
+            # WS4B: drop queued pre-restore batches and stop the flusher
+            # before the directory swap (Windows file-lock discipline).
+            with self._flush_mu:
+                dropped = len(self._flush_queue)
+                self._flush_queue.clear()
+                self._batches_enqueued -= dropped  # exact barrier accounting
+            if dropped:
+                logger.info("kuzu restore: dropped %d queued pre-restore batches", dropped)
+            self._quiesce_flusher_locked()
             self._close_handles_locked()
             root = self._storage_root_locked()
             if root.exists():
@@ -877,8 +1239,16 @@ class KuzuLongTermGraph(LongTermGraph):
                     wal_bytes = wal_file.stat().st_size
             except OSError:
                 pass
+            with self._flush_mu:
+                queue_depth = len(self._flush_queue)
             return {
                 "backend": "kuzu",
+                # WS4B off-lock flusher telemetry (PRD G5):
+                "graph_flush_ms": float(self._graph_flush_ms),
+                "graph_flush_lock_ms": float(self._graph_flush_lock_ms),
+                "graph_flush_queue_depth": int(queue_depth),
+                "graph_flush_error_batches": int(self._flush_error_batches),
+                "graph_dedicated_write_conn": bool(self._kz_write_conn is not None),
                 "sqlite_commit_count": int(self._sqlite_commit_count),
                 "sqlite_batch_commit_count": int(self._sqlite_batch_commit_count),
                 "sqlite_last_commit_ms": float(self._sqlite_last_commit_ms),
