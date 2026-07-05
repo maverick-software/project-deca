@@ -7,7 +7,11 @@
 param(
     [string]$GraphBackend = "sqlite",
     [int]$Seconds = 150,
-    [int]$Port = 8765
+    [int]$Port = 8765,
+    # -Watch: open the native MuJoCo viewer + the web dashboard so the run
+    # is observable. NB the dashboard's polling adds a small, known observer
+    # cost (state snapshots); fine for soaks, avoid for tight A/B numbers.
+    [switch]$Watch
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,11 +58,33 @@ try {
     }
     if (-not $Ready) { throw "server not ready" }
 
-    Write-Host "[diag] starting MuJoCo body (headless, runs until teardown)..." -ForegroundColor Cyan
+    $BodyArgs = @("scripts\mujoco_decadic_adapter.py", "--port", "$Port")
+    if ($Watch) { $BodyArgs += "--view" }
+    $mode = if ($Watch) { "native viewer" } else { "headless" }
+    Write-Host "[diag] starting MuJoCo body ($mode, runs until teardown)..." -ForegroundColor Cyan
     $Body = Start-Process -FilePath $Py `
-        -ArgumentList "scripts\mujoco_decadic_adapter.py", "--port", "$Port" `
+        -ArgumentList $BodyArgs `
         -WorkingDirectory $Root -PassThru -NoNewWindow `
         -RedirectStandardOutput "$RunDir\body.out.log" -RedirectStandardError "$RunDir\body.err.log"
+
+    $Dash = $null
+    if ($Watch) {
+        # Web dashboard: reuse a running dev server on 5173, else start one.
+        $dashUrl = "http://localhost:5173"
+        $dashUp = $false
+        try {
+            Invoke-WebRequest $dashUrl -TimeoutSec 2 -UseBasicParsing | Out-Null
+            $dashUp = $true
+        } catch {}
+        if (-not $dashUp) {
+            Write-Host "[diag] starting dashboard dev server..." -ForegroundColor Cyan
+            $Dash = Start-Process -FilePath "cmd" `
+                -ArgumentList "/c", "npm run dev" `
+                -WorkingDirectory (Join-Path $Root "dashboard") -PassThru -WindowStyle Minimized
+            Start-Sleep -Seconds 6
+        }
+        Start-Process $dashUrl
+    }
 
     # Sample the cycle rate from /agents (cheap; no /state perturbation).
     $samples = @()
@@ -94,6 +120,10 @@ try {
 finally {
     foreach ($p in @($Body, $Server)) {
         if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    }
+    # Only stop the dashboard if THIS run started it (leave a pre-existing one).
+    if ($Dash -and -not $Dash.HasExited) {
+        Stop-Process -Id $Dash.Id -Force -ErrorAction SilentlyContinue
     }
 }
 
