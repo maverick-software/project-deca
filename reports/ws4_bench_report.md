@@ -76,3 +76,21 @@ Known harness cosmetic: "LTM db: 0.0 MB" measures the legacy sqlite file path; k
 ## Remaining WS4 items
 
 ~~M4 checkpoint-route integration test~~ (closed: `tests/test_ws4_checkpoint_routes.py` — /checkpoint→mutate→/restore state equality + full save→load round-trip with directory-shaped snapshots) · ~~M5.3 1-hour soak~~ (closed: A/B above) · 1M-row bench (optional) · filter-aware ANN follow-up (deferred).
+
+## WS4B disposition (2026-07-05): graph writes off the critical path — CLOSED, kuzu now FASTER than sqlite
+
+The embodied-rig write-path arc, four diagnoses each caught by the telemetry the previous fix added (`run_body_diag.ps1`, 150 s arms, full preset, discovered perception):
+
+| stage | cycles/s | evidence that named the next problem |
+|---|---|---|
+| original (per-op autocommit) | 0.8 | disk 100% active @ 7 MB/s (fsync storm); body watchdog ragdolling |
+| + deferred batched flush (07-04) | 2.27 | `sqlite_last_commit_ms=293` — the batch ran UNDER the graph lock |
+| + off-lock flusher (WS4B M2) | 3.00 | `lock_ms=0.1` ✓ but `queue_depth=39` — flusher saturated (~170 stmts/s > kuzu's absorption) |
+| + window retune 512/10 s | 2.91 | `batch_commit_count == commit_count` in EVERY arm — `write_batch()` exits bypassed the deferral: one forced flush per cycle |
+| + write_batch = grouping, not urgency | **5.38** | 23 flushes/150 s, queue 0, lock 0.32 ms, 0 error batches |
+
+**sqlite control arm: 4.89.** Kuzu on the WS4B flusher is ~10% FASTER than sqlite on the same harness — acceptance (within 10%) exceeded. Mechanisms shipped: two-phase resolve-under-lock/execute-off-lock (resolve ~0.3 ms), dedicated write connection (M0.1 dual-connection probe PASSED; readers never queue behind a batch; `graph_dedicated_write_conn` telemetry), queue cap 4 with tail coalescing (bounded backlog, last-wins), set-agnostic per-op replay after rollback (failure drill tested), drain barriers on backup/restore/close/clear/index-build, `DECADIC_KUZU_OFFLOCK_FLUSH=0` inline A/B arm.
+
+**Semantics decision of record:** `write_batch()` marks a consistency GROUPING; durability cadence is the deferral window (`DECADIC_KUZU_FLUSH_OPS=512` / `DECADIC_KUZU_FLUSH_S=10`). Crash window ≤10 s of graph deltas — acceptable because memory is the live source of truth and episodic memory (lance, sub-second flushes) is the experiential ground truth from which beliefs re-derive.
+
+Remaining: WS4B M3.2 — 1-h pure-defaults body soak (the embodiment-readiness stamp).
