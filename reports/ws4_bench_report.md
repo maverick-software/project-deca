@@ -93,4 +93,10 @@ The embodied-rig write-path arc, four diagnoses each caught by the telemetry the
 
 **Semantics decision of record:** `write_batch()` marks a consistency GROUPING; durability cadence is the deferral window (`DECADIC_KUZU_FLUSH_OPS=512` / `DECADIC_KUZU_FLUSH_S=10`). Crash window ≤10 s of graph deltas — acceptable because memory is the live source of truth and episodic memory (lance, sub-second flushes) is the experiential ground truth from which beliefs re-derive.
 
-Remaining: WS4B M3.2 — 1-h pure-defaults body soak (the embodiment-readiness stamp).
+### WS4B M3.2 result (2026-07-05, 1-h pure-defaults body soak `bodydiag_kuzu_20260705_094611`)
+
+**Stability stamp: PASS.** 11,640 cycles / 3,600 s, 0 stalls, 0 flush-error batches, lock 0.58 ms, commit lag 1.5 ms, queue bounded at cap, body upright throughout. **Performance finding:** throughput decayed 5.4 → ~2.1 cycles/s with no plateau. Attribution (metrics dump): (a) PRIMARY — neural growth: **8 growth events, 1,280 awake / 2,048 allocated neurons, pc_loss stuck at 0.91** — the PC-loss growth gate never tapers in an open embodied world, so the brain grew all hour (a POLICY finding, not a bug: growth needs progress-gating/budgets/pruning for lifelong runs — see "growth governance" ledger item); (b) SECONDARY — flusher re-saturation on INSERT-heavy load: append-only streams (new-id semantic records/entities) defeat per-key dedupe; final coalesced batch = 100 s (`graph_flush_ms=100094`), 1,709 flushes (~2 s cadence, ops-threshold driven).
+
+Remaining WS4B: **M3.4** kuzu multi-row inserts (`UNWIND $rows CREATE` — N statements → 1 per table per flush; re-arms the design for insert-heavy load) · **M3.5** re-run the 1-h soak after M3.4 + a growth-frozen control arm (`DECADIC_GROWTH_ENABLED=0`) to isolate the growth share of the decay exactly.
+
+New ledger item (feeds a future WS): **growth governance** — progress-gated growth (grow when improvement STALLS, not when absolute error is high), metabolic capacity budget, pruning/consolidation as the counter-force; first dataset = this soak.

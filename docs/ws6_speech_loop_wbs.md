@@ -14,11 +14,14 @@
 *Accept:* off-ignores / zero-init parity / content sensitivity; full suite green both states.
 **M0.4 ⚙ Discriminability measurement (THE GATE).** Offline: record ~20 word-forms (caregiver vocabulary), run the token lane, measure pairwise separability (linear probe / cosine margins) at the frozen dims.
 *Accept:* separability report in `reports/`; go/no-go recorded in the PRD. No-go ⇒ encoder follow-up before M1.
+**M0.5 ⚙ Continuous auditory intake service (PRD 3.8, G9).** `AudioIntake` background worker: callback input stream (system mic and/or Rig-1 bus tap) → ring buffer → freshest chunk (≤250 ms, drop-oldest) attached at observation ingest; client-audio-wins precedence; energy-threshold silence gate before Whisper encode; `DECADIC_AUDIO_INTAKE=off|mic|bus` (default off).
+*Accept:* flag-off parity (byte-identical, suite-enforced); unit tests — ring-buffer continuity across cycle jitter, precedence, silence-gate hysteresis; live smoke ⚙ — with the client sending NO audio, speaking into the room moves `audio_rms`/the audio key while silence does not; encode-cost delta measured with the intake on.
+Parallel to M0.4 (does not gate on it; hearing the room needs no word discrimination).
 
 ## M1 — Receptive naming (desk-runnable)
 
 **M1.1 Speech scenario format + generator.** Extend the binding scenario: `utterances` schedule (label ↔ entity-salience windows, balanced novel-label controls per the WS5 leakage checklist) + pre-rendered wav bank; `gen_speech_scenario.py`.
-**M1.2 Client + seam.** Synthetic client attaches scheduled wavs to `obs.audio` (mic-live mode optional ⚙); audio familiarity key written to episodic storage (versioned layout amendment).
+**M1.2 Client + seam.** Synthetic client attaches scheduled wavs to `obs.audio`; mic-live mode is FIRST-CLASS via M0.5's intake (Charles speaks the labels instead of the wav bank — same probe, live caregiver); audio familiarity key written to episodic storage (versioned layout amendment).
 **M1.3 ⚙ P1 word-form familiarity probe.** Habituation/novelty verdict over the audio key; **flags-off ablation must fail the discrimination**.
 **M1.4 ⚙ P2 receptive protoword probe.** Label alone boosts the named slot vs controls; verdict script in the gate-probe mold.
 *Accept (M1):* P1 and P2 verdicts archived; ablation direction confirmed.
@@ -29,7 +32,7 @@
 **M2.2 Vocal tract + mixing bus (Rig 1, PRD 3.7).** Body/world-side formant synthesizer (pure numpy, ~1,600 samples/cycle at 16 kHz, param interpolation across cycle frames); world-side mixing bus sums agent voice + scheduled utterances with distance attenuation into the next `obs.audio` chunk. Optional monitor tee to operator speakers.
 *Accept:* unit tests — synth determinism, click-free interpolation at frame boundaries, bus attenuation math; loopback smoke ⚙ (`run_binding_smoke.ps1` pattern) shows the rendered waveform re-entering observation on the next cycle.
 **M2.3 Mouth in the body schema.** Articulator positions as proprio fields; body-map registration.
-**M2.4 ⚙ Desk rig (Rig 2, PRD 3.7).** Callback-driven output stream + ring buffer to a physical speaker; microphone input stream chunked (~100–200 ms, cycle-aligned) into `obs.audio`; efference-aware self-masking hook.
+**M2.4 ⚙ Desk rig (Rig 2, PRD 3.7).** Callback-driven output stream + ring buffer to a physical speaker; the INPUT side reuses M0.5's intake service (mic mode) unchanged; efference-aware self-masking hook.
 *Accept:* measured end-to-end loop latency (synth→speaker→mic→obs) under one cycle period; the M2.2 loopback smoke passes UNCHANGED on the physical rig — the rig-indifference principle, enforced. Not required for M3–M6 training (Rig 1 suffices); required before any live naming-game session.
 *Accept (M2 overall):* suite green both flag states.
 
@@ -65,6 +68,7 @@
 
 ```
 M0.1 -> M0.2 -> M0.3 -> M0.4 (GATE)
+M0.1 -> M0.5 (continuous intake; parallel to the gate, reused by M1.2 and M2.4)
 M0.4 -> M1.1 -> M1.2 -> M1.3 -> M1.4
 M0.4 -> M2.1 -> M2.2 -> M2.3 -> M3.1 -> M3.2 -> M3.3 -> M4.1 -> M4.2 -> M5 -> M6
 M2.2 -> M2.4 (desk rig: gates LIVE sessions only; M3-M6 train on Rig 1)
