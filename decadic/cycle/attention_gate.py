@@ -28,8 +28,12 @@ logger = logging.getLogger(__name__)
 
 # -- config (env-overridable, additive to decadic.config conventions) --------
 
-DEFAULT_GATE_ENABLED = False
-DEFAULT_GATE_THRESHOLD = 0.55
+# Defaults flipped ON at the validated operating point (owner decision
+# 2026-07-04, after the first full probe PASS: threat 1/1, novelty 2/2,
+# revisit quiet, calm 0.000). Tests pin the gate OFF via conftest for
+# deterministic baselines, same as every other default-on faculty.
+DEFAULT_GATE_ENABLED = True
+DEFAULT_GATE_THRESHOLD = 0.30
 DEFAULT_GATE_TARGET_RATE = 0.05
 DEFAULT_GATE_HYSTERESIS_K = 3
 DEFAULT_GATE_RATE_WINDOW = 1000
@@ -75,14 +79,14 @@ def gate_budget_gain() -> float:
 def gate_novelty_source() -> str:
     """Where the gate's novelty input comes from (WS4-M3.2).
 
-    "full" (default): 1 - best similarity over the full 80-d episode
-    embedding - the WS3-measured signal with ~0.05 dynamic range (internal
-    state swamps external familiarity). "percept": 1 - best similarity over
-    the 16-d percept-key subvector only - external familiarity, the Phase B
-    fix. Default stays "full" until the gate probe re-validates.
+    "percept" (default since 2026-07-04, probe-validated): 1 - best
+    similarity over the 16-d percept-key subvector only - external
+    familiarity with the recency horizon. "full": the legacy whole-embedding
+    signal (WS3-measured dynamic range ~0.05; internal drift swamps external
+    familiarity) - kept for A/B work.
     """
-    value = os.environ.get("DECADIC_GATE_NOVELTY_SOURCE", "full").strip().lower()
-    return value if value in ("full", "percept") else "full"
+    value = os.environ.get("DECADIC_GATE_NOVELTY_SOURCE", "percept").strip().lower()
+    return value if value in ("full", "percept") else "percept"
 
 
 def gate_novelty_recency_horizon() -> int:

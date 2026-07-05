@@ -912,7 +912,9 @@ def represented_self_enabled() -> bool:
 # pooled scene latent. Research pathway: default OFF, byte-identical when off;
 # the ingress is zero-init so even flag-on is byte-identical until learned.
 def wm_slot_tensor_enabled() -> bool:
-    return _env_bool("DECADIC_WM_SLOT_TENSOR", False)
+    # Default ON (owner decision 2026-07-04): every validated cognition
+    # upgrade runs in a full cognition run. Tests pin OFF via conftest.
+    return _env_bool("DECADIC_WM_SLOT_TENSOR", True)
 
 
 def wm_slot_k() -> int:
@@ -928,7 +930,8 @@ def wm_slot_k() -> int:
 # (five remembered situations stop entering as their average). Research
 # pathway: default OFF, byte-identical when off; zero-init ingress.
 def memory_tokens_enabled() -> bool:
-    return _env_bool("DECADIC_MEMORY_TOKENS", False)
+    # Default ON (owner decision 2026-07-04). Tests pin OFF via conftest.
+    return _env_bool("DECADIC_MEMORY_TOKENS", True)
 
 
 # WS5-M3 (relational binding): the relational core -- a small transformer over
@@ -936,7 +939,9 @@ def memory_tokens_enabled() -> bool:
 # augments the stage-4 risk input (zero-init ingress). Runs on DELIBERATIVE
 # cycles only (a gate skip never pays for it). Default OFF.
 def relational_core_enabled() -> bool:
-    return _env_bool("DECADIC_RELATIONAL_CORE", False)
+    # Default ON (owner decision 2026-07-04; measured +1.5 ms on the full
+    # preset, ~2% of the cycle envelope). Tests pin OFF via conftest.
+    return _env_bool("DECADIC_RELATIONAL_CORE", True)
 
 
 # Memory-efficient training path (self-model program, Phase 6 — hardware-gated).

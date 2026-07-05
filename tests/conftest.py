@@ -84,6 +84,14 @@ def _baseline_faculties(monkeypatch):
     monkeypatch.setenv("DECADIC_CYCLE_PROFILE", "0")
     monkeypatch.setenv("DECADIC_DRIVE_REWARD_ENABLED", "0")
     monkeypatch.setenv("DECADIC_PE_STUB_WEIGHT", "0.25")
+    # WS3/WS5 faculties: default ON in production since 2026-07-04 (owner
+    # decision -- every validated upgrade runs in a full cognition run).
+    # Pinned OFF here for the deterministic byte-identical baseline, exactly
+    # like the faculties above; tests that exercise them set env explicitly.
+    monkeypatch.setenv("DECADIC_GATE_ENABLED", "0")
+    monkeypatch.setenv("DECADIC_WM_SLOT_TENSOR", "0")
+    monkeypatch.setenv("DECADIC_MEMORY_TOKENS", "0")
+    monkeypatch.setenv("DECADIC_RELATIONAL_CORE", "0")
 
 
 @pytest.fixture

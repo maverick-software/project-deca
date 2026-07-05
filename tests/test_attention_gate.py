@@ -25,18 +25,22 @@ def _gate(**kw):
     return AttentionGate(**defaults)
 
 
-def test_default_disabled(monkeypatch):
+def test_default_enabled(monkeypatch):
+    # Default ON since 2026-07-04 (owner decision, post probe PASS); the
+    # byte-identical baseline lives behind the conftest pin + env=0.
     monkeypatch.delenv("DECADIC_GATE_ENABLED", raising=False)
-    assert gate_enabled() is False  # byte-identical baseline preserved
+    assert gate_enabled() is True
+    monkeypatch.setenv("DECADIC_GATE_ENABLED", "0")
+    assert gate_enabled() is False  # baseline remains one env var away
 
 
 def test_novelty_source_config(monkeypatch):
     monkeypatch.delenv("DECADIC_GATE_NOVELTY_SOURCE", raising=False)
-    assert gate_novelty_source() == "full"  # default until probe re-validates
-    monkeypatch.setenv("DECADIC_GATE_NOVELTY_SOURCE", "percept")
-    assert gate_novelty_source() == "percept"
+    assert gate_novelty_source() == "percept"  # probe-validated default
+    monkeypatch.setenv("DECADIC_GATE_NOVELTY_SOURCE", "full")
+    assert gate_novelty_source() == "full"  # legacy signal stays selectable
     monkeypatch.setenv("DECADIC_GATE_NOVELTY_SOURCE", "bogus")
-    assert gate_novelty_source() == "full"  # unknown values fall back safely
+    assert gate_novelty_source() == "percept"  # unknown values fall back safely
 
 
 def test_novelty_recency_horizon_config(monkeypatch):
