@@ -10,6 +10,7 @@
 **M0.1 Transition serialization freeze.** Versioned on-disk schema for `Transition` (lance table; arrays as fixed-size lists per WS4 lessons — explicit pyarrow schema, no inference); layout test pins it.
 **M0.2 Dream Recorder tap.** `DECADIC_DREAM_RECORD=1` streams every retained transition of a run to `dreams/<run_id>/corpus.lance` (write-behind, log-and-continue — the WS3B decision-log discipline). Off ⇒ byte-identical.
 **M0.3 Curation pass.** `scripts/curate_dream.py`: dedupe, salience floor, phase/attempt tagging, corpus stats manifest (counts by origin/phase, salience distribution).
+**M0.4 Zombie demonstrator driver.** `scripts/spawn_demonstrator.py <master> <scenario>`: clone via Saved Agents → run the skill scenario (teacher at full assist, `origin="demo"`; teleop-teacher optional later for human demonstration) → record every cycle → discard the clone, keep the corpus. The primary recording use case, one command.
 *Accept:* a recorded `stand_and_recover` run ⚙ round-trips disk→memory with bit-identical transitions; recorder overhead <1% cycle time; flag-off parity test.
 
 ## M1 — Package format v1 (G4)
@@ -49,6 +50,15 @@
 **M6.2 Walker package** built, dreamed into fresh clones, certified.
 **M6.3 Dreamed-vs-lived robustness study** (PRD G7/criterion 6): same skill, both routes, perturbation battery; the measured dream/live ratio lands in the Walker manifest and the SOP.
 *Accept:* the Walker package provisions a walking mind; the study is archived and quotable.
+
+## M7 — Operator Kit (successor-model operability)
+
+**Design requirement (owner, 2026-07-04):** the pipeline must be operable by a weaker model than the one that designed it. Competence lives in the system, not the operator.
+
+**M7.1 Schemas + linter.** JSON Schema for every artifact (scenario, skill card, manifest, battery); `scripts/lint_scenario.py` with dry-run execution (loads, validates, simulates 100 steps, reports). A malformed artifact must produce a SPECIFIC diagnostic, never a stack trace.
+**M7.2 Runbooks.** `docs/runbooks/`: one per task — create-scenario, record-demonstration, build-package, dream-and-prove, certify-and-ship. Written to be EXECUTED by a model: exact commands, expected outputs, verdict interpretation table, failure→next-step branches. The session-transcript command/paste pattern, formalized.
+**M7.3 Operator guide.** Repo-level CLAUDE.md (or extension): house rules (no timelines; parity culture; verdicts over judgment; negative controls mandatory; env-pollution hygiene), artifact map, where every verdict script lives.
+**M7.4 Operator rehearsal.** Acceptance for the whole kit: a fresh session with a lesser model produces a valid package for an existing skill USING ONLY the runbooks, and its deliberately-sabotaged variant fails certification. The succession test, run before succession happens.
 
 ## Dependency graph
 
