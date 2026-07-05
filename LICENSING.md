@@ -51,6 +51,17 @@ require a signed **Contributor License Agreement (CLA)** assigning sufficient
 rights to the copyright holder; otherwise the dual-licensing offer could not be
 maintained. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) if present, or ask.
 
+## Third-party dependencies
+
+This software depends on third-party open-source packages, **all under permissive licenses**
+(MIT, BSD, Apache-2.0, HPND) — none copyleft. Their attribution obligations, a per-package
+license inventory, and the note on runtime-downloaded model weights (CLIP/Whisper, MIT) are
+recorded in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md); the verbatim license texts are
+generated into `THIRD_PARTY_NOTICES.txt` by `scripts/gen_third_party_notices.ps1`. Because none
+of these dependencies is copyleft, **a commercial licensee inherits no source-disclosure
+obligation from them** — only the standard attribution duties, which travel with any
+distribution. Ship both notices files (or their contents) with any distribution, open or commercial.
+
 ## Trademarks (not covered by the code license)
 
 **"Decadic Cycle of Expression", "Project Deca", and "Deca"**, and any

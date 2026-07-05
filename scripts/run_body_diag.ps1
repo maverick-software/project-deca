@@ -91,6 +91,10 @@ try {
     $t0 = Get-Date
     $lastCycles = -1
     $AgentId = $null
+    $EndsAt = $t0.AddSeconds($Seconds)
+    Write-Host ("[diag] running {0:N0} min | ends at {1:HH:mm:ss} | graph={2}{3}" -f `
+        ($Seconds / 60.0), $EndsAt, $GraphBackend, $(if ($Watch) { " | watching" } else { "" })) `
+        -ForegroundColor Green
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         Start-Sleep -Seconds 10
         try {
@@ -102,7 +106,20 @@ try {
                 }
                 $lastCycles = $ag.cycles_completed
                 $AgentId = $ag.agent_id
-                Write-Host ("[diag] t={0}s cycles={1}" -f $samples[-1].t_s, $ag.cycles_completed)
+                # Informative status line: countdown, progress %, live + avg rate.
+                $tNow = $samples[-1].t_s
+                $left = [math]::Max(0, $Seconds - $tNow)
+                $pct = [math]::Min(100, [math]::Round(100.0 * $tNow / $Seconds))
+                $fmt = { param($s) "{0:d2}:{1:d2}" -f [int]([math]::Floor($s / 60)), [int]($s % 60) }
+                $instRate = ""
+                if ($samples.Count -ge 2) {
+                    $prev = $samples[-2]
+                    $dt = [math]::Max(0.1, $tNow - $prev.t_s)
+                    $instRate = "{0:N1}/s now, " -f (($ag.cycles_completed - $prev.cycles) / $dt)
+                }
+                $avgRate = "{0:N1}/s avg" -f ($ag.cycles_completed / [math]::Max(0.1, $tNow))
+                Write-Host ("[diag] {0} elapsed | {1} left ({2}%) | cycles={3} | {4}{5}" -f `
+                    (& $fmt $tNow), (& $fmt $left), $pct, $ag.cycles_completed, $instRate, $avgRate)
             }
         } catch { Write-Host "[diag] sample failed: $($_.Exception.Message)" }
         if ($Body.HasExited) { Write-Host "[diag] body exited early!" -ForegroundColor Red; break }

@@ -291,6 +291,9 @@ service obliges you to share your modified source with that service's users. Bec
 built to be served over an API, that clause is deliberate. A separate **commercial license**
 without the copyleft/network-source obligations is available — see [LICENSING.md](./LICENSING.md).
 
+All third-party dependencies are permissive (MIT/BSD/Apache-2.0/HPND) — none copyleft; their
+attribution notices are in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+
 **Citing.** If you use this software or the architecture, please cite **both** the software and
 the originating book; a machine-readable citation for both is in [CITATION.cff](./CITATION.cff).
 
