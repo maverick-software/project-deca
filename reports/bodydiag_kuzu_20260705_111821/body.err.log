@@ -1,0 +1,59 @@
+Traceback (most recent call last):
+  File "C:\Python313\Lib\asyncio\windows_events.py", line 463, in finish_socket_func
+    return ov.getresult()
+           ~~~~~~~~~~~~^^
+OSError: [WinError 64] The specified network name is no longer available
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 920, in send_context
+    await self.drain()
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 1079, in drain
+    await waiter
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 386, in _loop_writing
+    f.result()
+    ~~~~~~~~^^
+  File "C:\Python313\Lib\asyncio\windows_events.py", line 804, in _poll
+    value = callback(transferred, key, ov)
+  File "C:\Python313\Lib\asyncio\windows_events.py", line 467, in finish_socket_func
+    raise ConnectionResetError(*exc.args)
+ConnectionResetError: [WinError 64] The specified network name is no longer available
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\Users\charl\software\Self-Determination Model\scripts\mujoco_decadic_adapter.py", line 3432, in <module>
+    main()
+    ~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\mujoco_decadic_adapter.py", line 3413, in main
+    asyncio.run(
+    ~~~~~~~~~~~^
+        _run(
+        ^^^^^
+    ...<10 lines>...
+        )
+        ^
+    )
+    ^
+  File "C:\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\mujoco_decadic_adapter.py", line 3258, in _run
+    await recv_task
+  File "D:\Users\charl\software\Self-Determination Model\scripts\mujoco_decadic_adapter.py", line 2949, in receiver
+    async for raw in ws:
+    ...<21 lines>...
+            latest_action.update(action)
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 244, in __aiter__
+    yield await self.recv()
+          ^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 324, in recv
+    raise self.protocol.close_exc from self.recv_exc
+websockets.exceptions.ConnectionClosedError: no close frame received or sent

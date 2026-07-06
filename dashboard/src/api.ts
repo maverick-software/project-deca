@@ -1032,13 +1032,15 @@ export function reviveAgent(agentId: string, restoreTo?: number): Promise<void> 
 
 // Provision the agent with water/food/medical support. mode "near" asks the body to place the
 // (unlabeled) prop a step away so the agent must perceive and walk to it;
+// mode "within_reach" (WS-FORAGE M0) places it at the edge of reach so a lean/step
+// closes it -- the minimal act->relief contingency the value learner needs;
 // mode "direct" asks the body to show the prop in the egocentric camera and
 // move it toward the head until normal consumption fires. "admin" is the old
 // instant reservoir top-up for explicit rescue/testing use.
 export async function giveResource(
   agentId: string,
   resource: "water" | "food" | "medical_kit",
-  mode: "near" | "direct" | "admin",
+  mode: "near" | "within_reach" | "direct" | "admin",
 ): Promise<void> {
   const r = await fetch(
     `${httpBase()}/agent/${agentId}/give?resource=${resource}&mode=${mode}`,
@@ -1493,11 +1495,26 @@ export type EnvironmentStatus = {
   agent_id: string | null;
   elements: string[];
   options: { vision?: boolean; audio?: boolean; braces?: boolean };
+  // WS-FORAGE: the active curriculum + its live progress (null when kind=none).
+  curriculum?: { kind: "none" | "forage"; [k: string]: unknown };
+  forage?: { meals_earned: number; rescues: number } | null;
   pid: number | null;
   returncode: number | null;
   started_at: number | null;
   log_path: string | null;
   available_elements: string[];
+};
+
+// WS-FORAGE: an optional server-side curriculum that runs for the scenario's
+// lifetime. kind="forage" keeps the (metabolic) agent alive with a reachable
+// meal in front of it so the value learner earns approach->relief episodes.
+export type Curriculum = {
+  kind: "none" | "forage";
+  place_every_s?: number;
+  rescue_floor?: number;
+  rescue_to?: number;
+  contact_radius?: number;
+  reach_distance?: number;
 };
 
 export type EnvironmentStartRequest = {
@@ -1510,6 +1527,8 @@ export type EnvironmentStartRequest = {
   replace?: boolean;
   // Neural architecture preset for the fresh mind created with this body.
   preset?: string;
+  // Optional server-side curriculum loop (e.g. foraging trainer).
+  curriculum?: Curriculum;
 };
 
 export function fetchEnvironment(): Promise<EnvironmentStatus> {
@@ -1575,6 +1594,7 @@ export type AgentPreset = {
   audio: boolean;
   braces: boolean;
   mind_only: boolean;
+  curriculum?: Curriculum;
   builtin: boolean;
   created_at?: string | null;
 };
@@ -1586,6 +1606,7 @@ export type CreateAgentPresetRequest = {
   audio: boolean;
   braces: boolean;
   mind_only: boolean;
+  curriculum?: Curriculum;
 };
 
 // The live, editable scenario/body config shared between the top-bar dropdown
@@ -1597,6 +1618,7 @@ export type ScenarioDraft = {
   audio: boolean;
   braces: boolean;
   mindOnly: boolean;
+  curriculum: Curriculum;
 };
 
 export async function listAgentPresets(): Promise<AgentPreset[]> {

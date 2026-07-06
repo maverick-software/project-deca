@@ -25,6 +25,56 @@ def _gate(**kw):
     return AttentionGate(**defaults)
 
 
+# ------------------------------------------------- WS-FORAGE M5: Type-2 search
+
+
+def test_type2_search_escalates_below_threshold():
+    # Nothing novel in view (score far below threshold), but the agent needs a
+    # remembered-but-not-here resource -> deliberate anyway (System-2).
+    g = _gate()
+    d = g.decide(GateInputs(novelty=0.0, prediction_error=0.0, affect=0.0, type2_search=True))
+    assert d.escalate is True
+    assert d.reason == "type2_memory_search"
+
+
+def test_type2_search_yields_to_threat_fast_path():
+    # A live threat outranks a memory search: fast_path wins the reason.
+    g = _gate()
+    d = g.decide(GateInputs(fast_path_threat=True, type2_search=True))
+    assert d.escalate is True and d.reason == "fast_path"
+
+
+def test_type2_search_latches_hysteresis():
+    # Like the other escalation sources, a Type-2 escalation latches the gate
+    # for a few cycles so a brief search doesn't flicker.
+    g = _gate(hysteresis_k=2)
+    assert g.decide(GateInputs(type2_search=True)).reason == "type2_memory_search"
+    assert g.decide(GateInputs()).reason == "hysteresis"
+
+
+def test_extract_gate_inputs_threads_type2():
+    gi = extract_gate_inputs(
+        best_recall_similarity=1.0,
+        pc_ema=0.0,
+        pain_scalar=0.0,
+        drive_pressure=0.0,
+        priority_label="idle",
+        observation_events=[],
+        type2_search=True,
+    )
+    assert gi.type2_search is True
+    # Default is off (byte-identical to pre-M5 callers that don't pass it).
+    gi2 = extract_gate_inputs(
+        best_recall_similarity=1.0,
+        pc_ema=0.0,
+        pain_scalar=0.0,
+        drive_pressure=0.0,
+        priority_label="idle",
+        observation_events=[],
+    )
+    assert gi2.type2_search is False
+
+
 def test_default_enabled(monkeypatch):
     # Default ON since 2026-07-04 (owner decision, post probe PASS); the
     # byte-identical baseline lives behind the conftest pin + env=0.

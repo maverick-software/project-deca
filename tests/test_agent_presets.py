@@ -34,6 +34,68 @@ def test_store_mind_only_has_no_elements(tmp_path):
     assert mind is not None
     assert mind["mind_only"] is True
     assert mind["elements"] == []
+    # A mind has no world loop either.
+    assert mind["curriculum"] == {"kind": "none"}
+
+
+def test_store_forage_trainer_carries_curriculum(tmp_path):
+    # WS-FORAGE: the trainer preset switches on the server-side curriculum;
+    # scene presets default to no loop; parameter defaults are filled in.
+    store = PresetStore(tmp_path)
+    ft = store.get("forage_trainer")
+    assert ft is not None
+    assert ft["elements"] == ["food", "water"]  # store keeps elements verbatim
+    cur = ft["curriculum"]
+    assert cur["kind"] == "forage"
+    assert cur["place_every_s"] == 8.0 and cur["contact_radius"] == 0.35
+    # Plain scene presets stay curriculum-free (back-compat).
+    assert store.get("forage")["curriculum"] == {"kind": "none"}
+    assert store.get("calm")["curriculum"] == {"kind": "none"}
+
+
+def test_store_user_curriculum_override_roundtrips(tmp_path):
+    store = PresetStore(tmp_path)
+    rec = store.create(
+        {
+            "name": "My tight forage",
+            "elements": ["food", "water"],
+            "vision": True,
+            "audio": False,
+            "braces": False,
+            "mind_only": False,
+            "curriculum": {"kind": "forage", "place_every_s": 5, "rescue_floor": 20},
+        }
+    )
+    got = store.get(rec["id"])["curriculum"]
+    assert got["kind"] == "forage"
+    assert got["place_every_s"] == 5.0 and got["rescue_floor"] == 20.0
+    assert got["reach_distance"] == 0.6  # unspecified -> default filled
+
+
+def test_store_migrates_v2_file_preserving_user_presets(tmp_path):
+    # An older v2 presets file (no curriculum field) must migrate: user presets
+    # preserved (gaining curriculum=none), and the new forage_trainer builtin added.
+    path = tmp_path / "agent_presets.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "presets": [
+                    {"id": "calm", "name": "old", "elements": ["house"], "vision": True,
+                     "audio": False, "braces": False, "mind_only": False, "builtin": True},
+                    {"id": "myuser01", "name": "mine", "elements": ["food", "bear"], "vision": True,
+                     "audio": True, "braces": False, "mind_only": False, "builtin": False},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = PresetStore(tmp_path)
+    ids = {r["id"] for r in store.list()}
+    assert "myuser01" in ids and "forage_trainer" in ids
+    user = store.get("myuser01")
+    assert user["elements"] == ["food", "bear"]
+    assert user["curriculum"] == {"kind": "none"}
 
 
 def test_store_create_get_delete_roundtrip(tmp_path):

@@ -35,6 +35,10 @@ def _build(monkeypatch, **extra):
     monkeypatch.setenv("DECADIC_GROWTH_INTERVAL", "5")
     monkeypatch.setenv("DECADIC_GROWTH_STEP", "8")
     monkeypatch.setenv("DECADIC_GROWTH_PCLOSS_THRESHOLD", "0")
+    # Governance gates off (0 = disabled): these tests exercise growth
+    # MECHANICS and need growth to fire on schedule, not on merit.
+    monkeypatch.setenv("DECADIC_GROWTH_MIN_PROGRESS", "0")
+    monkeypatch.setenv("DECADIC_GROWTH_MIN_GAIN", "0")
     monkeypatch.setenv("DECADIC_MAX_NEURONS", "160")
     monkeypatch.setenv("DECADIC_GROWABLE_HIDDEN_CEILING", "256")
     for k, v in extra.items():

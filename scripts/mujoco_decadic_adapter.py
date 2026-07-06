@@ -385,6 +385,26 @@ NPC_PICKUP_RADIUS = 1.0  # reach a source within this distance to pick it up (m)
 EAT_RADIUS = 1.0  # root within this distance of a morsel consumes it (arm's reach, m)
 DRINK_RADIUS = 1.0  # root within this distance of a glass drinks it (m)
 MEDICAL_RADIUS = 1.0  # root within this distance of a kit uses it (m)
+
+
+# WS-FORAGE: consumption-by-CONTACT. Root-proximity eating (radius 1.0 m) meant a
+# resource placed within reach was consumed for FREE -- the agent never had to
+# do anything, so the act->relief contingency the value learner needs never
+# formed. In "contact" mode the agent must bring SOME body part within
+# CONTACT_RADIUS of the resource (approach / lean / step into it), so relief is
+# contingent on behaviour. Direct delivery (to the head) is exempt -- its own FSM
+# consumes it -- so the effortless rung of the provisioning ladder still works.
+# Tunable: tighten the radius toward true touch as motor competence grows, or set
+# mode=proximity to restore the legacy root-radius behaviour.
+def _consume_mode() -> str:
+    return os.environ.get("DECADIC_BODY_CONSUME_MODE", "contact").strip().lower()
+
+
+def _contact_radius() -> float:
+    try:
+        return max(0.05, float(os.environ.get("DECADIC_BODY_CONTACT_RADIUS", "0.30")))
+    except (TypeError, ValueError):
+        return 0.30
 # Consumables respawn so the agent can sustain itself indefinitely. Wall-clock
 # seconds; tuned for watchable replenishment (not the metabolic survival clock).
 FOOD_RESPAWN_S = 30.0
@@ -548,6 +568,28 @@ def eaten_now(
         if math.hypot(fpos[0] - root_pos[0], fpos[1] - root_pos[1]) <= eat_radius:
             out.append(fid)
     return out
+
+
+def touched_now(
+    part_positions: list[list[float]],
+    resource_positions: dict[str, list[float]],
+    radius: float,
+) -> list[str]:
+    """Resource ids within ``radius`` (3D) of ANY agent body part -- the contact
+    analogue of :func:`eaten_now`. Consumption requires a body part to actually
+    reach the item, not the torso to drift within a metre of it, so the relief is
+    earned by an action the value learner can reinforce (WS-FORAGE)."""
+    r2 = float(radius) * float(radius)
+    hits: list[str] = []
+    for name, rpos in resource_positions.items():
+        for pp in part_positions:
+            dx = pp[0] - rpos[0]
+            dy = pp[1] - rpos[1]
+            dz = pp[2] - rpos[2]
+            if dx * dx + dy * dy + dz * dz <= r2:
+                hits.append(name)
+                break
+    return hits
 
 
 def drunk_now(
@@ -1151,6 +1193,16 @@ class HumanoidSim:
             if pid >= 0:
                 self.body_part_ids[part] = pid
 
+        # WS-FORAGE consumption-by-contact: which body parts count as "touching" a
+        # resource. Any limb extremity OR the torso -> forgiving "body contact"
+        # the learner can bootstrap (a lean/step brings a part into range). Falls
+        # back to the torso alone so the agent is never left unable to eat.
+        self._consume_mode = _consume_mode()
+        self._contact_radius = _contact_radius()
+        self._consume_part_ids: list[int] = list(self.body_part_ids.values()) + [
+            self.torso_id
+        ]
+
         # Scene actors
         self.bear_body: int | None = None
         self.food_bodies: dict[str, int] = {}
@@ -1678,16 +1730,20 @@ class HumanoidSim:
         self.data.qpos[qadr + 3 : qadr + 7] = [1.0, 0.0, 0.0, 0.0]
         self.data.qvel[dadr : dadr + 6] = 0.0
 
-    def give_near(self, kind: str) -> bool:
+    def give_near(self, kind: str, dist: float = 1.6) -> bool:
         """Admin provisioning: relocate a resource prop a step ahead of the agent.
 
         Reuses an existing static scene prop (never an NPC gift body) by editing
-        its world position so it lands ~1.6 m in front of the torso - just outside
-        the 1.0 m reach, in the egocentric camera's view - then restores its
-        visibility/collidability. The agent must still perceive and walk to it to
-        consume it (normal food/water event), so the act->relief loop stays intact.
-        Works only when the running scenario includes that element; returns False
-        otherwise.
+        its world position so it lands ``dist`` m in front of the torso, in the
+        egocentric camera's view, then restores its visibility/collidability. The
+        agent must still perceive and move to it to consume it (normal food/water
+        event), so the act->relief loop stays intact. Works only when the running
+        scenario includes that element; returns False otherwise.
+
+        ``dist`` defaults to 1.6 m (just outside the ~1.0 m reach -- a full
+        approach). ``give_within_reach`` passes a shorter distance so the last gap
+        closes with a lean/step: WS-FORAGE M0 uses that to guarantee an early
+        *completable* approach->relief the successor-features value can learn from.
         """
         kind = self._resource_kind(kind)
         bodies = self._resource_bodies(kind)
@@ -1699,7 +1755,7 @@ class HumanoidSim:
         ax, ay = self._agent_xy()
         xmat = self.data.xmat[self.torso_id].reshape(3, 3)
         yaw = math.atan2(float(xmat[1, 0]), float(xmat[0, 0]))
-        dist = 1.6
+        dist = max(0.2, float(dist))
         base_z = float(self.data.xpos[bid][2])
         self._place_resource_body(
             name,
@@ -1711,6 +1767,20 @@ class HumanoidSim:
         self._respawn_at.pop(name, None)
         self._mj.mj_forward(self.model, self.data)
         return True
+
+    def give_within_reach(self, kind: str) -> bool:
+        """WS-FORAGE M0: place a resource at the edge of reach (~0.8 m ahead) so a
+        lean/step closes it. The rung between ``give_direct_visual`` (delivered to
+        the head, no approach) and ``give_near`` (a full walk): it still requires
+        the agent's OWN movement to earn the relief -- the minimal act->relief
+        contingency that reinforces approach -- but keeps the whole trajectory
+        inside the successor-features credit horizon. Distance is env-tunable via
+        ``DECADIC_BODY_REACH_DISTANCE`` (default 0.8 m)."""
+        try:
+            reach = float(os.environ.get("DECADIC_BODY_REACH_DISTANCE", "0.6"))
+        except (TypeError, ValueError):
+            reach = 0.6
+        return self.give_near(kind, dist=reach)
 
     def _head_forward(self) -> tuple[list[float], list[float]]:
         """Return world head position and egocentric forward unit vector."""
@@ -2222,6 +2292,19 @@ class HumanoidSim:
         tpos = self.data.xpos[self.torso_id]
         root = [float(tpos[0]), float(tpos[1]), float(tpos[2])]
 
+        # WS-FORAGE: in contact mode, consumption requires a body part within the
+        # contact radius (an earned reach), not the torso within 1 m (free). The
+        # part positions are gathered once; direct-delivered items are excluded
+        # below (active_direct) and consumed by their own FSM, so they stay free.
+        contact_mode = getattr(self, "_consume_mode", "proximity") == "contact"
+        contact_parts: list[list[float]] = []
+        contact_rad = getattr(self, "_contact_radius", 0.30)
+        if contact_mode:
+            contact_parts = [
+                [float(x) for x in self.data.xpos[pid][:3]]
+                for pid in self._consume_part_ids
+            ]
+
         if self.bear_body is not None:
             bpos = self.data.xpos[self.bear_body]
             dist = math.hypot(float(bpos[0]) - root[0], float(bpos[1]) - root[1])
@@ -2253,7 +2336,12 @@ class HumanoidSim:
                 and name not in active_direct
                 and self._is_learner_consumable(name)
             }
-            for name in eaten_now(root, live):
+            food_hits = (
+                touched_now(contact_parts, live, contact_rad)
+                if contact_mode
+                else eaten_now(root, live)
+            )
+            for name in food_hits:
                 self._consume(name)
                 events.append({"type": "food", "intensity": 1.0, "source": name})
 
@@ -2265,7 +2353,12 @@ class HumanoidSim:
                 and name not in active_direct
                 and self._is_learner_consumable(name)
             }
-            for name in drunk_now(root, live_w):
+            water_hits = (
+                touched_now(contact_parts, live_w, contact_rad)
+                if contact_mode
+                else drunk_now(root, live_w)
+            )
+            for name in water_hits:
                 self._consume(name)
                 events.append({"type": "water", "intensity": 1.0, "source": name})
 
@@ -2277,7 +2370,12 @@ class HumanoidSim:
                 and name not in active_direct
                 and self._is_learner_consumable(name)
             }
-            for name in eaten_now(root, live_m, MEDICAL_RADIUS):
+            med_hits = (
+                touched_now(contact_parts, live_m, contact_rad)
+                if contact_mode
+                else eaten_now(root, live_m, MEDICAL_RADIUS)
+            )
+            for name in med_hits:
                 self._consume(name)
                 events.append({"type": "medical_kit", "intensity": 1.0, "source": name})
 
@@ -2910,6 +3008,15 @@ class HumanoidSim:
 # ---------------------------------------------------------------------------
 
 
+def stream_env_requested() -> bool:
+    """True if an RTMP ingest target is configured via env (so the stream
+    auto-enables without the --stream flag -- ideal for headless launchers)."""
+    return bool(
+        os.environ.get("DECADIC_STREAM_RTMP", "").strip()
+        or os.environ.get("DECADIC_YT_STREAM_KEY", "").strip()
+    )
+
+
 async def _run(
     ws_url: str,
     *,
@@ -2922,6 +3029,7 @@ async def _run(
     elements: "list[str] | None" = None,
     baseline: "str | None" = None,
     braces: bool = False,
+    stream: bool = False,
 ) -> None:
     import websockets
 
@@ -2971,6 +3079,7 @@ async def _run(
                     latest_action.update(action)
 
         recv_task = asyncio.create_task(receiver())
+        stream_pub = None  # optional live RTMP spectator stream (see finally)
         try:
             if dry_run:
                 i = 0
@@ -3010,6 +3119,18 @@ async def _run(
                 )
             else:
                 print(f"[body] actuator contract OK: nu={sim.model.nu}")
+
+            # Optional live spectator stream (RTMP -> YouTube / Twitch / any
+            # media server). Auto-enabled by --stream OR by setting an ingest
+            # env (DECADIC_STREAM_RTMP / DECADIC_YT_STREAM_KEY), so it works
+            # identically wherever the body runs. Off => zero overhead, and a
+            # missing ffmpeg or bad config disables it without touching the body.
+            if (stream or stream_env_requested()) and sim.renderer is not None:
+                from decadic.embodiment.stream_publisher import StreamPublisher
+
+                stream_pub = StreamPublisher.maybe_create(sim._mj, sim.model, sim.data)
+                if stream_pub is not None:
+                    stream_pub.start()
             # Distinctness baseline: a reactive controller drives the body locally;
             # free the joints so it can actually try to walk, and ignore the brain.
             baseline_ctl: "BaselineController | None" = None
@@ -3083,6 +3204,21 @@ async def _run(
                             kind = "food"
                         if sim.give_near(kind):
                             print(f"[body] placed {kind} near the agent", flush=True)
+                        else:
+                            print(
+                                f"[body] no {kind} prop in this scenario to place",
+                                flush=True,
+                            )
+                    elif cmd in ("give_water_reach", "give_food_reach", "give_medical_kit_reach"):
+                        # WS-FORAGE M0: at the edge of reach -- a completable approach.
+                        if cmd == "give_water_reach":
+                            kind = "water"
+                        elif cmd == "give_medical_kit_reach":
+                            kind = "medical_kit"
+                        else:
+                            kind = "food"
+                        if sim.give_within_reach(kind):
+                            print(f"[body] placed {kind} within reach of the agent", flush=True)
                         else:
                             print(
                                 f"[body] no {kind} prop in this scenario to place",
@@ -3253,6 +3389,8 @@ async def _run(
                 i += 1
             sim.close()
         finally:
+            if stream_pub is not None:
+                stream_pub.stop()
             recv_task.cancel()
             try:
                 await recv_task
@@ -3381,6 +3519,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Bind to an existing agent instead of creating a fresh one",
     )
     parser.add_argument(
+        "--stream",
+        action="store_true",
+        help=(
+            "Publish a live spectator video stream over RTMP (YouTube/Twitch/"
+            "media server). Also auto-enables when DECADIC_STREAM_RTMP or "
+            "DECADIC_YT_STREAM_KEY is set. Requires ffmpeg on PATH."
+        ),
+    )
+    parser.add_argument(
         "--baseline",
         choices=["random", "cpg"],
         default=None,
@@ -3409,23 +3556,68 @@ def main() -> None:
     if args.scenario:
         elements = [e.strip().lower() for e in args.scenario.split(",") if e.strip()]
 
-    try:
-        asyncio.run(
-            _run(
-                ws_url,
-                steps=args.steps,
-                dry_run=args.dry_run,
-                vision=args.vision,
-                audio=args.audio,
-                view=args.view,
-                scene=args.scene,
-                elements=elements,
-                baseline=args.baseline,
-                braces=args.braces,
+    # Reconnect loop: a transient socket reset (e.g. Windows WinError 64 "network
+    # name no longer available") used to kill a whole soak seconds in. The brain
+    # lives server-side keyed by agent_id (baked into ws_url), so on a dropped
+    # connection we rebuild the local body world and re-bind to the SAME agent --
+    # its memory, growth and viability persist across the blip. A clean return
+    # (steps reached / EOF) stops; genuine server-down backs off and eventually
+    # gives up. The diag harness owns process teardown, so a long soak can ride
+    # out any number of blips. `steps=0` (run-forever) never returns cleanly, so
+    # every exit there is a drop worth retrying.
+    import websockets  # for its exception types
+
+    max_reconnects = int(os.environ.get("DECADIC_BODY_MAX_RECONNECTS", "1000"))
+    backoff = 1.0
+    attempts = 0
+    while True:
+        started = time.perf_counter()
+        try:
+            asyncio.run(
+                _run(
+                    ws_url,
+                    steps=args.steps,
+                    dry_run=args.dry_run,
+                    vision=args.vision,
+                    audio=args.audio,
+                    view=args.view,
+                    scene=args.scene,
+                    elements=elements,
+                    baseline=args.baseline,
+                    braces=args.braces,
+                    stream=args.stream,
+                )
             )
-        )
-    except KeyboardInterrupt:
-        print("[body] stopped")
+            break  # clean completion
+        except KeyboardInterrupt:
+            print("[body] stopped")
+            break
+        except (OSError, websockets.exceptions.WebSocketException) as exc:
+            # A connection that survived a while proves the server is healthy;
+            # reset the backoff so an isolated blip reconnects immediately.
+            if time.perf_counter() - started > 30.0:
+                backoff = 1.0
+                attempts = 0
+            attempts += 1
+            if attempts > max_reconnects:
+                print(
+                    f"[body] giving up after {attempts} reconnect attempts "
+                    f"({type(exc).__name__}: {exc})",
+                    flush=True,
+                )
+                break
+            # Confirm the server is actually reachable before rebuilding the world.
+            try:
+                urllib.request.urlopen(f"{base_http}/agents", timeout=5).read()
+            except OSError:
+                pass  # unreachable now; the backoff sleep covers a restart window
+            print(
+                f"[body] connection lost ({type(exc).__name__}: {exc}); "
+                f"reconnecting to agent in {backoff:.0f}s (attempt {attempts})",
+                flush=True,
+            )
+            time.sleep(backoff)
+            backoff = min(10.0, backoff * 2.0)
 
 
 if __name__ == "__main__":

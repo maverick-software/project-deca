@@ -10,6 +10,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -141,6 +142,9 @@ class EnvironmentStartRequest(BaseModel):
     replace: bool = False
     # Optional neural architecture preset for the fresh mind.
     preset: str | None = None
+    # Optional server-side curriculum to run for the scenario's lifetime, e.g.
+    # {"kind":"forage", ...params}. Absent/none -> no loop (WS-FORAGE).
+    curriculum: dict[str, Any] | None = None
 
 
 @asynccontextmanager
@@ -851,10 +855,13 @@ def create_app() -> FastAPI:
                 detail="resource must be 'water', 'food', or 'medical_kit'",
             )
         md = str(mode).strip().lower()
-        if md not in ("near", "direct", "visual_direct", "admin"):
+        if md not in ("near", "within_reach", "reach", "direct", "visual_direct", "admin"):
             raise HTTPException(
                 status_code=400,
-                detail="mode must be 'near', 'direct', 'visual_direct', or 'admin'",
+                detail=(
+                    "mode must be 'near', 'within_reach', 'direct', 'visual_direct', "
+                    "or 'admin'"
+                ),
             )
         if md == "admin":
             try:
@@ -864,24 +871,68 @@ def create_app() -> FastAPI:
             return JSONResponse({"agent_id": agent_id, "status": f"{res}_admin", **result})
         sup: EnvironmentSupervisor = application.state.environment
         env_status = sup.status()
-        if not sup.is_running() or env_status.get("agent_id") != agent_id:
+        supervised = sup.is_running() and env_status.get("agent_id") == agent_id
+        # Opt-in escape hatch (2026-07-05): a body launched OUTSIDE the server's
+        # EnvironmentSupervisor -- e.g. the standalone MuJoCo adapter used by the
+        # diag/soak harness -- is still a live control consumer on the cycle
+        # websocket, so a queued body command reaches it and the body itself
+        # answers "no such prop" if the scene lacks the resource. Without this,
+        # give-food/place-nearby 409s during those runs (there's no supervised
+        # "scenario"), which blocks feeding the agent to test viability<->tempo
+        # coupling. Flag-gated so normal supervised behavior is unchanged.
+        allow_external = (
+            os.environ.get("DECADIC_ALLOW_EXTERNAL_BODY_PROVISION", "0")
+            .strip()
+            .lower()
+            not in ("0", "false", "off", "")
+        )
+        if not supervised and not allow_external:
             raise HTTPException(
                 status_code=409,
                 detail="No running body for this agent; start a scenario with resources first.",
             )
-        elements = env_status.get("elements")
-        if isinstance(elements, list) and elements and not _scenario_has_resource(res, elements):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"{res} is not in the running scenario; restart the environment "
-                    f"with {res} enabled, or use mode=admin for an instant test credit."
-                ),
-            )
-        suffix = "direct_visual" if md in ("direct", "visual_direct") else "near"
+        if supervised:
+            elements = env_status.get("elements")
+            if isinstance(elements, list) and elements and not _scenario_has_resource(res, elements):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{res} is not in the running scenario; restart the environment "
+                        f"with {res} enabled, or use mode=admin for an instant test credit."
+                    ),
+                )
+        if md in ("direct", "visual_direct"):
+            suffix = "direct_visual"
+        elif md in ("within_reach", "reach"):
+            suffix = "reach"  # WS-FORAGE M0: edge-of-reach, a completable approach
+        else:
+            suffix = "near"
         if not agent.queue_body_command(f"give_{res}_{suffix}"):
             raise HTTPException(status_code=503, detail="Command queue full")
-        return JSONResponse({"agent_id": agent_id, "status": f"{res}_{suffix}_queued"})
+        # Cycle-stamped grant record: the OTHER half of the feeding timeline.
+        # Pairs with the body-side "nourishment cycle=..." retrieval log so we
+        # can measure the grant->retrieval gap (foraging latency for "near")
+        # and whether tempo/deliberation shifted after the resource landed.
+        try:
+            grant_cycle = int(agent.state_bus.cycle_index)
+        except Exception:  # pragma: no cover - defensive; cycle always present
+            grant_cycle = -1
+        logger.info(
+            "resource_provision agent_id=%s cycle=%d kind=%s mode=%s supervised=%s",
+            agent_id,
+            grant_cycle,
+            res,
+            suffix,
+            supervised,
+        )
+        return JSONResponse(
+            {
+                "agent_id": agent_id,
+                "status": f"{res}_{suffix}_queued",
+                "supervised": supervised,
+                "cycle": grant_cycle,
+            }
+        )
 
     @application.delete("/agent/{agent_id}")
     async def delete_agent(agent_id: str) -> JSONResponse:
@@ -907,6 +958,7 @@ def create_app() -> FastAPI:
                 braces=req.braces,
                 replace=req.replace,
                 preset=_validate_neural_preset(req.preset),
+                curriculum=req.curriculum,
             )
         except EnvironmentControlError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -66,6 +66,7 @@ const DEFAULT_DRAFT: ScenarioDraft = {
   audio: false,
   braces: false,
   mindOnly: false,
+  curriculum: { kind: "none" },
 };
 
 function presetToDraft(p: AgentPreset): ScenarioDraft {
@@ -75,6 +76,7 @@ function presetToDraft(p: AgentPreset): ScenarioDraft {
     audio: p.audio,
     braces: p.braces,
     mindOnly: p.mind_only,
+    curriculum: p.curriculum ?? { kind: "none" },
   };
 }
 
@@ -145,6 +147,7 @@ export default function App() {
         audio: draft.audio,
         braces: draft.braces,
         mind_only: draft.mindOnly,
+        curriculum: draft.curriculum,
       });
       await refreshPresets();
       setSelectedPresetId(created.id);

@@ -1,0 +1,13 @@
+body diag: graph_backend=kuzu seconds=3600 stamp=20260705_111821
+cycle rate (steady window): 3.74 cycles/s  (44 -> 84 cycles over 10.7s)
+  t=10.6s cycles=44
+  t=21.3s cycles=84
+body budget (last 3):
+[body] budget ms/obs: physics=0.4 vision=27.7 views=13.1 audio=0.0 send=12.4
+[body] budget ms/obs: physics=64.3 vision=4.2 views=6.7 audio=0.0 send=52.3
+body stderr tail:
+    yield await self.recv()
+          ^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 324, in recv
+    raise self.protocol.close_exc from self.recv_exc
+websockets.exceptions.ConnectionClosedError: no close frame received or sent

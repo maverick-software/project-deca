@@ -78,6 +78,7 @@ from decadic.config import (
     scene_dynamics_enabled,
     sf_gamma,
     sf_lambda,
+    sf_normalize_returns,
     stress_gain,
     strain_pain_gain,
     tombstone_keep,
@@ -372,7 +373,9 @@ class AgentRuntime:
         # Ordered goal-episode accumulator: collects the live transitions of each
         # open goal and writes lambda-returns back into them (in the replay buffer)
         # when it closes -- the distal credit-assignment timeline.
-        self._episode_acc = EpisodeAccumulator(gamma=sf_gamma(), lam=sf_lambda())
+        self._episode_acc = EpisodeAccumulator(
+            gamma=sf_gamma(), lam=sf_lambda(), normalize=sf_normalize_returns()
+        )
         self._consolidator: ConsolidationManager | None = None
         # Live loss-landscape probe (visualization only): a flagged background task
         # evaluates a filter-normalized 2D slice of the live objective on its own
@@ -1277,6 +1280,55 @@ class AgentRuntime:
                 self.metrics["memory_wal_bytes"] = int(self.metrics.get("episodic_wal_bytes", 0) or 0) + int(ltm_metrics.get("memory_wal_bytes", 0) or 0)
         except Exception:
             pass
+
+    def _maybe_log_memory_accumulation(self, wall_ms: float) -> None:
+        """Periodic accumulation trace (2026-07-05). Open question from the soaks:
+        does per-cycle wall time creep up because the long-term MEMORY store is
+        growing (match/recall latency rising with store size) -- a monotonic cost
+        that feeding and growth-governance cannot touch and that hides behind idle
+        CPU/GPU because it is latency-bound? This line makes that visible LIVE in
+        the log (the timings otherwise live only in the teardown metrics dump), so
+        a growing ``memory_recall_ms`` / ``ltm_match_ms`` alongside rising node
+        counts confirms or kills the theory without waiting for the run to end.
+        Amortized: every N cycles (env ``DECADIC_MEMORY_TELEMETRY_EVERY``, default
+        200; 0 disables). Fully defensive -- telemetry never breaks the cycle."""
+        try:
+            every = int(os.environ.get("DECADIC_MEMORY_TELEMETRY_EVERY", "200"))
+        except (TypeError, ValueError):
+            every = 200
+        if every <= 0:
+            return
+        cyc = int(self.state_bus.cycle_index)
+        if cyc <= 0 or cyc % every != 0:
+            return
+        try:
+            self._refresh_ltm_metrics()
+        except Exception:  # pragma: no cover - telemetry is best-effort
+            pass
+        nodes = edges = -1
+        if self.ltm_graph is not None:
+            try:
+                counts = getattr(self.ltm_graph, "counts", None)
+                if callable(counts):
+                    nodes, edges = counts()
+            except Exception:  # pragma: no cover
+                pass
+        m = self.metrics
+        logger.info(
+            "memory_accumulation agent_id=%s cycle=%d wall_ms=%.1f "
+            "recall_ms=%.3f ltm_match_ms=%.3f ltm_nodes=%d ltm_edges=%d "
+            "ltm_beliefs=%d ltm_db_bytes=%d episodic_db_bytes=%d",
+            self.agent_id,
+            cyc,
+            float(wall_ms),
+            float(m.get("memory_recall_ms", 0.0) or 0.0),
+            float(m.get("ltm_match_ms", 0.0) or 0.0),
+            int(nodes),
+            int(edges),
+            int(m.get("ltm_property_beliefs", 0) or 0),
+            int(m.get("ltm_db_bytes", 0) or 0),
+            int(m.get("episodic_db_bytes", 0) or 0),
+        )
 
     def _maybe_schedule_memory_context_refresh(self, query: Any, cycle: int) -> None:
         if not C.memory_context_async_enabled() or self.neural is None or query is None:
@@ -2260,7 +2312,9 @@ class AgentRuntime:
                 abandon_cycles=goal_abandon_cycles(),
                 max_cycles=goal_max_cycles(),
             )
-            self._episode_acc = EpisodeAccumulator(gamma=sf_gamma(), lam=sf_lambda())
+            self._episode_acc = EpisodeAccumulator(
+            gamma=sf_gamma(), lam=sf_lambda(), normalize=sf_normalize_returns()
+        )
             self._cognitive_history.clear()
             self._obs_buffer.clear()
             self._clear_perception_pipeline()
@@ -2695,6 +2749,65 @@ class AgentRuntime:
             (h.integrity - h.min_value) / span,
         )
 
+    def _current_goal_vec(self) -> "list[float] | None":
+        """WS-FORAGE M3: the active-goal conditioning vector for this cycle, or
+        None when goal conditioning is off / no goal is latched. Reads the latched
+        GoalState and the live reservoir deficit. Defensive: any failure returns
+        None (no conditioning) rather than perturbing the cycle. M4 will add the
+        remembered-target bearing to the same vector."""
+        if not C.goal_conditioned_policy_enabled():
+            return None
+        gs = getattr(self, "goal_state", None)
+        if gs is None or getattr(gs, "status", "idle") != "active" or not gs.goal_id:
+            return None
+        try:
+            from decadic.nn.goal_conditioning import GOAL_LABELS, encode_goal
+
+            reservoirs = self._reservoirs_norm()  # (hydration, energy, integrity)
+            idx = GOAL_LABELS.index(gs.goal_id)
+            deficit = max(0.0, 1.0 - float(reservoirs[idx]))
+            b_cos, b_sin, b_dist = self._goal_bearing(gs.goal_id)  # M4 (None if unknown)
+            return encode_goal(
+                gs.goal_id,
+                deficit,
+                bearing_cos=b_cos,
+                bearing_sin=b_sin,
+                distance=b_dist,
+            )
+        except Exception:
+            return None
+
+    def _goal_bearing(
+        self, goal_id: str
+    ) -> "tuple[float | None, float | None, float | None]":
+        """WS-FORAGE M4: egocentric bearing to the remembered resource that
+        relieves ``goal_id`` -> (cos az, sin az, norm dist), or (None, None, None)
+        when disabled / no remembered target / no pose. Fully defensive: any
+        failure yields no bearing (the M3 vector's [4:8] stay zero)."""
+        if not C.goal_bearing_enabled():
+            return None, None, None
+        try:
+            from decadic.state.spatial_recall import (
+                egocentric_bearing,
+                resolve_goal_target,
+            )
+
+            target = resolve_goal_target(goal_id, self.ltm_graph)
+            if target is None:
+                return None, None, None
+            _tid, tpos = target
+            obs = self._last_observation if isinstance(self._last_observation, dict) else {}
+            prop = obs.get("proprioception", {}) if isinstance(obs, dict) else {}
+            spos = prop.get("position")
+            ori = prop.get("orientation")  # [roll, pitch, yaw]
+            if not spos or not ori or len(ori) < 3 or len(spos) < 2:
+                return None, None, None
+            return egocentric_bearing(
+                spos, float(ori[2]), tpos, max_dist=C.goal_bearing_max_dist()
+            )
+        except Exception:
+            return None, None, None
+
     def _advance_goal(self, transition: "dict[str, Any] | None") -> list:
         """Advance the explicit goal lifecycle one cycle and surface telemetry.
 
@@ -2756,7 +2869,8 @@ class AgentRuntime:
         if not achieved or max(achieved) <= 1e-6:
             return  # nothing was actually achieved -> no hindsight success to learn
         copies = build_hindsight_copies(
-            steps, achieved, gamma=sf_gamma(), lam=sf_lambda(), k=her_relabel_k()
+            steps, achieved, gamma=sf_gamma(), lam=sf_lambda(), k=her_relabel_k(),
+            normalize=sf_normalize_returns(),
         )
         pushed = sum(1 for c in copies if self.replay_buffer.push(c))
         if pushed:
@@ -2840,6 +2954,7 @@ class AgentRuntime:
                     motor_babble_sigma=self.motor_babble_sigma_override,
                     cached_memory_context=self._cached_memory_context_for_cycle(),
                     memory_recall_on_critical_path=not C.memory_context_async_enabled(),
+                    goal_vec=self._current_goal_vec(),
                 )
                 if self.neural is not None:
                     msg = run_neural_cycle(ctx, self.neural)
@@ -2969,6 +3084,7 @@ class AgentRuntime:
                 wall_ms,
                 outbound.get("action", {}).get("type"),
             )
+            self._maybe_log_memory_accumulation(wall_ms)
             if not self._put_outbound(outbound, drop_oldest=False):
                 logger.warning(
                     "out_queue_full_drop agent_id=%s cycle=%s",
@@ -3094,9 +3210,15 @@ class AgentRuntime:
                         hydration=hydration_gain,
                         integrity=integrity_gain,
                     )
+                    # cycle-stamped so a retrieval can be aligned against the
+                    # tempo (cycles/s) and gate-escalation curves -- the record
+                    # that tells us whether feeding actually restored pace and
+                    # cut deliberation ("inquisitive moments").
                     logger.info(
-                        "nourishment agent_id=%s energy=+%.4f hydration=+%.4f integrity=+%.4f viability=%.4f",
+                        "nourishment agent_id=%s cycle=%d energy=+%.4f hydration=+%.4f "
+                        "integrity=+%.4f viability=%.4f",
                         self.agent_id,
+                        int(self.state_bus.cycle_index),
                         energy_gain,
                         hydration_gain,
                         integrity_gain,

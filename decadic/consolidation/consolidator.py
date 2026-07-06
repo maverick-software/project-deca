@@ -222,6 +222,7 @@ class ConsolidationManager:
                 gamma=C.sf_gamma(),
                 horizon=C.imagination_horizon(),
                 device=self.device,
+                normalize=C.sf_normalize_returns(),
             )
             if il is not None and torch.isfinite(il):
                 loss = loss + C.imagination_weight() * il

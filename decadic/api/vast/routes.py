@@ -48,12 +48,38 @@ class DeployBody(BaseModel):
     restore_agent: str | None = None
 
 
+# Host-quality floors (2026-07-05, per operator request). Cheap community boxes
+# repeatedly failed the Docker image pull (registry-1.docker.io TLS handshake
+# timeouts) and stranded deploys in "loading"; these steer selection toward
+# reliable, well-connected, datacenter-grade hosts. All are overridable per
+# request. Units are Vast's *query* units (confirmed against docs.vast.ai):
+#   reliability : 0..1 fraction        inet_up/inet_down : Mb/s (e.g. 1000 = 1 Gbps)
+#   cpu_ram     : GB                    cpu_ghz           : GHz
+#   cpu_cores   : count                disk_bw           : MB/s (1000 = ~1 GB/s)
+#   gpu_ram     : GB
+DEFAULT_MIN_RELIABILITY = 0.95
+DEFAULT_MIN_INET_MBPS = 1000.0
+DEFAULT_MIN_CPU_RAM_GB = 32.0
+DEFAULT_MIN_CPU_GHZ = 3.0
+DEFAULT_MIN_CPU_CORES = 4
+DEFAULT_MIN_DISK_BW_MBS = 1000.0
+DEFAULT_MIN_GPU_RAM_GB = 16.0
+
+
 def _build_offer_filter(
     gpu_name: str | None,
     num_gpus: int,
     max_dph: float | None,
     min_gpu_ram: float | None,
     verified: bool,
+    *,
+    min_reliability: float | None = DEFAULT_MIN_RELIABILITY,
+    min_inet_up: float | None = DEFAULT_MIN_INET_MBPS,
+    min_inet_down: float | None = DEFAULT_MIN_INET_MBPS,
+    min_cpu_ram: float | None = DEFAULT_MIN_CPU_RAM_GB,
+    min_cpu_ghz: float | None = DEFAULT_MIN_CPU_GHZ,
+    min_cpu_cores: int | None = DEFAULT_MIN_CPU_CORES,
+    min_disk_bw: float | None = DEFAULT_MIN_DISK_BW_MBS,
 ) -> str:
     parts = ["rentable=true", "direct_port_count>=1", f"num_gpus={max(1, num_gpus)}"]
     if gpu_name:
@@ -66,6 +92,23 @@ def _build_offer_filter(
         parts.append(f"dph_total<={max_dph}")
     if min_gpu_ram and min_gpu_ram > 0:
         parts.append(f"gpu_ram>={min_gpu_ram}")
+    # Host-quality floors (each skipped when None/<=0 so callers can relax any of
+    # them individually -- e.g. drop cpu_ghz, which datacenter EPYC/Xeon parts
+    # often report below 4.0).
+    if min_reliability and min_reliability > 0:
+        parts.append(f"reliability>={min_reliability}")
+    if min_inet_up and min_inet_up > 0:
+        parts.append(f"inet_up>={min_inet_up}")
+    if min_inet_down and min_inet_down > 0:
+        parts.append(f"inet_down>={min_inet_down}")
+    if min_cpu_ram and min_cpu_ram > 0:
+        parts.append(f"cpu_ram>={min_cpu_ram}")
+    if min_cpu_ghz and min_cpu_ghz > 0:
+        parts.append(f"cpu_ghz>={min_cpu_ghz}")
+    if min_cpu_cores and min_cpu_cores > 0:
+        parts.append(f"cpu_cores>={min_cpu_cores}")
+    if min_disk_bw and min_disk_bw > 0:
+        parts.append(f"disk_bw>={min_disk_bw}")
     return " ".join(parts)
 
 
@@ -168,6 +211,10 @@ def _normalize_offer(o: dict[str, Any]) -> dict[str, Any]:
         "inet_down_mbps": _mbps(o.get("inet_down")),
         "cpu_name": o.get("cpu_name"),
         "cpu_cores": o.get("cpu_cores"),
+        "cpu_cores_effective": o.get("cpu_cores_effective"),
+        "cpu_ghz": o.get("cpu_ghz"),
+        "cpu_ram_gb_raw": o.get("cpu_ram"),
+        "disk_bw_mbs": o.get("disk_bw"),
         "direct_port_count": o.get("direct_port_count"),
         "host_id": o.get("host_id"),
         "machine_id": o.get("machine_id"),
@@ -236,9 +283,16 @@ def register_vast_routes(application: FastAPI) -> None:
         gpu_name: str | None = None,
         num_gpus: int = 1,
         max_dph: float | None = None,
-        min_gpu_ram: float | None = None,
+        min_gpu_ram: float | None = DEFAULT_MIN_GPU_RAM_GB,
         verified: bool = True,
         limit: int = 50,
+        min_reliability: float | None = DEFAULT_MIN_RELIABILITY,
+        min_inet_up: float | None = DEFAULT_MIN_INET_MBPS,
+        min_inet_down: float | None = DEFAULT_MIN_INET_MBPS,
+        min_cpu_ram: float | None = DEFAULT_MIN_CPU_RAM_GB,
+        min_cpu_ghz: float | None = DEFAULT_MIN_CPU_GHZ,
+        min_cpu_cores: int | None = DEFAULT_MIN_CPU_CORES,
+        min_disk_bw: float | None = DEFAULT_MIN_DISK_BW_MBS,
     ) -> JSONResponse:
         ctrl = _controller(application)
         store = _store(application)
@@ -246,7 +300,20 @@ def register_vast_routes(application: FastAPI) -> None:
             raise HTTPException(status_code=400, detail="No Vast.ai API key set.")
         if not ctrl.cli.available():
             raise HTTPException(status_code=503, detail="vastai CLI not installed (pip install vastai).")
-        query = _build_offer_filter(gpu_name, num_gpus, max_dph, min_gpu_ram, verified)
+        query = _build_offer_filter(
+            gpu_name,
+            num_gpus,
+            max_dph,
+            min_gpu_ram,
+            verified,
+            min_reliability=min_reliability,
+            min_inet_up=min_inet_up,
+            min_inet_down=min_inet_down,
+            min_cpu_ram=min_cpu_ram,
+            min_cpu_ghz=min_cpu_ghz,
+            min_cpu_cores=min_cpu_cores,
+            min_disk_bw=min_disk_bw,
+        )
         try:
             offers = await ctrl.cli.search_offers(query)
         except VastCliError as exc:

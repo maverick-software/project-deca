@@ -41,6 +41,7 @@ class EpisodeAccumulator:
     gamma: float
     lam: float
     max_steps: int = 4096  # bound retained refs per open episode (memory safety)
+    normalize: bool = False  # WS-FORAGE M1: (1-gamma) target normalization
 
     _episode_id: int = 0
     _open: bool = False
@@ -95,8 +96,12 @@ class EpisodeAccumulator:
             return []
         rewards = [float(getattr(t, "reward", 0.0)) for t in steps]
         feats = [_as_list(getattr(t, "feat", None)) for t in steps]
-        rets = lambda_returns(rewards, gamma=self.gamma, lam=self.lam)
-        sf_targets = lambda_returns_vec(feats, gamma=self.gamma, lam=self.lam)
+        rets = lambda_returns(
+            rewards, gamma=self.gamma, lam=self.lam, normalize=self.normalize
+        )
+        sf_targets = lambda_returns_vec(
+            feats, gamma=self.gamma, lam=self.lam, normalize=self.normalize
+        )
         for t, g, sft in zip(steps, rets, sf_targets):
             t.ret = float(g)
             t.sf_target = sft
@@ -130,6 +135,7 @@ def build_hindsight_copies(
     gamma: float,
     lam: float,
     k: int = 1,
+    normalize: bool = False,
 ) -> list[Any]:
     """Hindsight-relabel a non-achieved episode that still found relief.
 
@@ -147,8 +153,12 @@ def build_hindsight_copies(
     feats = [_as_list(getattr(t, "feat", None)) for t in steps]
     rewards = [float(getattr(t, "reward", 0.0)) for t in steps]
     scalar_boot = float(sum(achieved)) if achieved else 0.0
-    sf_targets = lambda_returns_vec(feats, gamma=gamma, lam=lam, bootstrap=achieved or None)
-    rets = lambda_returns(rewards, gamma=gamma, lam=lam, bootstrap=scalar_boot)
+    sf_targets = lambda_returns_vec(
+        feats, gamma=gamma, lam=lam, bootstrap=achieved or None, normalize=normalize
+    )
+    rets = lambda_returns(
+        rewards, gamma=gamma, lam=lam, bootstrap=scalar_boot, normalize=normalize
+    )
     out: list[Any] = []
     for _ in range(int(k)):
         for t, g, sft in zip(steps, rets, sf_targets):

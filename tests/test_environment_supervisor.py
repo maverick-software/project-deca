@@ -16,6 +16,17 @@ class FakeAgent:
     def __init__(self) -> None:
         self.paused = False
         self.body_commands: list[str] = []
+        # Foraging-curriculum surface (WS-FORAGE): starts "immortal" so the
+        # supervisor's forced-metabolic override is observable; live reservoirs
+        # + consume_events; and an async admin-credit sink.
+        self.viability_mode = "immortal"
+        self.metrics: dict[str, float] = {
+            "hydration": 100.0,
+            "energy": 100.0,
+            "integrity": 100.0,
+            "consume_events": 0,
+        }
+        self.given: list[tuple[str, float]] = []
 
     def pause(self) -> None:
         self.paused = True
@@ -26,6 +37,10 @@ class FakeAgent:
     def queue_body_command(self, command: str) -> bool:
         self.body_commands.append(command)
         return True
+
+    async def give_resource(self, resource: str, amount=None):
+        self.given.append((resource, float(amount) if amount is not None else 0.0))
+        return {}
 
 
 class FakeRegistry:
@@ -113,6 +128,69 @@ def test_start_pause_resume_stop(tmp_path, monkeypatch):
         assert stopped["state"] == "stopped"
         assert stopped["running"] is False
         assert proc.terminated is True
+
+    asyncio.run(go())
+
+
+def test_forage_curriculum_places_most_depleted_rescues_and_cancels(tmp_path, monkeypatch):
+    # WS-FORAGE: a curriculum=forage start forces metabolic, then a background
+    # loop places the MOST-DEPLETED resource within reach and rescues a reservoir
+    # below the floor -- and the loop is cancelled cleanly on stop (no orphan).
+    reg = FakeRegistry()
+    proc = FakeProc()
+    _patch_spawn(monkeypatch, proc)
+    sup = EnvironmentSupervisor(reg, log_dir=tmp_path)
+
+    async def go():
+        cur = {
+            "kind": "forage",
+            "place_every_s": 0.02,
+            "rescue_floor": 15.0,
+            "rescue_to": 40.0,
+            "contact_radius": 0.35,
+            "reach_distance": 0.6,
+        }
+        st = await sup.start(["food", "water"], curriculum=cur)
+        aid = st["agent_id"]
+        agent = reg.get(aid)
+        assert agent.viability_mode == "metabolic"  # forced off immortal
+        assert st["curriculum"]["kind"] == "forage"
+
+        # Make water the most-depleted and below the rescue floor.
+        agent.metrics.update({"hydration": 8.0, "energy": 90.0, "integrity": 100.0})
+        await asyncio.sleep(0.12)  # let a few ticks run
+
+        assert "give_water_reach" in agent.body_commands  # placed the dominant need
+        assert any(r == "water" for r, _ in agent.given)  # rescued the sub-floor one
+        amt = next(a for r, a in agent.given if r == "water")
+        assert abs(amt - (40.0 - 8.0)) < 1e-6
+        assert sup.status()["forage"]["rescues"] >= 1
+
+        await sup.stop()  # cancels the loop
+        assert sup._curriculum_task is None
+        n = len(agent.body_commands)
+        await asyncio.sleep(0.1)
+        assert len(agent.body_commands) == n  # no orphan ticks after stop
+
+    asyncio.run(go())
+
+
+def test_non_forage_start_has_no_curriculum_loop(tmp_path, monkeypatch):
+    # Back-compat: a normal scenario start runs no loop and reports kind=none.
+    reg = FakeRegistry()
+    proc = FakeProc()
+    _patch_spawn(monkeypatch, proc)
+    sup = EnvironmentSupervisor(reg, log_dir=tmp_path)
+
+    async def go():
+        st = await sup.start(["house", "food"])
+        assert st["curriculum"] == {"kind": "none"}
+        assert st["forage"] is None
+        assert sup._curriculum_task is None
+        agent = reg.get(st["agent_id"])
+        await asyncio.sleep(0.05)
+        assert agent.body_commands == []  # nothing auto-queued
+        await sup.stop()
 
     asyncio.run(go())
 

@@ -19,7 +19,8 @@ echo "[setup] installing system libraries (EGL / MuJoCo / tmux)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y --no-install-recommends \
-  libgl1 libegl1 libglfw3 libosmesa6 libglib2.0-0 git tmux ca-certificates
+  libgl1 libegl1 libglfw3 libosmesa6 libglib2.0-0 git tmux ca-certificates \
+  ffmpeg
 
 echo "[setup] installing python deps (preserving the image's CUDA torch)"
 python -m pip install --no-input --upgrade pip

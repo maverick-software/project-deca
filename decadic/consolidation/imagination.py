@@ -30,6 +30,7 @@ def imagined_sf_loss(
     gamma: float,
     horizon: int,
     device,
+    normalize: bool = False,
 ) -> "torch.Tensor | None":
     """SF regression loss against imagined interoceptive rollouts. None if no-op.
 
@@ -38,9 +39,16 @@ def imagined_sf_loss(
     deltas into an imagined successor-feature target; regress the (trainable) SF
     head toward it. The rollout itself runs under ``no_grad`` (it is a target, not
     a path the policy can edit).
+
+    ``normalize=True`` scales the imagined target by ``(1 - gamma)`` (WS-FORAGE
+    M1) so it shares the discounted-AVERAGE scale of the real episode SF targets
+    (:func:`decadic.consolidation.returns.lambda_returns_vec`); otherwise the two
+    training signals feeding the same head would disagree on magnitude. Default
+    OFF -> byte-identical.
     """
     horizon = max(1, int(horizon))
     gamma = float(gamma)
+    scale = (1.0 - gamma) if normalize else 1.0
     losses: list[torch.Tensor] = []
     for t in batch:
         if not getattr(t, "drive_on", False) or getattr(t, "prev_intero", None) is None:
@@ -60,6 +68,8 @@ def imagined_sf_loss(
                 target = target + disc * (nxt - cur)
                 cur = nxt
                 disc *= gamma
+        if normalize:
+            target = target * scale
         psi = stack.successor_predict(state, u)
         losses.append(F.mse_loss(psi, target))
     if not losses:

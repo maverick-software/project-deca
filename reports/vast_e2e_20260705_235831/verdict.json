@@ -1,0 +1,26 @@
+{
+  "checks": [
+    {
+      "name": "preflight",
+      "passed": true,
+      "detail": "key=True cli=True phase=idle instance=None"
+    },
+    {
+      "name": "offer_search",
+      "passed": true,
+      "detail": "50 rentable offers <= $1.5/hr (of 50 returned)"
+    },
+    {
+      "name": "deploy_ready",
+      "passed": false,
+      "detail": "deploy errored: copy local:C:\\Users\\charl\\AppData\\Local\\Temp\\vast_payload_k7b3j2go.tgz -> 44002020:/workspace/app/payload.tgz failed (exit 1): Traceback (most recent call last):\r\n  File \"<string>\", line 1, in <module>\r\n    import sys; from vastai.cli.main import main; sys.exit(main())\r\n                                                           ~~~~^^\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\cli\\main.py\", line 140, in main\r\n    res = args.func(args)\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\cli\\commands\\storage.py\", line 76, in copy\r\n    (src_id, src_path) = parse_vast_url(args.src)\r\n                         ~~~~~~~~~~~~~~^^^^^^^^^^\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\utils.py\", line 104, in parse_vast_url\r\n    raise VRLException(\"Invalid VRL (Vast resource locator).\")\r\nvastai.utils.VRLException: Invalid VRL (Vast resource locator)."
+    },
+    {
+      "name": "teardown",
+      "passed": true,
+      "detail": "instance destroyed and deployment idle"
+    }
+  ],
+  "all_passed": false,
+  "wall_minutes": 2.1
+}

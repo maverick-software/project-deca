@@ -36,11 +36,20 @@ def lambda_returns(
     lam: float,
     values: "Sequence[float] | None" = None,
     bootstrap: float = 0.0,
+    normalize: bool = False,
 ) -> list[float]:
     """Forward-view lambda-returns for a scalar reward sequence.
 
     ``values[t]`` approximates ``V(s_t)`` for bootstrapping; ``None`` -> zeros.
     ``bootstrap`` is ``V(s_n)`` past the last step (0 for a terminal episode).
+
+    ``normalize=True`` scales the returns by ``(1 - gamma)`` -- a discounted
+    *average* instead of a discounted *sum* (WS-FORAGE M1). A pure gamma-return
+    sums ~``1/(1-gamma)`` terms, so as the horizon grows (gamma -> 1) the raw sum
+    blows up; the ``(1-gamma)`` factor holds target magnitude ~invariant to gamma,
+    which is the prerequisite for pushing the credit horizon to minutes without
+    the zero-init SF head chasing ever-larger targets. Default OFF -> byte-
+    identical to the pre-M1 behavior.
     """
     n = len(rewards)
     if n == 0:
@@ -56,6 +65,9 @@ def lambda_returns(
         out[t] = g
         next_val = vals[t]
         next_g = g
+    if normalize:
+        scale = 1.0 - gamma
+        out = [g * scale for g in out]
     return out
 
 
@@ -66,11 +78,15 @@ def lambda_returns_vec(
     lam: float,
     values: "Sequence[Sequence[float]] | None" = None,
     bootstrap: "Sequence[float] | None" = None,
+    normalize: bool = False,
 ) -> list[list[float]]:
     """Vector forward-view lambda-returns (successor-features targets).
 
     ``feats[t]`` is the per-step feature vector phi_t (all equal length).
     Returns ``psi[t]``, the discounted future-feature target for each step.
+
+    ``normalize=True`` scales by ``(1 - gamma)`` (WS-FORAGE M1); see
+    :func:`lambda_returns`. Default OFF -> byte-identical.
     """
     n = len(feats)
     if n == 0:
@@ -96,4 +112,7 @@ def lambda_returns_vec(
         out[t] = g
         next_val = vals[t]
         next_g = g
+    if normalize:
+        scale = 1.0 - gamma
+        out = [[x * scale for x in row] for row in out]
     return out

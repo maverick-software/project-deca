@@ -539,6 +539,17 @@ DEFAULT_GROWTH_INTERVAL = 500  # cycles between growth evaluations
 DEFAULT_GROWTH_STEP = 8  # dormant neurons woken per growth event (per block)
 DEFAULT_GROWTH_PCLOSS_THRESHOLD = 1.0  # grow only while pc-loss EMA exceeds this
 DEFAULT_GROWTH_VIABILITY_COST = 0.0  # viability debited per growth event (metabolic price)
+# Growth governance (2026-07-05): the 1-h embodied soak grew 8 times because a
+# high-but-flat pc-loss re-triggered growth every interval -- in an open world,
+# absolute loss never converges, so growth must be gated on PROGRESS, not level.
+# Growth now requires (a) learning to have STALLED at current capacity (relative
+# EMA improvement over the last growth interval below MIN_PROGRESS), and (b) the
+# PREVIOUS growth event to have PAID (EMA improved by at least MIN_GAIN since
+# that event) -- an unpaid growth blocks further growth: capacity was not the
+# bottleneck, and more neurons will not make an irreducibly surprising world
+# predictable.
+DEFAULT_GROWTH_MIN_PROGRESS = 0.01  # relative EMA improvement/interval that still counts as learning
+DEFAULT_GROWTH_MIN_GAIN = 0.02  # relative EMA improvement a growth event must yield to re-arm growth
 
 # Periodic structural-plasticity snapshot logging. 0 disables it; N>0 emits a
 # plasticity_snapshot log line every N cycles (edge events rewire/grow/freeze are
@@ -767,6 +778,14 @@ def growth_pcloss_threshold() -> float:
 
 def growth_viability_cost() -> float:
     return max(0.0, float(os.environ.get("DECADIC_GROWTH_VIABILITY_COST", str(DEFAULT_GROWTH_VIABILITY_COST))))
+
+
+def growth_min_progress() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_GROWTH_MIN_PROGRESS", str(DEFAULT_GROWTH_MIN_PROGRESS))))
+
+
+def growth_min_gain() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_GROWTH_MIN_GAIN", str(DEFAULT_GROWTH_MIN_GAIN))))
 
 
 def plasticity_log_every() -> int:
@@ -1933,15 +1952,85 @@ def goal_max_cycles() -> int:
 # from 0, so a fresh agent is byte-identical to today until experience grows it --
 # true to the experiment (nothing trained at the start).
 DEFAULT_SF_ENABLED = True
-DEFAULT_SF_GAMMA = 0.97  # discount on future features (horizon ~ 1/(1-gamma))
-DEFAULT_SF_LAMBDA = 0.9  # eligibility-trace / lambda-return decay (credit smear over the journey)
+# WS-FORAGE M1/M2 (owner: features ship ON; safety is zero-init/ramp + validation,
+# not an off-switch). The SF value-learning runs the NORMALIZED, longer-horizon
+# regime by default:
+#   - SF_NORMALIZE_RETURNS scales returns/SF targets by (1-gamma) -> discounted
+#     AVERAGE not SUM, so target magnitude is bounded and ~invariant as the
+#     horizon grows (the prerequisite for a minutes-long horizon).
+#   - GAMMA 0.995 (~50 s horizon at ~4 cyc/s) up from 0.97 (~8 s); LAMBDA 0.8
+#     (lean more on the value bootstrap as the horizon lengthens -> lower variance).
+#   - VALUE_WEIGHT 10.0 compensates the (1-gamma) target rescale so the policy-
+#     shaping INFLUENCE is preserved; because normalization makes the value scale
+#     gamma-independent, this stays a single default across gammas. (Adam absorbs
+#     the training-target rescale, so SF_LOSS_WEIGHT is unchanged.)
+# This value-regime bundle is the one WS-FORAGE change that is NOT birth-identical
+# (it alters learning dynamics), so the M2 soak validates it; all env-tunable.
+DEFAULT_SF_GAMMA = 0.995  # discount on future features (horizon ~ 1/(1-gamma))
+DEFAULT_SF_LAMBDA = 0.8  # eligibility-trace / lambda-return decay (credit smear over the journey)
 DEFAULT_SF_LOSS_WEIGHT = 1.0  # weight of the SF TD(lambda) loss in the consolidator
-DEFAULT_SF_VALUE_WEIGHT = 0.3  # MAX weight of the value-advantage policy-shaping term (post-ramp)
+DEFAULT_SF_VALUE_WEIGHT = 10.0  # MAX weight of the value-advantage policy-shaping term (post-ramp)
 DEFAULT_SF_VALUE_RAMP_CYCLES = 2000  # cycles over which the shaping weight climbs 0 -> max
+DEFAULT_SF_NORMALIZE_RETURNS = True
 
 
 def sf_enabled() -> bool:
     return _env_bool("DECADIC_SF_ENABLED", DEFAULT_SF_ENABLED)
+
+
+def sf_normalize_returns() -> bool:
+    return _env_bool("DECADIC_SF_NORMALIZE_RETURNS", DEFAULT_SF_NORMALIZE_RETURNS)
+
+
+# WS-FORAGE M3: condition the motor policy on the active homeostatic goal (which
+# need, how deprived; M4 adds an egocentric bearing to the remembered resource).
+# Folded in via a ZERO-INIT ingress, so the agent is birth-identical and the
+# capability emerges as experience trains the ingress -> ships ON by default.
+DEFAULT_GOAL_CONDITIONED_POLICY = True
+
+
+def goal_conditioned_policy_enabled() -> bool:
+    return _env_bool("DECADIC_GOAL_CONDITIONED_POLICY", DEFAULT_GOAL_CONDITIONED_POLICY)
+
+
+# WS-FORAGE M4: fill the goal vector's reserved bearing slots with an egocentric
+# bearing to the remembered resource (recall-and-navigate, not just react-to-cue).
+# Requires goal conditioning; the bearing is zero/masked when no target is
+# remembered, so it stays birth-identical until memory has a target to point at.
+DEFAULT_GOAL_BEARING = True
+DEFAULT_GOAL_BEARING_MAX_DIST = 10.0  # metres that map to normalized distance 1.0
+
+
+def goal_bearing_enabled() -> bool:
+    return _env_bool("DECADIC_GOAL_BEARING", DEFAULT_GOAL_BEARING)
+
+
+def goal_bearing_max_dist() -> float:
+    try:
+        return max(0.5, float(os.environ.get("DECADIC_GOAL_BEARING_MAX_DIST", str(DEFAULT_GOAL_BEARING_MAX_DIST))))
+    except (TypeError, ValueError):
+        return DEFAULT_GOAL_BEARING_MAX_DIST
+
+
+# WS-FORAGE M5: dual-process control. When an active need's relief is REMEMBERED
+# but NOT here (a remembered target beyond TYPE2_FAR_DISTANCE, normalized), trip
+# an unconditional gate escalation into the deliberate (System-2) path so the
+# agent pursues the resource from memory instead of only reacting to what it
+# sees. The bearing (M4) already conditions the policy; this makes it deliberate.
+DEFAULT_TYPE2_SEARCH = True
+DEFAULT_TYPE2_FAR_DISTANCE = 0.15  # normalized distance beyond which a target is "not here"
+
+
+def type2_search_enabled() -> bool:
+    return _env_bool("DECADIC_TYPE2_SEARCH", DEFAULT_TYPE2_SEARCH)
+
+
+def type2_far_distance() -> float:
+    try:
+        v = float(os.environ.get("DECADIC_TYPE2_FAR_DISTANCE", str(DEFAULT_TYPE2_FAR_DISTANCE)))
+    except (TypeError, ValueError):
+        return DEFAULT_TYPE2_FAR_DISTANCE
+    return min(1.0, max(0.0, v))
 
 
 def sf_gamma() -> float:

@@ -92,6 +92,20 @@ def _baseline_faculties(monkeypatch):
     monkeypatch.setenv("DECADIC_WM_SLOT_TENSOR", "0")
     monkeypatch.setenv("DECADIC_MEMORY_TOKENS", "0")
     monkeypatch.setenv("DECADIC_RELATIONAL_CORE", "0")
+    # WS-FORAGE: production ships the normalized, longer-horizon SF regime ON,
+    # but the suite is pinned to the ORIGINAL SF params so existing numeric
+    # expectations stay deterministic (the gate/binding-faculty pattern:
+    # prod-on, tests-pinned). Dedicated WS-FORAGE tests set these explicitly.
+    monkeypatch.setenv("DECADIC_SF_NORMALIZE_RETURNS", "0")
+    monkeypatch.setenv("DECADIC_SF_GAMMA", "0.97")
+    monkeypatch.setenv("DECADIC_SF_LAMBDA", "0.9")
+    monkeypatch.setenv("DECADIC_SF_VALUE_WEIGHT", "0.3")
+    # Goal-conditioned policy is prod-on (zero-init, birth-identical) but pinned
+    # OFF in the suite so trained-cycle tests with an active goal can't diverge;
+    # the dedicated M3 tests enable it explicitly.
+    monkeypatch.setenv("DECADIC_GOAL_CONDITIONED_POLICY", "0")
+    monkeypatch.setenv("DECADIC_GOAL_BEARING", "0")
+    monkeypatch.setenv("DECADIC_TYPE2_SEARCH", "0")
 
 
 @pytest.fixture
@@ -134,6 +148,9 @@ def api_app_neural(tmp_path, monkeypatch):
     monkeypatch.setenv("DECADIC_GROWTH_INTERVAL", "3")
     monkeypatch.setenv("DECADIC_GROWTH_STEP", "8")
     monkeypatch.setenv("DECADIC_GROWTH_PCLOSS_THRESHOLD", "0")
+    # Governance gates off (0 = disabled) so short runs grow on schedule.
+    monkeypatch.setenv("DECADIC_GROWTH_MIN_PROGRESS", "0")
+    monkeypatch.setenv("DECADIC_GROWTH_MIN_GAIN", "0")
     from decadic.api.app import create_app
 
     return create_app()
@@ -164,6 +181,9 @@ def api_app_plastic(tmp_path, monkeypatch):
     monkeypatch.setenv("DECADIC_GROWTH_INTERVAL", "3")
     monkeypatch.setenv("DECADIC_GROWTH_STEP", "8")
     monkeypatch.setenv("DECADIC_GROWTH_PCLOSS_THRESHOLD", "0")
+    # Governance gates off (0 = disabled) so short runs grow on schedule.
+    monkeypatch.setenv("DECADIC_GROWTH_MIN_PROGRESS", "0")
+    monkeypatch.setenv("DECADIC_GROWTH_MIN_GAIN", "0")
     monkeypatch.setenv("DECADIC_MAX_NEURONS", "160")
     monkeypatch.setenv("DECADIC_GROWABLE_HIDDEN_CEILING", "256")
     from decadic.api.app import create_app

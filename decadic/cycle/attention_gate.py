@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -167,55 +169,118 @@ def shadow_sampled(cycle: int, rate: float) -> bool:
 
 
 class GateDecisionLog:
-    """Buffered JSONL sink for per-cycle gate decisions (WS3B-M0.1).
+    """Off-thread JSONL sink for per-cycle gate decisions (WS3B-M0.1).
 
-    Log-and-continue: any IO failure disables the sink after one warning --
-    the cognitive loop must never pay for telemetry. Rows are buffered and
-    appended in batches (plus a time-based flush so a killed process loses at
-    most a couple of seconds of tail).
+    Log-and-continue AND off the cognitive thread (2026-07-05): the cycle
+    thread only serializes a small flat dict and drops the line on a bounded
+    queue (``put_nowait`` -> never blocks); a daemon writer thread owns the
+    open file handle and does ALL disk I/O (append + periodic fsync). The
+    prior design buffered but still opened/wrote/closed the file inline every
+    32 rows, so cognition periodically paid for telemetry -- exactly the kind
+    of on-thread tax that contaminates cycle-time measurement. Now the hot
+    path cost is one ``json.dumps`` + one queue put. On overflow (writer can't
+    keep up) newest rows are dropped and counted, never blocking the loop.
+    Mirror of the WS4B off-lock flusher discipline.
     """
 
-    FLUSH_EVERY = 32
     FLUSH_SECONDS = 2.0
+    QUEUE_MAX = 8192  # ~ many seconds of headroom; overflow drops, never blocks
 
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
-        self._buf: list[str] = []
         self._failed = False
-        self._last_flush = time.monotonic()
+        self._dropped = 0
+        self._warned_drop = False
+        self._q: queue.Queue[str | None] = queue.Queue(maxsize=self.QUEUE_MAX)
+        self._thread: threading.Thread | None = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             logger.warning("gate decision log disabled (%s): %s", self.path, exc)
             self._failed = True
+            return
+        self._thread = threading.Thread(
+            target=self._writer_loop, name="gate-log-writer", daemon=True
+        )
+        self._thread.start()
+
+    def _writer_loop(self) -> None:
+        try:
+            f = self.path.open("a", encoding="utf-8")
+        except OSError as exc:  # pragma: no cover - IO failure path
+            logger.warning("gate decision log disabled (%s): %s", self.path, exc)
+            self._failed = True
+            return
+        last = time.monotonic()
+        try:
+            while True:
+                try:
+                    item = self._q.get(timeout=self.FLUSH_SECONDS)
+                except queue.Empty:
+                    f.flush()
+                    last = time.monotonic()
+                    continue
+                if item is None:  # close sentinel: drain remaining, then stop
+                    while True:
+                        try:
+                            more = self._q.get_nowait()
+                        except queue.Empty:
+                            break
+                        if more is not None:
+                            f.write(more)
+                            f.write("\n")
+                    f.flush()
+                    return
+                f.write(item)
+                f.write("\n")
+                now = time.monotonic()
+                if now - last >= self.FLUSH_SECONDS:
+                    f.flush()
+                    last = now
+        except OSError as exc:  # pragma: no cover - IO failure path
+            logger.warning("gate decision log disabled (%s): %s", self.path, exc)
+            self._failed = True
+        finally:
+            try:
+                f.close()
+            except OSError:
+                pass
 
     def log(self, row: dict) -> None:
         if self._failed:
             return
         try:
-            self._buf.append(json.dumps(row, separators=(",", ":"), default=float))
+            line = json.dumps(row, separators=(",", ":"), default=float)
         except (TypeError, ValueError):
             return  # one malformed row is not worth a crash
-        if (
-            len(self._buf) >= self.FLUSH_EVERY
-            or (time.monotonic() - self._last_flush) >= self.FLUSH_SECONDS
-        ):
-            self.flush()
+        try:
+            self._q.put_nowait(line)
+        except queue.Full:
+            # Telemetry must never stall cognition: drop and count. Warn once.
+            self._dropped += 1
+            if not self._warned_drop:
+                self._warned_drop = True
+                logger.warning(
+                    "gate decision log writer behind; dropping rows (%s)", self.path
+                )
 
     def flush(self) -> None:
-        if self._failed or not self._buf:
-            return
-        try:
-            with self.path.open("a", encoding="utf-8") as f:
-                f.write("\n".join(self._buf) + "\n")
-            self._buf.clear()
-            self._last_flush = time.monotonic()
-        except OSError as exc:
-            logger.warning("gate decision log disabled (%s): %s", self.path, exc)
-            self._failed = True
+        # No-op for API compatibility: the writer thread fsyncs on its own
+        # cadence (<= FLUSH_SECONDS). Kept so callers/tests can still call it.
+        return
 
     def close(self) -> None:
-        self.flush()
+        if self._failed or self._thread is None:
+            return
+        try:
+            self._q.put(None, timeout=1.0)
+        except queue.Full:  # pragma: no cover - shutdown best effort
+            pass
+        self._thread.join(timeout=5.0)
+
+    @property
+    def dropped(self) -> int:
+        return self._dropped
 
 
 def open_gate_log() -> GateDecisionLog:
@@ -256,6 +321,9 @@ class GateInputs:
     affect: float = 0.0  # pain scalar magnitude + drive pressure
     priority_investigate: float = 0.0  # 1.0 when element D says investigate
     fast_path_threat: bool = False  # damage event this cycle -> unconditional
+    type2_search: bool = False  # WS-FORAGE M5: active need whose relief is
+    # remembered but not here -> unconditional escalate into the deliberate,
+    # memory-guided (System-2) path even when nothing novel is in view.
 
 
 @dataclass
@@ -263,7 +331,7 @@ class GateDecision:
     escalate: bool
     score: float
     threshold_effective: float
-    reason: str  # "fast_path" | "score" | "hysteresis" | "skip"
+    reason: str  # "fast_path" | "type2_memory_search" | "hysteresis" | "score" | "skip"
     contributions: dict[str, float] = field(default_factory=dict)
 
 
@@ -334,6 +402,16 @@ class AttentionGate:
         if inputs.fast_path_threat:
             decision = GateDecision(True, score, threshold_eff, "fast_path", contributions)
             self._latch_remaining = self.hysteresis_k
+        elif inputs.type2_search:
+            # WS-FORAGE M5: need + remembered-but-not-here -> engage the
+            # deliberate path to pursue the resource from memory. Additive (never
+            # suppresses another escalation); the remembered bearing already
+            # conditions the policy (M3/M4), so this makes the agent deliberate
+            # about GETTING there rather than only reacting to what is in view.
+            decision = GateDecision(
+                True, score, threshold_eff, "type2_memory_search", contributions
+            )
+            self._latch_remaining = self.hysteresis_k
         elif self._latch_remaining > 0:
             decision = GateDecision(True, score, threshold_eff, "hysteresis", contributions)
             self._latch_remaining -= 1
@@ -384,6 +462,7 @@ def extract_gate_inputs(
     drive_pressure: float,
     priority_label: str,
     observation_events: list | None,
+    type2_search: bool = False,
 ) -> GateInputs:
     """Normalize raw per-cycle signals into GateInputs (all already computed
     on the hot path; this is read-only assembly, WS3-G2).
@@ -411,6 +490,7 @@ def extract_gate_inputs(
         affect=affect,
         priority_investigate=1.0 if priority_label == "investigate" else 0.0,
         fast_path_threat=fast,
+        type2_search=bool(type2_search),
     )
 
 

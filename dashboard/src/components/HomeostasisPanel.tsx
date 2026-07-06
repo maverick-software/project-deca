@@ -83,7 +83,10 @@ export default function HomeostasisPanel(props: {
     }
   };
 
-  const give = async (resource: ProvisionResource, giveMode: "near" | "direct") => {
+  const give = async (
+    resource: ProvisionResource,
+    giveMode: "near" | "within_reach" | "direct",
+  ) => {
     setProvBusy(true);
     setProvError(null);
     try {
@@ -126,7 +129,7 @@ export default function HomeostasisPanel(props: {
       <div className="strip-label" style={{ marginTop: 14 }}>
         <span>
           Provisions
-          <Info tip="Give the agent water, food, or a medical kit two ways. Nearby drops the unlabeled item a step in front of it. Direct shows the item in the egocentric camera and moves it toward the head until normal consumption fires, preserving the object-to-relief learning path." />
+          <Info tip="Give the agent water, food, or a medical kit three ways, by how much of the approach it must earn. Nearby drops the item a step away (a full walk). Within reach places it at the edge of reach (a lean or single step) -- the shortest completable approach, so the value learner can bootstrap the act-to-relief link. Direct moves it to the head until consumption fires (no approach). Prefer Within reach / Nearby when you want it to LEARN to forage; Direct only builds the object-to-relief association." />
         </span>
       </div>
       {PROVISION_RESOURCES.map((resource) => (
@@ -143,6 +146,15 @@ export default function HomeostasisPanel(props: {
             title={`Place ${resource.label.toLowerCase()} a step in front of the agent; it must perceive and move to it for ${resource.relief} relief.`}
           >
             Place nearby
+          </button>
+          <button
+            className="btn"
+            style={{ flex: 1 }}
+            disabled={provBusy || !agentId}
+            onClick={() => void give(resource.id, "within_reach")}
+            title={`Place ${resource.label.toLowerCase()} at the edge of reach; a lean or single step earns ${resource.relief} relief -- the shortest completable approach the value learner can bootstrap from (WS-FORAGE).`}
+          >
+            Within reach
           </button>
           <button
             className="btn"

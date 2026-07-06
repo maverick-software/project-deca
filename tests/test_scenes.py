@@ -81,3 +81,26 @@ def test_eaten_now_radius():
     # Height difference is ignored; eating is an XY-plane test
     assert mod.eaten_now([5.0, 4.6, 1.4], foods) == ["prop_food_2"]
     assert mod.eaten_now([10.0, 10.0, 1.4], foods) == []
+
+
+def test_touched_now_requires_a_body_part_in_range():
+    # WS-FORAGE contact consumption: a resource within-reach of the TORSO is NOT
+    # consumed for free -- a body part must reach it (3D). This is the earned
+    # act->relief the value learner needs.
+    mod = _load_adapter_module()
+    food = {"prop_food_1": [0.6, 0.0, 0.12]}  # within-reach, on the ground
+    # Torso near (within old 1 m radius) but no limb reaching -> NOT consumed.
+    idle_parts = [
+        [0.0, 0.0, 1.0],   # torso, ~1.08 m away in 3D
+        [0.15, 0.1, 0.6],  # arms up
+        [0.15, -0.1, 0.6],
+        [0.05, 0.0, 0.05],  # feet under the torso
+        [-0.05, 0.0, 0.05],
+    ]
+    assert mod.touched_now(idle_parts, food, 0.30) == []
+    # A hand reaches to the item -> consumed.
+    assert mod.touched_now(idle_parts + [[0.5, 0.0, 0.15]], food, 0.30) == ["prop_food_1"]
+    # A foot steps onto it -> consumed.
+    assert mod.touched_now(idle_parts + [[0.6, 0.0, 0.05]], food, 0.30) == ["prop_food_1"]
+    # Nothing in range at a tighter radius -> not consumed.
+    assert mod.touched_now([[0.5, 0.0, 0.15]], food, 0.10) == []

@@ -31,6 +31,51 @@ def test_td0_uses_value_bootstrap():
     assert abs(g[0] - (1.0 + 0.9 * 7.0)) < 1e-9
 
 
+# --- WS-FORAGE M1: (1-gamma) normalization ---------------------------------
+
+
+def test_normalize_off_is_byte_identical():
+    r = [0.1, 0.0, 1.0, 0.2]
+    assert lambda_returns(r, gamma=0.97, lam=0.9) == lambda_returns(
+        r, gamma=0.97, lam=0.9, normalize=False
+    )
+    f = [[0.1, 0.0], [0.0, 1.0]]
+    assert lambda_returns_vec(f, gamma=0.97, lam=0.9) == lambda_returns_vec(
+        f, gamma=0.97, lam=0.9, normalize=False
+    )
+
+
+def test_normalize_scales_by_one_minus_gamma():
+    r = [0.0, 0.0, 1.0]
+    raw = lambda_returns(r, gamma=0.9, lam=1.0)
+    norm = lambda_returns(r, gamma=0.9, lam=1.0, normalize=True)
+    assert all(abs(nx - rx * (1.0 - 0.9)) < 1e-12 for nx, rx in zip(norm, raw))
+
+
+def test_normalize_bounds_magnitude_and_is_invariant_over_full_episode():
+    # A steady per-step reward of 1. The raw discounted SUM grows ~1/(1-gamma)
+    # as gamma->1 (unbounded target growth -> what breaks the zero-init SF head
+    # at long horizons). The (1-gamma) normalization keeps the target BOUNDED in
+    # [0, r_max] for any gamma, and -- over an episode long relative to the
+    # horizon -- also ~invariant to gamma. That boundedness is the M1 safety
+    # property that makes raising the horizon safe.
+    n = 4000  # full-length episode (>= the horizon at gamma=0.999)
+    r = [1.0] * n
+    def g0(gamma, normalize):
+        return lambda_returns(r, gamma=gamma, lam=1.0, normalize=normalize)[0]
+    raw_097, raw_0999 = g0(0.97, False), g0(0.999, False)
+    nrm_097, nrm_0999 = g0(0.97, True), g0(0.999, True)
+    assert raw_0999 > 5.0 * raw_097  # raw target blows up with the horizon
+    assert 0.0 < nrm_097 <= 1.0 and 0.0 < nrm_0999 <= 1.0  # normalized stays bounded
+    assert abs(nrm_0999 - nrm_097) < 0.1  # and ~invariant over a full-length episode
+
+
+def test_episode_accumulator_normalize_flag_threads_through():
+    acc_off = EpisodeAccumulator(gamma=0.9, lam=1.0, normalize=False)
+    acc_on = EpisodeAccumulator(gamma=0.9, lam=1.0, normalize=True)
+    assert acc_off.normalize is False and acc_on.normalize is True
+
+
 def test_vector_returns_match_scalar_for_1d():
     g = lambda_returns([0.0, 0.0, 1.0], gamma=0.9, lam=1.0)
     gv = lambda_returns_vec([[0.0], [0.0], [1.0]], gamma=0.9, lam=1.0)

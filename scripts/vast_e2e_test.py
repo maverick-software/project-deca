@@ -89,7 +89,18 @@ def main() -> int:
     ap.add_argument("--base-url", default="http://127.0.0.1:8765")
     ap.add_argument("--gpu-name", default="RTX_4090", help="Model filter; empty = any GPU")
     ap.add_argument("--min-gpu-ram", type=float, default=16.0)
-    ap.add_argument("--max-dph", type=float, default=0.45, help="Max $/hr offer the test may rent")
+    ap.add_argument(
+        "--max-dph",
+        type=float,
+        default=1.50,
+        help=(
+            "Max $/hr offer the test may rent. Raised 0.45->1.50 (2026-07-05): the "
+            "host-quality floors (reliability/bandwidth/CPU/disk, set server-side in "
+            "vast/routes.py) point at datacenter-grade hosts that clear the Docker "
+            "pull, which sit above the old rock-bottom cap. Worst-case spend is still "
+            "bounded by --max-minutes (~$1 at 1.50/hr over 40 min)."
+        ),
+    )
     ap.add_argument("--preset", default="tiny", help="Brain preset (tiny = fastest/cheapest)")
     ap.add_argument("--encoder", default="zeros", help="zeros = no 1GB encoder download (faster)")
     ap.add_argument("--scene", default="forage", help="Built-in preset id; the remote body drives cycles")

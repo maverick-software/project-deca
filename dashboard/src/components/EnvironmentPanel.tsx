@@ -128,6 +128,7 @@ export default function EnvironmentPanel(props: {
           audio: draft.audio,
           braces: draft.braces,
           preset: props.creationPreset,
+          curriculum: draft.curriculum,
         }),
       (s) => {
         if (s.agent_id) props.onStarted?.(s.agent_id);
@@ -158,6 +159,10 @@ export default function EnvironmentPanel(props: {
   const showVision = running ? !!env?.options?.vision : draft.vision;
   const showAudio = running ? !!env?.options?.audio : draft.audio;
   const showBraces = running ? env?.options?.braces === true : draft.braces;
+  // WS-FORAGE curriculum: live kind + progress when running, else the draft.
+  const forageOn =
+    (running ? env?.curriculum?.kind : draft.curriculum.kind) === "forage";
+  const forageLive = running ? env?.forage ?? null : null;
 
   return (
     <div className="panel env-panel">
@@ -247,6 +252,97 @@ export default function EnvironmentPanel(props: {
           Braces engaged at spawn
         </label>
       </div>
+
+      {!mindOnly && (
+        <>
+          <div className="env-section-label">
+            Curriculum
+            <Info tip="Optional server-side training loop. Foraging trainer runs the body METABOLIC (so it gets hungry and motivated), keeps the most-depleted resource within reach, and rescues it before starvation -- so the value learner earns approach->relief episodes it can learn from. Immortal is auto-overridden here (a full agent has no drive to forage)." />
+          </div>
+          <div className="env-chips">
+            <label className={`env-chip ${forageOn ? "on" : ""}`}>
+              <input
+                type="checkbox"
+                checked={forageOn}
+                disabled={!editable}
+                onChange={(e) =>
+                  updateDraft({
+                    curriculum: e.target.checked ? { kind: "forage" } : { kind: "none" },
+                  })
+                }
+              />
+              Foraging trainer (metabolic + auto within-reach + survival net)
+            </label>
+          </div>
+          {forageOn && !running && (
+            <div className="env-chips">
+              <label className="env-num">
+                place every (s)
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={draft.curriculum.place_every_s ?? 8}
+                  disabled={!editable}
+                  onChange={(e) =>
+                    updateDraft({
+                      curriculum: {
+                        ...draft.curriculum,
+                        kind: "forage",
+                        place_every_s: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label className="env-num">
+                rescue floor
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={draft.curriculum.rescue_floor ?? 12}
+                  disabled={!editable}
+                  onChange={(e) =>
+                    updateDraft({
+                      curriculum: {
+                        ...draft.curriculum,
+                        kind: "forage",
+                        rescue_floor: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label className="env-num">
+                contact radius (m)
+                <input
+                  type="number"
+                  min={0.05}
+                  step={0.05}
+                  value={draft.curriculum.contact_radius ?? 0.35}
+                  disabled={!editable}
+                  onChange={(e) =>
+                    updateDraft({
+                      curriculum: {
+                        ...draft.curriculum,
+                        kind: "forage",
+                        contact_radius: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+            </div>
+          )}
+          {forageOn && running && forageLive && (
+            <div className="env-meta">
+              earned meals: <b>{forageLive.meals_earned ?? 0}</b> &middot; rescues:{" "}
+              <b>{forageLive.rescues ?? 0}</b>
+            </div>
+          )}
+        </>
+      )}
 
       <div className="env-controls">
         {!running ? (

@@ -1,0 +1,21 @@
+{
+  "checks": [
+    {
+      "name": "preflight",
+      "passed": true,
+      "detail": "key=True cli=True phase=idle instance=None"
+    },
+    {
+      "name": "offer_search",
+      "passed": true,
+      "detail": "35 rentable offers <= $0.45/hr (of 50 returned)"
+    },
+    {
+      "name": "teardown",
+      "passed": true,
+      "detail": "instance destroyed and deployment idle"
+    }
+  ],
+  "all_passed": true,
+  "wall_minutes": 3.8
+}

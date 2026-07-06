@@ -1,0 +1,16 @@
+{
+  "checks": [
+    {
+      "name": "preflight",
+      "passed": true,
+      "detail": "key=True cli=True phase=idle instance=None"
+    },
+    {
+      "name": "offer_search",
+      "passed": true,
+      "detail": "50 rentable offers <= $1.5/hr (of 50 returned)"
+    }
+  ],
+  "all_passed": true,
+  "wall_minutes": 0.2
+}

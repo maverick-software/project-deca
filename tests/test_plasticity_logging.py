@@ -49,6 +49,9 @@ def _build_forced(monkeypatch):
     monkeypatch.setenv("DECADIC_GROWTH_INTERVAL", "1")
     monkeypatch.setenv("DECADIC_GROWTH_STEP", "8")
     monkeypatch.setenv("DECADIC_GROWTH_PCLOSS_THRESHOLD", "0")
+    # Governance gates off (0 = disabled): this fixture FORCES growth to fire.
+    monkeypatch.setenv("DECADIC_GROWTH_MIN_PROGRESS", "0")
+    monkeypatch.setenv("DECADIC_GROWTH_MIN_GAIN", "0")
     monkeypatch.setenv("DECADIC_MAX_NEURONS", "160")
     monkeypatch.setenv("DECADIC_GROWABLE_HIDDEN_CEILING", "256")
 

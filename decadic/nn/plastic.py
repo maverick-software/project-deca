@@ -93,6 +93,11 @@ class PlasticityRuntimeState:
     guardian_state: str = "warming"
     blocked_reason: str = "initializing"
     last_thaw_cycle: int | None = None
+    # Growth governance (2026-07-05). New fields default cleanly for old
+    # checkpoints (restore is hasattr-guarded per-key).
+    pc_ema_at_growth_check: float | None = None  # EMA at the previous eligibility check
+    pc_ema_at_last_growth: float | None = None  # EMA when the last growth event fired
+    growth_blocked_reason: str = ""  # why the last eligibility check declined to grow
 
     @classmethod
     def from_flags(cls, flags: "PlasticityFlags") -> "PlasticityRuntimeState":

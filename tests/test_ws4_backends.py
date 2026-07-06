@@ -583,6 +583,171 @@ def test_ws4b_flush_failure_replay_converges(tmp_path, monkeypatch):
         g2.close()
 
 
+def test_ws4b_m34_group_stmts_pure():
+    """M3.4 grouping is a pure list walk: runs of the same multirow-capable
+    template coalesce into one UNWIND statement; global order is preserved;
+    deletes and paramless statements never group; singletons pass through."""
+    pytest.importorskip("kuzu")
+    from decadic.memory.kuzu_graph import (
+        _Q_MULTIROW,
+        _Q_NODE_CREATE,
+        _Q_NODE_DEL,
+        _Q_NODE_SET,
+        _Q_SEM_CREATE,
+        _group_stmts,
+    )
+
+    p = lambda i: {"id": f"n{i}"}  # noqa: E731 - shape is irrelevant to grouping
+    stmts = [
+        (_Q_NODE_CREATE, p(0)),
+        (_Q_NODE_CREATE, p(1)),
+        (_Q_NODE_CREATE, p(2)),  # run of 3 -> 1 UNWIND
+        (_Q_NODE_DEL, p(3)),  # never grouped
+        (_Q_NODE_CREATE, p(4)),  # singleton after the break -> passthrough
+        (_Q_SEM_CREATE, {"pk": "a"}),
+        (_Q_SEM_CREATE, {"pk": "b"}),  # run of 2 -> 1 UNWIND
+        (_Q_NODE_SET, p(5)),
+    ]
+    out = _group_stmts(stmts)
+    assert [q for q, _ in out] == [
+        _Q_MULTIROW[_Q_NODE_CREATE],
+        _Q_NODE_DEL,
+        _Q_NODE_CREATE,
+        _Q_MULTIROW[_Q_SEM_CREATE],
+        _Q_NODE_SET,
+    ]
+    assert [r["id"] for r in out[0][1]["rows"]] == ["n0", "n1", "n2"]
+    assert out[1][1] == p(3)  # delete param untouched
+    assert [r["pk"] for r in out[3][1]["rows"]] == ["a", "b"]
+    # Row order inside a run == original statement order (last-wins semantics
+    # of the pending dict survive grouping).
+    assert _group_stmts([]) == []
+
+
+def test_ws4b_m34_multirow_flush_durable_and_compressed(tmp_path, monkeypatch):
+    """M3.4 end-to-end: an insert-heavy batch executes as ONE multi-row
+    statement (telemetry proves the compression), lands durably, and a
+    follow-up update-heavy batch compresses the same way. Parity arm:
+    DECADIC_KUZU_MULTIROW=0 produces the identical durable state."""
+    pytest.importorskip("kuzu")
+    monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "1")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")  # manual flush timing
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")
+    apps = _rand_apps(12, seed=64)
+
+    g = _kuzu_graph(tmp_path, "multirow_kuzu")
+    ids = [g.upsert_node(apps[i], kind="npc", cycle=i) for i in range(12)]
+    assert len(set(ids)) == 12
+    assert g.drain(timeout=15) is True
+    m = g.persistence_metrics()
+    assert m["graph_flush_error_batches"] == 0
+    assert m["graph_flush_rows"] == 12
+    assert m["graph_flush_stmts"] < m["graph_flush_rows"]  # the M3.4 win
+    assert m["graph_flush_stmts"] == 1  # one uninterrupted CREATE run
+
+    # Update-heavy follow-up: same keys -> SET run -> one statement again.
+    for i in range(12):
+        g.upsert_node(apps[i], kind="npc", cycle=100 + i)
+    assert g.drain(timeout=15) is True
+    m2 = g.persistence_metrics()
+    assert m2["graph_flush_error_batches"] == 0
+    assert m2["graph_flush_stmts"] == 1
+    g.close()
+
+    g2 = _kuzu_graph(tmp_path, "multirow_kuzu")
+    try:
+        assert len(g2._nodes) == 12  # durable through the UNWIND path
+    finally:
+        g2.close()
+
+    # Parity arm: grouping off -> same durable result, one statement per row.
+    monkeypatch.setenv("DECADIC_KUZU_MULTIROW", "0")
+    h = _kuzu_graph(tmp_path, "multirow_off_kuzu")
+    for i in range(12):
+        h.upsert_node(apps[i], kind="npc", cycle=i)
+    assert h.drain(timeout=15) is True
+    hm = h.persistence_metrics()
+    assert hm["graph_flush_error_batches"] == 0
+    assert hm["graph_flush_stmts"] == hm["graph_flush_rows"] == 12
+    h.close()
+    h2 = _kuzu_graph(tmp_path, "multirow_off_kuzu")
+    try:
+        assert len(h2._nodes) == 12
+    finally:
+        h2.close()
+
+
+def test_ws4b_m34_multirow_edges_create_and_set(tmp_path, monkeypatch):
+    """Regression for the edge-SET alias collision (found by the embodied
+    soak): the UNWIND alias must not shadow the relationship variable `r` in
+    ``MATCH (a)-[r:RELATES]->(b) ... SET r.*``. Exercises a CREATE run (new
+    edges) then a SET run (re-bumping the SAME edges) -- both must flush as
+    grouped UNWIND statements with ZERO error batches, and the SET values must
+    land durably. Node-only tests never touch this path."""
+    pytest.importorskip("kuzu")
+    monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "1")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")  # manual flush timing
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")
+    apps = _rand_apps(6, seed=66)
+    g = _kuzu_graph(tmp_path, "multirow_edges_kuzu")
+    ids = [g.upsert_node(apps[i], kind="npc", cycle=i) for i in range(6)]
+    assert g.drain(timeout=15) is True
+
+    # CREATE run: 5 fresh edges in one batch -> one grouped edge-CREATE.
+    for i in range(5):
+        g.bump_edge(ids[i], ids[i + 1], kind="near", weight=1.0, cycle=i)
+    assert g.drain(timeout=15) is True
+    m = g.persistence_metrics()
+    assert m["graph_flush_error_batches"] == 0, "edge CREATE grouping must not fall to replay"
+
+    # SET run: re-bump the SAME 5 edges -> one grouped edge-SET (the shape
+    # that failed with the `r` alias).
+    for i in range(5):
+        g.bump_edge(ids[i], ids[i + 1], kind="near", weight=3.0, cycle=100 + i)
+    assert g.drain(timeout=15) is True
+    m2 = g.persistence_metrics()
+    assert m2["graph_flush_error_batches"] == 0, "edge SET grouping must not shadow the REL var"
+    assert m2["graph_flush_stmts"] < m2["graph_flush_rows"]  # actually grouped
+    g.close()
+
+    # Durability: the SET run's mutations survive. bump_edge caps weight at
+    # 1.0 but increments count (1 -> 2) and advances last_cycle to the SET
+    # value (100+i), so those are the fields that prove the grouped SET landed.
+    g2 = _kuzu_graph(tmp_path, "multirow_edges_kuzu")
+    try:
+        edges = g2._edges
+        assert len(edges) == 5, "all edges must reload"
+        assert all(e["count"] == 2 for e in edges.values()), "SET must have re-bumped every edge"
+        assert all(e["last_cycle"] >= 100 for e in edges.values()), "SET cycle must be durable"
+    finally:
+        g2.close()
+
+
+def test_ws4b_m34_multirow_failure_replay_still_converges(tmp_path, monkeypatch):
+    """The failure drill survives grouping: an injected failure on a grouped
+    batch rolls back and replays from OPS (statement-shape agnostic)."""
+    pytest.importorskip("kuzu")
+    monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "1")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")
+    apps = _rand_apps(5, seed=65)
+    g = _kuzu_graph(tmp_path, "multirow_replay_kuzu")
+    for i in range(5):
+        g.upsert_node(apps[i], kind="npc", cycle=i)
+    mem_node_ids = set(g._nodes)
+    g._test_fail_next_batch = True
+    assert g.drain(timeout=15) is True
+    m = g.persistence_metrics()
+    assert m["graph_flush_error_batches"] == 1
+    assert set(g._nodes) == mem_node_ids
+    g.close()
+    g2 = _kuzu_graph(tmp_path, "multirow_replay_kuzu")
+    try:
+        assert len(g2._nodes) == 5  # per-op replay converged
+    finally:
+        g2.close()
+
+
 def test_ws4b_inline_mode_still_works(tmp_path, monkeypatch):
     """DECADIC_KUZU_OFFLOCK_FLUSH=0 restores the 07-04 inline path (A/B arm)."""
     pytest.importorskip("kuzu")

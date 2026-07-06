@@ -1,0 +1,37 @@
+{
+  "phase": "error",
+  "phase_order": [
+    "creating",
+    "waiting",
+    "uploading",
+    "installing",
+    "serving",
+    "tunneling",
+    "starting_agent",
+    "ready"
+  ],
+  "busy": true,
+  "active": false,
+  "instance_id": 44002020,
+  "ssh_host": "ssh5.vast.ai",
+  "ssh_port": 12020,
+  "dph": 0.2967592592592593,
+  "elapsed_s": 50.1,
+  "est_cost_usd": 0.0041,
+  "agent_id": null,
+  "scene": "forage",
+  "preset": "tiny",
+  "error": "copy local:C:\\Users\\charl\\AppData\\Local\\Temp\\vast_payload_k7b3j2go.tgz -> 44002020:/workspace/app/payload.tgz failed (exit 1): Traceback (most recent call last):\r\n  File \"<string>\", line 1, in <module>\r\n    import sys; from vastai.cli.main import main; sys.exit(main())\r\n                                                           ~~~~^^\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\cli\\main.py\", line 140, in main\r\n    res = args.func(args)\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\cli\\commands\\storage.py\", line 76, in copy\r\n    (src_id, src_path) = parse_vast_url(args.src)\r\n                         ~~~~~~~~~~~~~~^^^^^^^^^^\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\utils.py\", line 104, in parse_vast_url\r\n    raise VRLException(\"Invalid VRL (Vast resource locator).\")\r\nvastai.utils.VRLException: Invalid VRL (Vast resource locator).",
+  "ready": false,
+  "log": [
+    "23:58:42 renting offer 41130306 (pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime, 25GB)",
+    "23:58:43 instance created: 44002020",
+    "23:58:56 instance status: loading",
+    "23:59:19 instance status: running",
+    "23:59:19 running; ssh root@ssh5.vast.ai:12020",
+    "23:59:19 packaging code payload",
+    "23:59:22 uploading payload to the box",
+    "23:59:23 ERROR: copy local:C:\\Users\\charl\\AppData\\Local\\Temp\\vast_payload_k7b3j2go.tgz -> 44002020:/workspace/app/payload.tgz failed (exit 1): Traceback (most recent call last):\r\n  File \"<string>\", line 1, in <module>\r\n    import sys; from vastai.cli.main import main; sys.exit(main())\r\n                                                           ~~~~^^\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\cli\\main.py\", line 140, in main\r\n    res = args.func(args)\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\cli\\commands\\storage.py\", line 76, in copy\r\n    (src_id, src_path) = parse_vast_url(args.src)\r\n                         ~~~~~~~~~~~~~~^^^^^^^^^^\r\n  File \"D:\\Users\\charl\\software\\Self-Determination Model\\.venv\\Lib\\site-packages\\vastai\\utils.py\", line 104, in parse_vast_url\r\n    raise VRLException(\"Invalid VRL (Vast resource locator).\")\r\nvastai.utils.VRLException: Invalid VRL (Vast resource locator).",
+    "23:59:23 auto-destroying instance 44002020 after failure"
+  ]
+}

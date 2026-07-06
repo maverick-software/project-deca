@@ -76,3 +76,7 @@ class CycleContext:
     cached_memory_context: list[float] | None = None
     cached_memory_query: list[float] | None = None
     memory_recall_on_critical_path: bool = True
+    # WS-FORAGE M3: active-goal vector (need one-hot + deficit; M4 adds a
+    # remembered-target bearing) folded into the motor policy via the stack's
+    # zero-init goal ingress. None -> no goal conditioning this cycle (no-op).
+    goal_vec: list[float] | None = None

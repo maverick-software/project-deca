@@ -415,19 +415,59 @@ def apply_plasticity_step(
                     st.rewire_events += 1
                     structural = True
 
-        # C — wake dormant neurons up to the live cap while pc-loss stays high.
+        # C — wake dormant neurons, GOVERNED (2026-07-05). The old gate grew
+        # whenever pc-EMA sat above an absolute threshold; in open embodied
+        # worlds the loss never converges to a threshold, so growth fired
+        # every interval all hour (8 events, zero improvement). Growth is now
+        # earned twice over: learning must have STALLED at current capacity
+        # (progress gate) and the PREVIOUS growth must have PAID (efficacy
+        # gate) -- a world that stays surprising after new capacity does not
+        # get more capacity thrown at it.
         if C.growth_enabled():
             st.cycles_since_growth += 1
             if st.cycles_since_growth >= C.growth_interval():
                 st.cycles_since_growth = 0
                 cap = st.max_neurons or C.max_neurons()
-                if (st.pc_ema or 0.0) > C.growth_pcloss_threshold() and stack.growth_room(cap):
+                ema = st.pc_ema or 0.0
+                prev_check = st.pc_ema_at_growth_check
+                st.pc_ema_at_growth_check = ema
+                # Either gate is disabled by setting its config to 0 (tests
+                # that force growth every cycle rely on this escape hatch).
+                min_progress = C.growth_min_progress()
+                min_gain = C.growth_min_gain()
+                still_learning = (
+                    min_progress > 0.0
+                    and prev_check is not None
+                    and prev_check > 0.0
+                    and (prev_check - ema) / prev_check >= min_progress
+                )
+                last_growth_unpaid = (
+                    min_gain > 0.0
+                    and st.pc_ema_at_last_growth is not None
+                    and ema > st.pc_ema_at_last_growth * (1.0 - min_gain)
+                )
+                if ema <= C.growth_pcloss_threshold():
+                    st.growth_blocked_reason = "pc_loss_below_threshold"
+                elif min_progress > 0.0 and prev_check is None:
+                    # First eligibility check has no progress baseline; never
+                    # grow blind (early loss is high AND falling -- exactly
+                    # the shape the progress gate exists to block).
+                    st.growth_blocked_reason = "no_progress_baseline"
+                elif still_learning:
+                    st.growth_blocked_reason = "still_learning_at_capacity"
+                elif last_growth_unpaid:
+                    st.growth_blocked_reason = "last_growth_unpaid"
+                elif not stack.growth_room(cap):
+                    st.growth_blocked_reason = "at_neuron_cap"
+                else:
                     awake_before = stack.awake_neurons()
                     changed = stack.grow_step(C.growth_step(), cap)
                     if changed:
                         neurons_woken = stack.awake_neurons() - awake_before
                         bundle.reset_optimizer_state(changed)
                         st.growth_events += 1
+                        st.pc_ema_at_last_growth = ema
+                        st.growth_blocked_reason = ""
                         structural = True
                         cost = C.growth_viability_cost()
                         if cost > 0:
@@ -446,6 +486,10 @@ def apply_plasticity_step(
         "active_connections": stack.active_connections(),
         "rewire_events": st.rewire_events,
         "growth_events": st.growth_events,
+        "growth_blocked_reason": st.growth_blocked_reason,
+        "growth_pc_ema_at_last_growth": (
+            None if st.pc_ema_at_last_growth is None else float(st.pc_ema_at_last_growth)
+        ),
         "plasticity_frozen": st.frozen,
         "plasticity_freeze_reason": freeze_reason if froze else "",
         "plasticity_pc_ema": None if st.pc_ema is None else float(st.pc_ema),
@@ -732,6 +776,20 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                     )
                 except Exception:
                     pass  # novelty falls back to the full-embedding signal
+        # WS-FORAGE M5: Type-2 trigger -- an active need whose remembered relief
+        # is NOT here. Reads the M3/M4 goal vector already on ctx: target mask
+        # [7] set (a resource is remembered) AND normalized distance [6] beyond
+        # the "here" threshold. Cheap (a couple of float reads); the memory
+        # search that produced the bearing already ran in the runtime.
+        type2 = False
+        if C.type2_search_enabled():
+            _gv = getattr(ctx, "goal_vec", None)
+            if _gv is not None and len(_gv) >= 8:
+                try:
+                    if float(_gv[7]) >= 0.5 and float(_gv[6]) >= C.type2_far_distance():
+                        type2 = True
+                except (TypeError, ValueError, IndexError):
+                    type2 = False
         gate_inputs = AG.extract_gate_inputs(
             best_recall_similarity=gate_best_sim,
             pc_ema=getattr(bundle.plasticity_state, "pc_ema", None),
@@ -739,6 +797,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             drive_pressure=float(getattr(ctx.state_bus, "prev_drive_pressure", 0.0) or 0.0),
             priority_label=str(ctx.state_bus.priority_label),
             observation_events=obs_events,
+            type2_search=type2,
         )
         gate_decision = attn_gate.decide(gate_inputs)
         # Telemetry-only rolling max: short first-exposure spikes must survive
@@ -818,6 +877,18 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             except Exception:
                 pass  # binding read is additive; never fail the cycle for it
 
+    # WS-FORAGE M3: active-goal conditioning vector. None when the faculty is off
+    # or no goal is active -> the stack's zero-init ingress is a true no-op (the
+    # cycle is byte-identical). Malformed vectors are ignored, never fatal.
+    goal_vec_t = None
+    if C.goal_conditioned_policy_enabled():
+        _gv = getattr(ctx, "goal_vec", None)
+        if _gv is not None:
+            try:
+                goal_vec_t = torch.as_tensor(_gv, dtype=z0.dtype, device=z0.device)
+            except Exception:
+                goal_vec_t = None
+
     # bf16 autocast on the forward only when the memory-efficient path is on (CUDA);
     # a nullcontext otherwise, so the fp32 / CPU / test path is byte-identical.
     with bundle.train_autocast():
@@ -833,6 +904,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             wm_slots_mask=wm_mask_t,
             mem_tokens=mem_tokens_t,
             mem_tokens_mask=mem_tokens_mask_t,
+            goal_vec=goal_vec_t,
         )
     fwd_ms = (time.perf_counter() - t0) * 1000.0
 

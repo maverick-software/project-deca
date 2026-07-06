@@ -48,26 +48,49 @@ def test_shadow_sampling_deterministic_and_near_rate():
     assert 0.03 < hits / 20_000 < 0.07
 
 
-def test_gate_decision_log_buffers_flushes_and_survives(tmp_path):
+def test_gate_decision_log_offthread_delivers_in_order(tmp_path):
+    # Off-thread writer (2026-07-05): the cycle thread only enqueues; a daemon
+    # writer owns the file. close() drains the queue, so every row lands, in
+    # order, with zero on-thread disk I/O during the run.
     path = tmp_path / "gate" / "decisions.jsonl"
     log = GateDecisionLog(path)
-    for i in range(GateDecisionLog.FLUSH_EVERY + 5):
+    n = 500
+    for i in range(n):
         log.log({"cycle": i, "escalate": i % 2})
-    # Auto-flush fired at FLUSH_EVERY; the tail is still buffered.
-    on_disk = path.read_text(encoding="utf-8").strip().splitlines()
-    assert len(on_disk) >= GateDecisionLog.FLUSH_EVERY
-    log.close()
+    log.flush()  # no-op now; must not raise
+    log.close()  # barrier: drains the writer queue
     rows = [json.loads(x) for x in path.read_text(encoding="utf-8").strip().splitlines()]
-    assert len(rows) == GateDecisionLog.FLUSH_EVERY + 5
+    assert len(rows) == n
+    assert [r["cycle"] for r in rows] == list(range(n))  # order preserved off-thread
     assert rows[3] == {"cycle": 3, "escalate": 1}
+    assert log.dropped == 0  # queue never overflowed at this volume
 
-    # A malformed row is dropped, never raised.
+    # A malformed row is dropped on the cycle thread, never raised or enqueued.
     log2 = GateDecisionLog(tmp_path / "gate2.jsonl")
     log2.log({"bad": object()})
     log2.log({"ok": 1})
     log2.close()
     rows2 = (tmp_path / "gate2.jsonl").read_text(encoding="utf-8").strip().splitlines()
     assert len(rows2) == 1 and json.loads(rows2[0]) == {"ok": 1}
+
+
+def test_gate_decision_log_never_blocks_cycle_thread(tmp_path):
+    # The hot path must be enqueue-only. Even at high volume, logging stays far
+    # cheaper than any file I/O and never raises; overflow drops (counted),
+    # never blocks. This is the guarantee that telemetry can't tax cognition.
+    import time as _time
+
+    log = GateDecisionLog(tmp_path / "hot.jsonl")
+    t0 = _time.perf_counter()
+    for i in range(2000):
+        log.log({"cycle": i, "x": i * 0.001})
+    per_row_us = (_time.perf_counter() - t0) / 2000 * 1e6
+    log.close()
+    assert per_row_us < 200  # generous ceiling; real cost is a few microseconds
+    delivered = len(
+        (tmp_path / "hot.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    )
+    assert delivered + log.dropped == 2000  # nothing silently lost or duplicated
 
 
 def test_gate_decision_log_io_failure_disables_quietly(tmp_path):

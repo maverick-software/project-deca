@@ -162,6 +162,21 @@ class NeuralCognitiveStack(nn.Module):
         self.narrative_head = nn.Linear(cfg.d_model, cfg.narrative_out)
         self.metacog_head = nn.Linear(cfg.d_model, cfg.metacog_out)
         pol_in = cfg.lstm_hidden + cfg.state_mind_out
+        # WS-FORAGE M3: goal-conditioning ingress. A fixed-width goal vector
+        # (active need + deficit; M4 adds a remembered-target bearing) is folded
+        # additively into the policy input so the motor heads can pursue what the
+        # agent NEEDS-and-remembers, not only what it currently sees. Zero-init
+        # (weight AND bias) -> contributes exactly 0 until trained, so the stack
+        # is byte-identical at birth (house rule G2). Built unconditionally like
+        # the world-model heads; forward() only folds it when a goal vec is
+        # supplied, so it is a true no-op when goal conditioning is off.
+        from decadic.nn.goal_conditioning import GOAL_VEC_DIM
+
+        self.has_goal_conditioning = True
+        self.goal_ingress = nn.Linear(GOAL_VEC_DIM, pol_in)
+        with torch.no_grad():
+            self.goal_ingress.weight.zero_()
+            self.goal_ingress.bias.zero_()
         self.policy = nn.Sequential(
             nn.Linear(pol_in, cfg.d_model),
             nn.GELU(),
@@ -708,6 +723,7 @@ class NeuralCognitiveStack(nn.Module):
         wm_slots_mask: torch.Tensor | None = None,
         mem_tokens: torch.Tensor | None = None,
         mem_tokens_mask: torch.Tensor | None = None,
+        goal_vec: torch.Tensor | None = None,
     ) -> dict[str, Any]:
         # Per-stage instrumentation: wall time of each block (in execution
         # order) is attributed to its conceptual Decadic stage number.
@@ -852,6 +868,14 @@ class NeuralCognitiveStack(nn.Module):
         metacognition = self.metacog_head(z5a)
         mark(8)  # strategy formation (narrative + metacog heads)
         pol_in_t = torch.cat([h, state_mind], dim=-1)
+        # WS-FORAGE M3: fold the active-goal signal into the policy input. Zero-
+        # init ingress -> exactly no-op until trained (byte-identical at birth);
+        # None when goal conditioning is off or no goal is active.
+        if goal_vec is not None:
+            gv = goal_vec.to(device=pol_in_t.device, dtype=pol_in_t.dtype)
+            if gv.dim() == 1:
+                gv = gv.unsqueeze(0).expand(pol_in_t.shape[0], -1)
+            pol_in_t = pol_in_t + self.goal_ingress(gv)
         pol = self.policy(pol_in_t)
         direction = torch.tanh(pol[:, :3])
         speed = torch.sigmoid(pol[:, 3:4]) * 2.0

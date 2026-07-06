@@ -1,0 +1,26 @@
+{
+  "checks": [
+    {
+      "name": "preflight",
+      "passed": true,
+      "detail": "key=True cli=True phase=idle instance=None"
+    },
+    {
+      "name": "offer_search",
+      "passed": true,
+      "detail": "35 rentable offers <= $0.45/hr (of 50 returned)"
+    },
+    {
+      "name": "deploy_ready",
+      "passed": false,
+      "detail": "deploy errored: create instance failed: {'instance_api_key': '4aa31ab320c491e9d68a87669ec73eed02183f993fe1d2aa2f140ddc9b427973', 'new_contract': 43995879, 'success': False}"
+    },
+    {
+      "name": "teardown",
+      "passed": true,
+      "detail": "instance destroyed and deployment idle"
+    }
+  ],
+  "all_passed": false,
+  "wall_minutes": 0.5
+}

@@ -35,6 +35,17 @@ export DECADIC_GROWTH_ENABLED=1
 export DECADIC_CURRICULUM_MODE=legacy
 export DECADIC_SELF_HOST=127.0.0.1
 export DECADIC_SELF_PORT=8765
+# Optional live stream: the body adapter the server spawns inherits this env,
+# and auto-enables the RTMP spectator stream when a target is set. Provide a
+# YouTube stream key (or full RTMP URL) in the environment that invokes this
+# script and it flows through to the body untouched; empty => streaming off.
+export DECADIC_YT_STREAM_KEY="${DECADIC_YT_STREAM_KEY:-}"
+export DECADIC_STREAM_RTMP="${DECADIC_STREAM_RTMP:-}"
+export DECADIC_STREAM_CAMERA="${DECADIC_STREAM_CAMERA:-}"
+export DECADIC_STREAM_SIZE="${DECADIC_STREAM_SIZE:-1280x720}"
+export DECADIC_STREAM_FPS="${DECADIC_STREAM_FPS:-30}"
+export DECADIC_STREAM_BITRATE="${DECADIC_STREAM_BITRATE:-4500k}"
+export DECADIC_STREAM_VCODEC="${DECADIC_STREAM_VCODEC:-libx264}"
 exec python -m uvicorn decadic.api.app:app --host 0.0.0.0 --port 8765
 EOF
 chmod +x "$INNER"

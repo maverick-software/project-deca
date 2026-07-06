@@ -1,0 +1,7 @@
+[body] agent_id=56c2e788-dbf3-4100-a71e-fa37d9af2b93
+[body] elements=['obstacles', 'house', 'food', 'water', 'medical_kit'] props=['prop_box_red', 'prop_house', 'prop_food_s1', 'prop_food_s2', 'prop_food_s3', 'prop_food_s4', 'prop_water_w1', 'prop_water_w2', 'prop_water_w3', 'prop_medical_m1', 'prop_medical_m2']
+[body] actuator contract OK: nu=21
+[body] step=0 pos=(0.00,0.00,1.30) moving=False events=0
+[body] budget ms/obs: physics=0.4 vision=27.7 views=13.1 audio=0.0 send=12.4
+[body] step=50 pos=(-1.00,-0.04,0.09) moving=False events=0
+[body] budget ms/obs: physics=64.3 vision=4.2 views=6.7 audio=0.0 send=52.3

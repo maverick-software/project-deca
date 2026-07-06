@@ -40,7 +40,15 @@ $env:DECADIC_N_ACTUATORS = "21"
 $env:DECADIC_LOG_DIR = $RunDir
 $env:DECADIC_GRAPH_BACKEND = $GraphBackend
 $env:DECADIC_BODY_COMMAND_STALE_S = "5"
-# All validated faculties ride their new ON defaults; gate log stays off.
+# Let the dashboard's Give-directly / Place-nearby buttons drive THIS standalone
+# body (it's a live control consumer on the cycle ws, just not a supervised
+# "scenario"). Lets you feed the agent mid-run to watch viability<->tempo.
+$env:DECADIC_ALLOW_EXTERNAL_BODY_PROVISION = "1"
+# Gate log: OFF for headless A/B (clean timing), ON when watching so the
+# per-cycle deliberation/viability/drive curve is captured to correlate against
+# feeding events. It's off-thread now (~microseconds/cycle), so ON barely
+# taxes the run. Resource grants + retrievals are logged either way (server log).
+$env:DECADIC_GATE_LOG = $(if ($Watch) { "1" } else { "0" })
 
 $Server = $null
 $Body = $null
@@ -161,9 +169,52 @@ $budget = Select-String -Path "$RunDir\body.out.log" -Pattern "budget ms/obs" -E
 if ($budget) { $sum += "body budget (last 3):"; $sum += $budget }
 if (Test-Path "$RunDir\metrics.json") {
     $gm = Select-String -Path "$RunDir\metrics.json" `
-        -Pattern '"(graph_flush_ms|graph_flush_lock_ms|graph_flush_queue_depth|graph_flush_error_batches|sqlite_last_commit_ms|sqlite_commit_count|sqlite_batch_commit_count|kuzu_vector_index_rebuilds|ltm_match_ms|commit_lag_ms|lance_last_commit_ms|match_cache_hits|match_cache_misses)[^,]*' |
-        ForEach-Object { $_.Matches.Value.Trim() } | Select-Object -First 16
+        -Pattern '"(graph_flush_ms|graph_flush_lock_ms|graph_flush_queue_depth|graph_flush_rows|graph_flush_stmts|graph_flush_error_batches|sqlite_last_commit_ms|sqlite_commit_count|sqlite_batch_commit_count|kuzu_vector_index_rebuilds|ltm_match_ms|commit_lag_ms|lance_last_commit_ms|match_cache_hits|match_cache_misses|growth_events|awake_neurons|plasticity_pc_ema|growth_blocked_reason)[^,]*' |
+        ForEach-Object { $_.Matches.Value.Trim() } | Select-Object -First 24
     if ($gm) { $sum += "store telemetry:"; $sum += ($gm | ForEach-Object { "  $_" }) }
+}
+# Memory-accumulation trend: is per-cycle recall/match latency creeping up as
+# the store grows? First vs last few samples make a monotonic climb obvious.
+$memLines = @()
+foreach ($log in @("$RunDir\decadic_server.jsonl", "$RunDir\server.err.log")) {
+    if (Test-Path $log) {
+        $memLines += Select-String -Path $log -Pattern "memory_accumulation" -ErrorAction SilentlyContinue |
+            ForEach-Object { ($_.Line -replace '.*memory_accumulation ', '') }
+    }
+}
+if ($memLines.Count -ge 2) {
+    $sum += "memory accumulation (first 2 vs last 2 samples -- watch recall_ms/ltm_match_ms/ltm_nodes):"
+    $sum += ($memLines | Select-Object -First 2 | ForEach-Object { "  $_" })
+    $sum += "  ..."
+    $sum += ($memLines | Select-Object -Last 2 | ForEach-Object { "  $_" })
+}
+# WS-FORAGE: successor value = incentive salience. It must climb off ~0 for the
+# agent to ever pursue a resource; a flat ~0 means it hasn't yet lived enough
+# earned approach->relief episodes to learn what's worth going for.
+if (Test-Path "$RunDir\metrics.json") {
+    $svLine = Select-String -Path "$RunDir\metrics.json" -Pattern '"(raw|weighted)"\s*:\s*[-0-9.eE]+' -ErrorAction SilentlyContinue |
+        Select-Object -First 2 -ExpandProperty Line | ForEach-Object { $_.Trim() }
+    if ($svLine) { $sum += "successor value (must climb off ~0 to forage):"; $sum += ($svLine | ForEach-Object { "  $_" }) }
+}
+# WS-FORAGE: what is the agent THINKING? Gate-reason breakdown surfaces how often
+# it dropped into the deliberate path, and WHY -- including type2_memory_search
+# (need + remembered-but-not-here -> pursue from memory).
+$gateLog = Get-ChildItem "$RunDir\gate_decisions_*.jsonl" -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($gateLog) {
+    $reasons = @{}; $total = 0; $esc = 0
+    Get-Content $gateLog.FullName | ForEach-Object {
+        if ($_ -match '"reason":"([a-z_0-9]+)"') {
+            $r = $Matches[1]; $reasons[$r] = 1 + $reasons[$r]; $total++
+            if ($r -ne "skip") { $esc++ }
+        }
+    }
+    if ($total -gt 0) {
+        $escPct = [math]::Round(100.0 * $esc / $total, 1)
+        $sum += "thinking (gate reasons over $total cycles; deliberated ${escPct}%):"
+        foreach ($k in ($reasons.Keys | Sort-Object { - $reasons[$_] })) {
+            $sum += ("  {0,-22} {1,7}  ({2}%)" -f $k, $reasons[$k], [math]::Round(100.0 * $reasons[$k] / $total, 1))
+        }
+    }
 }
 $bodyTail = Get-Content "$RunDir\body.err.log" -Tail 5 -ErrorAction SilentlyContinue
 if ($bodyTail) { $sum += "body stderr tail:"; $sum += $bodyTail }

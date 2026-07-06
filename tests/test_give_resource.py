@@ -176,6 +176,28 @@ def test_give_endpoint_medical_near_command(api_app):
         assert msg["command"] == "give_medical_kit_near"
 
 
+def test_give_endpoint_within_reach_command(api_app):
+    # WS-FORAGE M0: mode=within_reach queues give_{res}_reach (edge-of-reach
+    # placement -- a completable approach the SF value can learn from).
+    with TestClient(api_app) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        client.post(f"/agent/{aid}/pause")
+        api_app.state.environment = _FakeEnvironment(aid)
+
+        r = client.post(f"/agent/{aid}/give?resource=water&mode=within_reach")
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "water_reach_queued"
+        with client.websocket_connect(f"/agent/{aid}/cycle") as ws:
+            msg = ws.receive_json()
+        assert msg["type"] == "body_command"
+        assert msg["command"] == "give_water_reach"
+
+        # The "reach" alias resolves identically.
+        r2 = client.post(f"/agent/{aid}/give?resource=food&mode=reach")
+        assert r2.status_code == 200, r2.text
+        assert r2.json()["status"] == "food_reach_queued"
+
+
 def test_give_endpoint_missing_resource_in_running_scenario_409(api_app):
     with TestClient(api_app) as client:
         aid = client.post("/agent").json()["agent_id"]
@@ -219,3 +241,24 @@ def test_give_endpoint_near_without_body_409(api_app):
         aid = client.post("/agent").json()["agent_id"]
         r = client.post(f"/agent/{aid}/give?resource=water&mode=near")
         assert r.status_code == 409
+
+
+def test_give_endpoint_external_body_flag_bypasses_supervisor(api_app, monkeypatch):
+    """Opt-in escape hatch: with DECADIC_ALLOW_EXTERNAL_BODY_PROVISION set and
+    NO supervised scenario, the command is queued anyway (for a standalone body
+    like the diag/soak MuJoCo adapter, which drains the control queue over the
+    cycle ws). Default-off behavior (the 409 above) is unchanged."""
+    monkeypatch.setenv("DECADIC_ALLOW_EXTERNAL_BODY_PROVISION", "1")
+    with TestClient(api_app) as client:
+        aid = client.post("/agent").json()["agent_id"]
+        client.post(f"/agent/{aid}/pause")  # keep cycle actions out of the queue
+        r = client.post(f"/agent/{aid}/give?resource=food&mode=near")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["status"] == "food_near_queued"
+        assert body["supervised"] is False  # took the external path
+        # The command really reaches a body connected to the cycle ws.
+        with client.websocket_connect(f"/agent/{aid}/cycle") as ws:
+            msg = ws.receive_json()
+        assert msg["type"] == "body_command"
+        assert msg["command"] == "give_food_near"

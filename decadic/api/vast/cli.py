@@ -227,7 +227,26 @@ class VastCli:
         args += self._key_args()
         data = await self._run_json(args, timeout=120.0)
         if not isinstance(data, dict) or not data.get("success"):
-            raise VastCliError(f"create instance failed: {data}")
+            # Vast can report success=False while STILL opening a contract
+            # (most commonly insufficient account credit): the instance record
+            # exists and will accrue charges, but we never tracked it. Destroy
+            # it immediately so a failed create can never orphan a billable
+            # instance (this exact case stranded contract 43995879 once).
+            orphan = data.get("new_contract") if isinstance(data, dict) else None
+            note = ""
+            if orphan is not None:
+                try:
+                    await self.destroy_instance(orphan)
+                    note = f"; orphaned instance {orphan} was auto-destroyed"
+                except Exception as de:  # noqa: BLE001
+                    note = (
+                        f"; WARNING: could not auto-destroy orphaned instance "
+                        f"{orphan} ({de}) -- destroy it manually NOW to stop billing"
+                    )
+                    logger.warning("vast create orphan cleanup failed id=%s: %s", orphan, de)
+            raise VastCliError(
+                f"create instance failed (often insufficient vast.ai credit): {data}{note}"
+            )
         new_id = data.get("new_contract")
         if new_id is None:
             raise VastCliError(f"create instance returned no contract id: {data}")

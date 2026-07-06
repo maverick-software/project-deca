@@ -1,0 +1,13 @@
+body diag: graph_backend=kuzu seconds=3600 stamp=20260705_111934
+cycle rate (steady window): 4.05 cycles/s  (39 -> 84 cycles over 11.1s)
+  t=10.3s cycles=39
+  t=21.4s cycles=84
+body budget (last 3):
+[body] budget ms/obs: physics=0.5 vision=31.5 views=12.4 audio=0.0 send=11.5
+[body] budget ms/obs: physics=7.7 vision=4.0 views=6.7 audio=0.0 send=86.9
+body stderr tail:
+          ^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\connection.py", line 324, in recv
+    raise self.protocol.close_exc from self.recv_exc
+websockets.exceptions.ConnectionClosedError: no close frame received or sent
+D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\glfw\__init__.py:917: GLFWError: (65537) b'The GLFW library is not initialized'

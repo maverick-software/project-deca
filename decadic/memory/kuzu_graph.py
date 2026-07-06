@@ -74,6 +74,7 @@ import gc
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -158,6 +159,84 @@ _Q_SEM_CREATE = (
 )
 _Q_NODE_DEL = "MATCH (e:Entity) WHERE e.id = $id DETACH DELETE e"
 _Q_SEM_DEL = "MATCH (s:SemanticRecord) WHERE s.pk = $pk DELETE s"
+
+
+# Unwind alias MUST NOT collide with any variable used in the templates:
+# `e` (Entity), `a`/`b` (Entity endpoints AND PropertyBelief `b`), `r`
+# (the RELATES relationship in the edge SET/MATCH), `s` (SemanticRecord).
+# `__u` is safe against all of them. (Using `r` silently broke edge-SET flush
+# with "r has data type STRUCT but REL was expected" -- the unwound row
+# shadowed the relationship variable; caught by the embodied soak, now pinned
+# by a dedicated edge test.)
+_UNWIND_ALIAS = "__u"
+
+
+def _multirow(q: str) -> str:
+    """UNWIND variant of a single-row statement: every ``$name`` parameter
+    becomes a field of the unwound row. Verified on the pinned kuzu (0.11):
+    list-of-dict params bind as structs, NULL fields and FLOAT[dim] vector
+    columns round-trip, heterogeneous int/float/None rows unify, and MATCH
+    inside UNWIND works for node SET/CREATE, edge SET, and edge CREATE."""
+    return f"UNWIND $rows AS {_UNWIND_ALIAS} " + re.sub(
+        r"\$(\w+)", rf"{_UNWIND_ALIAS}.\1", q
+    )
+
+
+# WS4B M3.4: multi-row templates. DELETEs stay single-row (rare; DETACH DELETE
+# ordering is easiest to reason about one at a time).
+_Q_MULTIROW = {
+    q: _multirow(q)
+    for q in (
+        _Q_NODE_SET,
+        _Q_NODE_CREATE,
+        _Q_EDGE_SET,
+        _Q_EDGE_CREATE,
+        _Q_BELIEF_SET,
+        _Q_BELIEF_CREATE,
+        _Q_SEM_SET,
+        _Q_SEM_CREATE,
+    )
+}
+
+
+def _multirow_enabled() -> bool:
+    """WS4B M3.4 (2026-07-05): coalesce same-template statement runs into one
+    ``UNWIND $rows`` statement each. The 1-h soak showed insert-heavy streams
+    (unique-pk semantic records) defeat per-key dedupe and saturate the
+    flusher on per-statement overhead -- multi-row execution is the fix."""
+    return os.environ.get("DECADIC_KUZU_MULTIROW", "1").strip().lower() not in {
+        "0",
+        "false",
+        "off",
+    }
+
+
+def _group_stmts(
+    stmts: list[tuple[str, dict | None]],
+) -> list[tuple[str, dict | None]]:
+    """Coalesce consecutive RUNS of the same multirow-capable template into a
+    single UNWIND statement. Runs only -- global statement order is preserved
+    exactly, so create-before-reference and delete/recreate orderings survive
+    untouched. On insert-heavy batches this turns N statements into ~1 per
+    table; mixed batches degrade gracefully toward the original shape."""
+    out: list[tuple[str, dict | None]] = []
+    i, n = 0, len(stmts)
+    while i < n:
+        q, p = stmts[i]
+        mq = _Q_MULTIROW.get(q) if p is not None else None
+        if mq is None:
+            out.append((q, p))
+            i += 1
+            continue
+        j = i + 1
+        while j < n and stmts[j][0] is q and stmts[j][1] is not None:
+            j += 1
+        if j - i == 1:
+            out.append((q, p))
+        else:
+            out.append((mq, {"rows": [pp for _, pp in stmts[i:j]]}))
+        i = j
+    return out
 
 
 def _env_int(name: str, default: int, minimum: int = 1) -> int:
@@ -315,6 +394,8 @@ class KuzuLongTermGraph(LongTermGraph):
         self._flush_error_batches = 0
         self._graph_flush_ms = 0.0  # off-lock execution time of the last batch
         self._graph_flush_lock_ms = 0.0  # resolve time under self._lock (~0 target)
+        self._graph_flush_rows = 0  # single-row statements in the last batch (pre-grouping)
+        self._graph_flush_stmts = 0  # statements actually executed (post M3.4 grouping)
         self._test_fail_next_batch = False  # failure-drill hook (tests only)
         self._ids_since_index: set[str] = set()
         if self._root is not None:
@@ -695,6 +776,12 @@ class KuzuLongTermGraph(LongTermGraph):
         self, stmts: list[tuple[str, dict | None]], ops: list[tuple[str, dict]]
     ) -> None:
         started = time.perf_counter()
+        # M3.4: run-coalesced multi-row statements. Grouping happens off-lock
+        # too (pure list walk); the failure path replays from OPS, which is
+        # statement-shape agnostic, so grouping never weakens durability.
+        exec_stmts = _group_stmts(stmts) if _multirow_enabled() else stmts
+        self._graph_flush_rows = len(stmts)
+        self._graph_flush_stmts = len(exec_stmts)
         conn, channel_lock = self._acquire_write_channel()
         with channel_lock:
             if conn is None:
@@ -705,7 +792,7 @@ class KuzuLongTermGraph(LongTermGraph):
                     self._test_fail_next_batch = False
                     raise RuntimeError("test-injected batch failure")
                 conn.execute("BEGIN TRANSACTION;")
-                for q, p in stmts:
+                for q, p in exec_stmts:
                     conn.execute(q, p) if p is not None else conn.execute(q)
                 conn.execute("COMMIT;")
                 self._graph_flush_ms = (time.perf_counter() - started) * 1000.0
@@ -1247,6 +1334,8 @@ class KuzuLongTermGraph(LongTermGraph):
                 "graph_flush_ms": float(self._graph_flush_ms),
                 "graph_flush_lock_ms": float(self._graph_flush_lock_ms),
                 "graph_flush_queue_depth": int(queue_depth),
+                "graph_flush_rows": int(self._graph_flush_rows),
+                "graph_flush_stmts": int(self._graph_flush_stmts),
                 "graph_flush_error_batches": int(self._flush_error_batches),
                 "graph_dedicated_write_conn": bool(self._kz_write_conn is not None),
                 "sqlite_commit_count": int(self._sqlite_commit_count),

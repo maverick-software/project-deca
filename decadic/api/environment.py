@@ -103,6 +103,12 @@ class EnvironmentSupervisor:
         self._paused: bool = False
         self._started_at: float = 0.0
         self._log_path: Path | None = None
+        # WS-FORAGE: an optional server-side curriculum loop bound to the body's
+        # lifecycle (a preset switches it on; this supervisor is the engine).
+        self._curriculum: dict[str, Any] = {"kind": "none"}
+        self._curriculum_task: "asyncio.Task[Any] | None" = None
+        self._forage_meals_start: int = 0
+        self._forage_rescues: int = 0
 
     def is_running(self) -> bool:
         return self._proc is not None and self._proc.returncode is None
@@ -116,6 +122,7 @@ class EnvironmentSupervisor:
         braces: bool = False,
         replace: bool = False,
         preset: str | None = None,
+        curriculum: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create a fresh agent and spawn the adapter bound to it (single-slot).
 
@@ -139,6 +146,9 @@ class EnvironmentSupervisor:
                 raise EnvironmentControlError(
                     f"No valid elements; choose from {list(VALID_ELEMENTS)}"
                 )
+
+            cur = curriculum if isinstance(curriculum, dict) else {"kind": "none"}
+            is_forage = str(cur.get("kind", "none")) == "forage"
 
             agent_id = str(uuid.uuid4())
             self._registry.create_agent(agent_id, preset=preset)
@@ -170,9 +180,19 @@ class EnvironmentSupervisor:
             if braces:
                 argv.append("--braces")
 
+            # A foraging curriculum forces the body into contact-consumption (so
+            # meals are EARNED) at its configured reach/radius, regardless of any
+            # ambient env override on the server process.
+            sub_env: dict[str, str] | None = None
+            if is_forage:
+                sub_env = dict(os.environ)
+                sub_env["DECADIC_BODY_CONSUME_MODE"] = "contact"
+                sub_env["DECADIC_BODY_CONTACT_RADIUS"] = str(cur.get("contact_radius", 0.35))
+                sub_env["DECADIC_BODY_REACH_DISTANCE"] = str(cur.get("reach_distance", 0.6))
+
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    *argv, stdout=log_fh, stderr=asyncio.subprocess.STDOUT
+                    *argv, stdout=log_fh, stderr=asyncio.subprocess.STDOUT, env=sub_env
                 )
             except Exception:
                 log_fh.close()
@@ -191,13 +211,83 @@ class EnvironmentSupervisor:
             }
             self._paused = False
             self._started_at = time.time()
+            self._curriculum = cur
+            self._forage_rescues = 0
+            self._forage_meals_start = 0
+
+            if is_forage:
+                # Foraging needs hunger: force metabolic (an immortal default
+                # would pin reservoirs full and zero the deficit-gated drive).
+                agent = self._registry.get(agent_id)
+                if agent is not None:
+                    agent.viability_mode = "metabolic"
+                    try:
+                        self._forage_meals_start = int(
+                            (getattr(agent, "metrics", None) or {}).get("consume_events", 0)
+                        )
+                    except Exception:
+                        self._forage_meals_start = 0
+                self._curriculum_task = asyncio.create_task(
+                    self._run_forage_curriculum(agent_id, cur),
+                    name=f"forage-{agent_id[:8]}",
+                )
+
             logger.info(
-                "environment_started agent_id=%s pid=%s elements=%s",
+                "environment_started agent_id=%s pid=%s elements=%s curriculum=%s",
                 agent_id,
                 proc.pid,
                 chosen,
+                cur.get("kind", "none"),
             )
             return self._status_dict()
+
+    async def _run_forage_curriculum(
+        self, agent_id: str, params: dict[str, Any]
+    ) -> None:
+        """Keep a hungry agent alive with a reachable meal in front of it.
+
+        Every ``place_every_s``: read the reservoirs, place the resource for the
+        MOST-DEPLETED one WITHIN REACH (opportunity matches need; consumption is
+        contact-gated so it must be earned), and rescue any reservoir nearing the
+        fatal floor -- the survival net that lets a metabolic agent keep learning
+        without dying. One metrics read + one queued command per tick, off the
+        cognition path. Cancelled by ``_terminate_locked`` on stop/replace/delete.
+        """
+        every = max(1.0, float(params.get("place_every_s", 8.0)))
+        floor = float(params.get("rescue_floor", 12.0))
+        rescue_to = float(params.get("rescue_to", 35.0))
+        try:
+            while True:
+                await asyncio.sleep(every)
+                if self._agent_id != agent_id:
+                    return  # scenario replaced/stopped
+                agent = self._registry.get(agent_id)
+                if agent is None:
+                    return
+                m = getattr(agent, "metrics", None) or {}
+                hyd = float(m.get("hydration", 100.0))
+                enr = float(m.get("energy", 100.0))
+                intg = float(m.get("integrity", 100.0))
+                res, lo = "food", enr
+                if hyd < lo:
+                    res, lo = "water", hyd
+                if intg < lo:
+                    res, lo = "medical_kit", intg
+                try:
+                    agent.queue_body_command(f"give_{res}_reach")
+                except Exception:
+                    pass  # body not ready yet; the next tick retries
+                for r, v in (("water", hyd), ("food", enr), ("medical_kit", intg)):
+                    if v < floor:
+                        try:
+                            await agent.give_resource(r, round(rescue_to - v, 1))
+                            self._forage_rescues += 1
+                        except Exception:
+                            pass
+        except asyncio.CancelledError:
+            return
+        except Exception:  # pragma: no cover - the loop must never take the server down
+            logger.exception("forage curriculum loop crashed agent_id=%s", agent_id)
 
     async def stop(self) -> dict[str, Any]:
         """Terminate the body process; the bound agent (brain) is retained."""
@@ -249,6 +339,12 @@ class EnvironmentSupervisor:
         return self._status_dict()
 
     async def _terminate_locked(self) -> None:
+        # Stop the curriculum loop first so it never acts on a torn-down agent.
+        task = self._curriculum_task
+        if task is not None and not task.done():
+            task.cancel()
+        self._curriculum_task = None
+        self._curriculum = {"kind": "none"}
         proc = self._proc
         if proc is not None and proc.returncode is None:
             try:
@@ -279,6 +375,19 @@ class EnvironmentSupervisor:
 
     def _status_dict(self) -> dict[str, Any]:
         proc = self._proc
+        # Live foraging-curriculum progress (meals earned since start, rescues).
+        forage: dict[str, Any] | None = None
+        if str(self._curriculum.get("kind", "none")) == "forage":
+            meals = 0
+            agent = self._registry.get(self._agent_id) if self._agent_id else None
+            if agent is not None:
+                try:
+                    meals = int(
+                        (getattr(agent, "metrics", None) or {}).get("consume_events", 0)
+                    ) - int(self._forage_meals_start)
+                except Exception:
+                    meals = 0
+            forage = {"meals_earned": max(0, meals), "rescues": int(self._forage_rescues)}
         return {
             "state": self._state(),
             "running": self.is_running(),
@@ -286,6 +395,8 @@ class EnvironmentSupervisor:
             "agent_id": self._agent_id,
             "elements": list(self._elements),
             "options": dict(self._options),
+            "curriculum": dict(self._curriculum),
+            "forage": forage,
             "pid": proc.pid if proc is not None else None,
             "returncode": proc.returncode if proc is not None else None,
             "started_at": self._started_at or None,
