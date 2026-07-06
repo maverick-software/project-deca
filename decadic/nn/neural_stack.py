@@ -376,6 +376,21 @@ class NeuralCognitiveStack(nn.Module):
             with torch.no_grad():
                 self.rel_ingress.weight.zero_()
                 self.rel_ingress.bias.zero_()
+        # WS6-M2.1: the voice head -- the vocal motor organ (mouth as motor,
+        # not language module). Reads the SAME policy latent (lstm_h ||
+        # state_mind) the motor head consumes and emits VOICE_DIM articulatory
+        # params squashed by tanh in forward(). Zero-init weight AND bias =>
+        # tanh(0) = exact zeros at init: the newborn does not speak. Flag-off
+        # builds construct NO module, so the off state_dict is byte-identical
+        # (house parity rule).
+        self.has_voice = getattr(self.faculties, "voice", False)
+        if self.has_voice:
+            from decadic.audio.vocal_tract import VOICE_DIM
+
+            self.voice_head = nn.Linear(pol_in, VOICE_DIM)
+            with torch.no_grad():
+                self.voice_head.weight.zero_()
+                self.voice_head.bias.zero_()
         self.pc_heads = nn.ModuleList([nn.Linear(cfg.d_model, cfg.d_model) for _ in range(4)])
         self.register_buffer("gru_h", torch.zeros(1, cfg.gru_hidden))
         self.register_buffer("lstm_h", torch.zeros(1, cfg.lstm_hidden))
@@ -881,6 +896,10 @@ class NeuralCognitiveStack(nn.Module):
         speed = torch.sigmoid(pol[:, 3:4]) * 2.0
         # Motor command: normalized PD targets in [-1, 1] (one per actuator).
         motor_u = torch.tanh(self.motor(pol_in_t))
+        # WS6-M2.1: vocal efference beside the motor command, from the same
+        # policy latent (the mouth is one more motor organ). Zero-init head =>
+        # all-zero params at init (silence-ish through the synth's energy map).
+        voice_u = torch.tanh(self.voice_head(pol_in_t)) if self.has_voice else None
         # Predicted next controllable-proprio state given this efference copy.
         s_hat = self.forward_predict(z5, motor_u)
         # Predicted next soft per-part contact load given this efference copy.
@@ -941,6 +960,10 @@ class NeuralCognitiveStack(nn.Module):
         if shadow_z4 is not None:
             out_shadow["shadow_z4"] = shadow_z4
             out_shadow["shadow_risk_logit"] = shadow_risk_logit
+        # voice_u is present only when the voice faculty built the head, so
+        # flag-off forward outputs are key-identical to the baseline.
+        if voice_u is not None:
+            out_shadow["voice_u"] = voice_u
         return {
             **out_shadow,
             "z5": z5,

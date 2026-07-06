@@ -776,20 +776,18 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                     )
                 except Exception:
                     pass  # novelty falls back to the full-embedding signal
-        # WS-FORAGE M5: Type-2 trigger -- an active need whose remembered relief
-        # is NOT here. Reads the M3/M4 goal vector already on ctx: target mask
-        # [7] set (a resource is remembered) AND normalized distance [6] beyond
-        # the "here" threshold. Cheap (a couple of float reads); the memory
-        # search that produced the bearing already ran in the runtime.
+        # WS-FORAGE M5: Type-2 trigger -- a need worth deliberating over whose
+        # remembered relief is NOT here. Reads the (now continuous) M3/M4 goal
+        # vector already on ctx; the graded min-deficit is the System-2
+        # economics gate. Cheap (a few float reads); the memory search that
+        # produced the bearing already ran in the runtime.
         type2 = False
         if C.type2_search_enabled():
-            _gv = getattr(ctx, "goal_vec", None)
-            if _gv is not None and len(_gv) >= 8:
-                try:
-                    if float(_gv[7]) >= 0.5 and float(_gv[6]) >= C.type2_far_distance():
-                        type2 = True
-                except (TypeError, ValueError, IndexError):
-                    type2 = False
+            type2 = AG.type2_trigger(
+                getattr(ctx, "goal_vec", None),
+                far_distance=C.type2_far_distance(),
+                min_deficit=C.type2_min_deficit(),
+            )
         gate_inputs = AG.extract_gate_inputs(
             best_recall_similarity=gate_best_sim,
             pc_ema=getattr(bundle.plasticity_state, "pc_ema", None),
@@ -2053,6 +2051,17 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             "babble_sigma": round(float(babble_sigma), 5),
         },
     }
+    # WS6-M2.1: vocal efference rides beside ctrl. Present only when the voice
+    # faculty built the head, so flag-off action dicts are byte-identical.
+    # Additive-never-fatal: the mouth failing to report must not kill the cycle.
+    if "voice_u" in out:
+        try:
+            voice_np = _san(out["voice_u"].detach().cpu().numpy().reshape(-1))
+            ctx.latents["action"]["parameters"]["voice"] = [
+                round(float(x), 5) for x in voice_np.tolist()
+            ]
+        except Exception:
+            pass  # voice emission is additive; never fail the cycle for it
     # Only forward the support-system selection when the operator has set one;
     # otherwise the body keeps its env default (no per-cycle override).
     if ctx.curriculum_mode is not None:

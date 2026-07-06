@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from decadic.api.vast.cli import VastCliError
 from decadic.api.vast.controller import DeployRequest, VastController
 from decadic.api.vast.settings_store import VastSettingsStore
+from decadic.api.vast.ssh_keys import SshKeyManager
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,75 @@ def register_vast_routes(application: FastAPI) -> None:
         view = store.public_view()
         view["cli_available"] = _controller(application).cli.available()
         return JSONResponse(view)
+
+    @application.get("/vast/preflight")
+    async def get_vast_preflight() -> JSONResponse:
+        """Everything a deploy needs, checked BEFORE any money moves.
+
+        Aggregates account + toolchain + SSH-lifecycle checks with one-line
+        fixes; the dashboard gates the Deploy button on ``ready`` (M0)."""
+        store = _store(application)
+        ctrl = _controller(application)
+        checks: dict[str, Any] = {
+            "api_key": store.has_api_key(),
+            "cli": ctrl.cli.available(),
+        }
+        reasons: list[str] = []
+        if not checks["api_key"]:
+            reasons.append("no Vast.ai API key saved — add it in Settings")
+        if not checks["cli"]:
+            reasons.append("vastai CLI not installed — pip install vastai")
+        mgr = SshKeyManager(store, ctrl.cli)
+        if checks["api_key"] and checks["cli"]:
+            ssh = await mgr.preflight()
+        else:
+            # Without the API key / CLI we cannot ask Vast about registration;
+            # report the local facts and say why the remote check is skipped.
+            from decadic.api.vast.ssh_keys import which_keygen, which_ssh
+
+            ssh = {
+                "ssh_binary": which_ssh() is not None,
+                "keygen_binary": which_keygen() is not None,
+                "ssh_key_present": mgr.key_exists(),
+                "ssh_key_registered": False,
+                "reasons": [
+                    "cannot verify Vast registration until the API key + CLI checks pass"
+                ],
+            }
+        reasons.extend(ssh.pop("reasons", []))
+        checks.update(ssh)
+        checks["ready"] = all(
+            checks.get(k) for k in (
+                "api_key", "cli", "ssh_binary", "ssh_key_present", "ssh_key_registered",
+            )
+        )
+        checks["reasons"] = reasons
+        return JSONResponse(checks)
+
+    @application.post("/vast/ssh/setup")
+    async def post_vast_ssh_setup() -> JSONResponse:
+        """One-shot SSH setup: generate a keypair if needed + register it with
+        the Vast account (idempotent). Returns fingerprint only — NEVER the
+        private key (M1.4)."""
+        store = _store(application)
+        ctrl = _controller(application)
+        if not store.has_api_key():
+            raise HTTPException(status_code=400, detail="No Vast.ai API key set.")
+        if not ctrl.cli.available():
+            raise HTTPException(status_code=503, detail="vastai CLI not installed (pip install vastai).")
+        mgr = SshKeyManager(store, ctrl.cli)
+        try:
+            result = await mgr.ensure_registered()
+        except VastCliError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        view = store.public_view()
+        return JSONResponse(
+            {
+                "registered": bool(result.get("registered")),
+                "fingerprint": result.get("fingerprint"),
+                "ssh_key_path_masked": view["ssh_key_path_masked"],
+            }
+        )
 
     @application.get("/vast/account")
     async def get_vast_account() -> JSONResponse:

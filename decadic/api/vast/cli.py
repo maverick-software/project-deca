@@ -184,6 +184,38 @@ class VastCli:
         data = await self._run_json(["show", "user", *self._key_args()], timeout=30.0)
         return data if isinstance(data, dict) else {}
 
+    # --- ssh keys (account + instance) --------------------------------------
+    async def show_ssh_keys(self) -> list[dict[str, Any]]:
+        """Account-registered SSH keys (``vastai show ssh-keys``)."""
+        data = await self._run_json(["show", "ssh-keys", *self._key_args()], timeout=30.0)
+        if isinstance(data, list):
+            return [k for k in data if isinstance(k, dict)]
+        if isinstance(data, dict) and isinstance(data.get("ssh_keys"), list):
+            return [k for k in data["ssh_keys"] if isinstance(k, dict)]
+        return []
+
+    async def create_ssh_key(self, public_key: str) -> None:
+        """Register a public key with the account (``vastai create ssh-key``)."""
+        code, out, err = await self._run(
+            ["create", "ssh-key", public_key, *self._key_args()], timeout=45.0
+        )
+        if code != 0:
+            raise VastCliError(
+                f"create ssh-key failed (exit {code}): {err.strip() or out.strip()}"
+            )
+
+    async def attach_ssh(self, instance_id: int | str, public_key: str) -> None:
+        """Attach a public key to one instance (``vastai attach ssh``)."""
+        code, out, err = await self._run(
+            ["attach", "ssh", str(instance_id), public_key, *self._key_args()],
+            timeout=45.0,
+        )
+        if code != 0:
+            raise VastCliError(
+                f"attach ssh to {instance_id} failed (exit {code}): "
+                f"{err.strip() or out.strip()}"
+            )
+
     # --- offers ------------------------------------------------------------
     async def search_offers(
         self,

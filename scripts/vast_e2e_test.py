@@ -147,6 +147,25 @@ def main() -> int:
         ):
             return 1
 
+        # ---- 1b. SSH preflight (M5.1): never rent before SSH is green ---------
+        pf = get(base, "/vast/preflight", timeout=60.0)
+        if not pf.get("ready") and not pf.get("ssh_key_registered"):
+            # Self-service: one idempotent setup call (generate + register).
+            log("SSH not ready; running one-shot setup (generate + register key)...")
+            try:
+                setup = post(base, "/vast/ssh/setup", timeout=120.0)
+                log(f"ssh setup: registered={setup.get('registered')} fp={setup.get('fingerprint')}")
+            except Exception as exc:  # noqa: BLE001
+                log(f"ssh setup failed: {exc}")
+            pf = get(base, "/vast/preflight", timeout=60.0)
+        if not check(
+            "ssh_preflight",
+            bool(pf.get("ready")),
+            f"ready={pf.get('ready')} registered={pf.get('ssh_key_registered')} "
+            f"reasons={pf.get('reasons')}",
+        ):
+            return 1
+
         # ---- 2. offer search -------------------------------------------------
         q = urllib.parse.urlencode(
             {

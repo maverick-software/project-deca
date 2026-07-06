@@ -276,6 +276,71 @@ def _flush_queue_cap() -> int:
     return max(1, int(os.environ.get("DECADIC_KUZU_FLUSH_QUEUE_CAP", "4")))
 
 
+def _write_min_cycles() -> int:
+    """Write governance (2026-07-06): a key that flushed within this many
+    cycles parks its latest payload in the deferred map instead of re-entering
+    the pending window. Upserts carry FULL row state, so intermediate writes
+    are redundant for durability -- staleness is bounded by this many cycles
+    (and by drain barriers, which promote deferred exactly). 0 disables."""
+    try:
+        return max(0, int(os.environ.get("DECADIC_KUZU_WRITE_MIN_CYCLES", "25")))
+    except (TypeError, ValueError):
+        return 25
+
+
+def _op_key(kind: str, p: dict) -> tuple:
+    """Stable identity key for a persistence op (upsert or delete alike)."""
+    if kind in ("node", "del_node"):
+        return ("node", p["id"])
+    if kind == "edge":
+        return ("edge", p["src"], p["dst"], p["kind"])
+    if kind == "belief":
+        return ("belief", p["pk"])
+    if kind in ("sem", "del_sem"):
+        return ("sem", p["pk"])
+    return (kind, id(p))  # unknown kinds never merge
+
+
+def _merge_batches(
+    tail_stmts: "list[tuple[str, dict | None]]",
+    tail_ops: "list[tuple[str, dict]]",
+    stmts: "list[tuple[str, dict | None]]",
+    ops: "list[tuple[str, dict]]",
+) -> "tuple[list, list, int]":
+    """Keyed last-wins merge of two resolved batches (coalesce-dedup).
+
+    Upserts for the same key collapse into the FIRST occurrence's position and
+    statement template (a CREATE stays a CREATE -- the row does not exist yet;
+    CREATE and SET take the same param dict, so the latest payload rides the
+    original template). Deletes act as barriers: they are never merged, and a
+    later upsert for a deleted key starts a fresh entry after it, preserving
+    delete->recreate order. Returns (stmts, ops, rows_eliminated)."""
+    out_stmts: list = []
+    out_ops: list = []
+    slot: dict[tuple, int] = {}
+    merged = 0
+    for (q, sp), (kind, p) in zip(
+        list(tail_stmts) + list(stmts), list(tail_ops) + list(ops)
+    ):
+        k = _op_key(kind, p)
+        if kind.startswith("del_"):
+            out_stmts.append((q, sp))
+            out_ops.append((kind, p))
+            slot.pop(k, None)  # barrier: later upserts must land after this
+            continue
+        i = slot.get(k)
+        if i is None:
+            slot[k] = len(out_stmts)
+            out_stmts.append((q, sp))
+            out_ops.append((kind, p))
+        else:
+            q0, _ = out_stmts[i]
+            out_stmts[i] = (q0, sp)  # keep template + position, latest payload
+            out_ops[i] = (kind, p)
+            merged += 1
+    return out_stmts, out_ops, merged
+
+
 def _offlock_flush_enabled() -> bool:
     """WS4B: execute flush transactions on a background flusher thread so the
     cognitive loop never waits on kuzu (measured 2026-07-05: 293 ms per batch
@@ -398,6 +463,22 @@ class KuzuLongTermGraph(LongTermGraph):
         self._graph_flush_stmts = 0  # statements actually executed (post M3.4 grouping)
         self._test_fail_next_batch = False  # failure-drill hook (tests only)
         self._ids_since_index: set[str] = set()
+        # Write governance (2026-07-06): the graph WRITES too much, not too
+        # slowly. Embodied perception re-touches the same nodes/edges/beliefs
+        # every cycle, filling the 512-op window several times a second and
+        # drowning the flusher (observed: 80 s coalesced batches). Two levers:
+        # (a) per-key write throttle -- a key that flushed recently parks its
+        #     LATEST full payload in _deferred instead of _pending (upserts
+        #     carry complete state, so skipping intermediates is lossless);
+        #     drain/close/backup promote all deferred first, so barriers stay
+        #     exact. Creates and deletes always pass.
+        # (b) coalesce-dedup -- overflow merges into the tail batch by KEY
+        #     (last payload wins) instead of blind append, so a pathological
+        #     backlog can never replay the same key 40 times in one batch.
+        self._deferred: dict[tuple, tuple[str, dict]] = {}
+        self._kz_key_last_write: dict[tuple, int] = {}
+        self._writes_deferred = 0  # ops absorbed by the throttle (telemetry)
+        self._coalesce_dedup_rows = 0  # rows eliminated by keyed merge (telemetry)
         if self._root is not None:
             with self._lock:
                 self._open_locked()
@@ -540,9 +621,9 @@ class KuzuLongTermGraph(LongTermGraph):
             "position_json": json.dumps(node["position"]) if node["position"] is not None else None,
             "affect": float(node["affect"]),
         }
-        self._pending[("node", nid)] = ("node", params)
         self._ids_since_index.add(nid)  # new or EMA-updated: index entry is stale
-        self._commit_locked()
+        if self._stage_upsert_locked(("node", nid), "node", params):
+            self._commit_locked()
 
     def _persist_edge(self, e: dict[str, Any]) -> None:
         params = {
@@ -553,8 +634,9 @@ class KuzuLongTermGraph(LongTermGraph):
             "count": int(e["count"]),
             "last_cycle": int(e["last_cycle"]),
         }
-        self._pending[("edge", params["src"], params["dst"], params["kind"])] = ("edge", params)
-        self._commit_locked()
+        key = ("edge", params["src"], params["dst"], params["kind"])
+        if self._stage_upsert_locked(key, "edge", params):
+            self._commit_locked()
 
     def _persist_belief(self, b: dict[str, Any]) -> None:
         pk = f"{b['node_id']}{_SEP}{b['property_key']}"
@@ -572,8 +654,8 @@ class KuzuLongTermGraph(LongTermGraph):
             "source": str(b.get("source", "perception")),
             "unstable": bool(b.get("unstable", False)),
         }
-        self._pending[("belief", pk)] = ("belief", params)
-        self._commit_locked()
+        if self._stage_upsert_locked(("belief", pk), "belief", params):
+            self._commit_locked()
 
     def _persist_semantic_record(self, category: str, rec: dict[str, Any]) -> None:
         pk = f"{category}{_SEP}{rec['id']}"
@@ -588,8 +670,31 @@ class KuzuLongTermGraph(LongTermGraph):
             "last_cycle": int(rec.get("last_cycle", 0)),
             "promoted": bool(rec.get("promoted", False)),
         }
-        self._pending[("sem", pk)] = ("sem", params)
-        self._commit_locked()
+        if self._stage_upsert_locked(("sem", pk), "sem", params):
+            self._commit_locked()
+
+    def _stage_upsert_locked(self, key: tuple, kind: str, params: dict) -> bool:
+        """Write-governance gate: stage the upsert into the pending window
+        (True) or park its latest payload in the deferred map (False).
+
+        A key that flushed within the last ``_write_min_cycles()`` cycles is
+        deferred -- upserts carry FULL row state, so only the newest matters
+        for durability. New keys (creates) always pass (``last is None``); a
+        cycle counter that moved BACKWARD (reset / restored life) also passes
+        rather than deferring against a stale horizon. Deferred payloads are
+        promoted exactly at drain barriers (_drain_locked)."""
+        n = _write_min_cycles()
+        if n > 0:
+            cycle = int(params.get("last_cycle", 0) or 0)
+            last = self._kz_key_last_write.get(key)
+            if last is not None and 0 <= cycle - last < n:
+                self._deferred[key] = (kind, params)
+                self._writes_deferred += 1
+                return False
+            self._kz_key_last_write[key] = cycle
+        self._deferred.pop(key, None)
+        self._pending[key] = (kind, params)
+        return True
 
     def _commit_locked(self, *, batch: bool = False) -> None:
         if self._persist_batch_depth > 0:
@@ -655,12 +760,17 @@ class KuzuLongTermGraph(LongTermGraph):
         if _offlock_flush_enabled():
             with self._flush_mu:
                 if len(self._flush_queue) >= _flush_queue_cap():
-                    # Backpressure by coalescing: extend the tail batch
-                    # instead of growing the queue (same-key statements
-                    # execute in order, last wins -- correct, just merged).
+                    # Backpressure by coalescing -- now KEYED (2026-07-06):
+                    # blind append let a backlog replay the same key dozens of
+                    # times in one batch (observed 21k rows / 80 s). The merge
+                    # keeps one statement per key, latest payload wins, deletes
+                    # stay ordered barriers.
                     tail_stmts, tail_ops = self._flush_queue[-1]
-                    tail_stmts.extend(stmts)
-                    tail_ops.extend(ops)
+                    m_stmts, m_ops, merged = _merge_batches(
+                        tail_stmts, tail_ops, stmts, ops
+                    )
+                    self._flush_queue[-1] = (m_stmts, m_ops)
+                    self._coalesce_dedup_rows += merged
                 else:
                     self._flush_queue.append((stmts, ops))
                     self._batches_enqueued += 1
@@ -848,6 +958,21 @@ class KuzuLongTermGraph(LongTermGraph):
         The barrier for callers that need COMMITTED state (backup, restore,
         close, clear, index build). Safe under self._lock: the flusher only
         needs _kz_io_lock, so it makes progress while we wait."""
+        # Write governance: promote every deferred payload so the barrier is
+        # EXACT. A deferred upsert is by construction NEWER than any pending
+        # upsert for the same key (deferral only happens after a recent
+        # staging), so it OVERWRITES it -- setdefault here silently shipped the
+        # stale payload (caught by the throttle round-trip test: cycle-25 in
+        # pending beat cycle-30 in deferred). Only a staged DELETE outranks a
+        # parked upsert (and delete staging purges deferred anyway; this guard
+        # is belt-and-braces).
+        if self._deferred:
+            for k, v in self._deferred.items():
+                cur = self._pending.get(k)
+                if cur is not None and cur[0].startswith("del_"):
+                    continue
+                self._pending[k] = v
+            self._deferred.clear()
         if self._pending:
             started = time.perf_counter()
             self._flush_pending_locked()
@@ -1223,6 +1348,8 @@ class KuzuLongTermGraph(LongTermGraph):
         with self._lock:
             super().clear()  # wipes the in-memory model (base sqlite branch is a no-op)
             self._pending.clear()
+            self._deferred.clear()  # write governance: nothing stale may land post-wipe
+            self._kz_key_last_write.clear()
             self._drain_locked()  # WS4B: no queued batch may land post-wipe
             if self._kz_conn is not None:
                 with self._kz_io_lock:
@@ -1252,11 +1379,20 @@ class KuzuLongTermGraph(LongTermGraph):
             # self._conn, which is None here); diff the id sets to mirror the
             # deletions into kuzu.
             for nid in nodes_before - set(self._nodes):
-                self._pending[("node", nid)] = ("del_node", {"id": nid})
+                key = ("node", nid)
+                self._pending[key] = ("del_node", {"id": nid})
+                # Write governance: a parked upsert must not resurrect a pruned
+                # row at the next drain; forgetting the key lets a future
+                # re-create pass the gate as new.
+                self._deferred.pop(key, None)
+                self._kz_key_last_write.pop(key, None)
             for cat, before in sem_before.items():
                 for rid in before - set(self._semantic[cat]):
                     pk = f"{cat}{_SEP}{rid}"
-                    self._pending[("sem", pk)] = ("del_sem", {"pk": pk})
+                    key = ("sem", pk)
+                    self._pending[key] = ("del_sem", {"pk": pk})
+                    self._deferred.pop(key, None)
+                    self._kz_key_last_write.pop(key, None)
             if out.get("nodes") or out.get("semantic_records"):
                 self._commit_locked()
             return out
@@ -1290,6 +1426,8 @@ class KuzuLongTermGraph(LongTermGraph):
             return
         with self._lock:
             self._pending.clear()  # pending writes describe pre-restore state
+            self._deferred.clear()  # ditto for throttled payloads
+            self._kz_key_last_write.clear()
             # WS4B: drop queued pre-restore batches and stop the flusher
             # before the directory swap (Windows file-lock discipline).
             with self._flush_mu:
@@ -1337,6 +1475,11 @@ class KuzuLongTermGraph(LongTermGraph):
                 "graph_flush_rows": int(self._graph_flush_rows),
                 "graph_flush_stmts": int(self._graph_flush_stmts),
                 "graph_flush_error_batches": int(self._flush_error_batches),
+                # Write governance (2026-07-06): throttle absorption + keyed
+                # coalesce savings; deferred_depth is bounded by live keys.
+                "graph_writes_deferred": int(self._writes_deferred),
+                "graph_coalesce_dedup_rows": int(self._coalesce_dedup_rows),
+                "graph_deferred_depth": len(self._deferred),
                 "graph_dedicated_write_conn": bool(self._kz_write_conn is not None),
                 "sqlite_commit_count": int(self._sqlite_commit_count),
                 "sqlite_batch_commit_count": int(self._sqlite_batch_commit_count),

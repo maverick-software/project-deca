@@ -454,6 +454,31 @@ class AttentionGate:
 THREAT_EVENT_TYPES = ("collision", "damage", "attack", "bite", "fall_impact")
 
 
+def type2_trigger(
+    goal_vec: "list | None",
+    *,
+    far_distance: float,
+    min_deficit: float,
+) -> bool:
+    """WS-FORAGE M5: should this cycle escalate into deliberate memory-guided
+    pursuit? True when the goal vector says a resource that relieves the active
+    need is REMEMBERED (target mask set) but NOT here (normalized distance
+    beyond ``far_distance``) and the need is worth deliberating over (graded
+    deficit at least ``min_deficit`` -- System-2 economics now that goal
+    conditioning is continuous). Pure python; layout indices follow
+    ``decadic.nn.goal_conditioning`` ([3]=deficit, [6]=distance, [7]=mask)."""
+    if goal_vec is None or len(goal_vec) < 8:
+        return False
+    try:
+        return (
+            float(goal_vec[7]) >= 0.5
+            and float(goal_vec[6]) >= float(far_distance)
+            and float(goal_vec[3]) >= float(min_deficit)
+        )
+    except (TypeError, ValueError, IndexError):
+        return False
+
+
 def extract_gate_inputs(
     *,
     best_recall_similarity: float | None,

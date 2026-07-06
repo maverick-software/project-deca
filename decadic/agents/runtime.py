@@ -2750,26 +2750,30 @@ class AgentRuntime:
         )
 
     def _current_goal_vec(self) -> "list[float] | None":
-        """WS-FORAGE M3: the active-goal conditioning vector for this cycle, or
-        None when goal conditioning is off / no goal is latched. Reads the latched
-        GoalState and the live reservoir deficit. Defensive: any failure returns
-        None (no conditioning) rather than perturbing the cycle. M4 will add the
-        remembered-target bearing to the same vector."""
+        """WS-FORAGE M3 (continuous, owner decision 2026-07-06): the goal
+        conditioning vector for this cycle, or None only when the faculty is off
+        or something failed. An autonomous agent is ALWAYS under some goal --
+        priorities shift, they do not vanish -- so the policy is conditioned on
+        the DOMINANT need with its GRADED deficit every cycle. The magnitude
+        field carries urgency (a 3% deficit conditions differently from a 40%
+        one once trained); zero-init keeps this birth-identical. The GoalState
+        latch is NOT consulted here: it remains purely the credit-assignment
+        episode boundary. This also fixes the training-starvation failure mode
+        where a well-fed agent's goal ingress never saw a single gradient."""
         if not C.goal_conditioned_policy_enabled():
-            return None
-        gs = getattr(self, "goal_state", None)
-        if gs is None or getattr(gs, "status", "idle") != "active" or not gs.goal_id:
             return None
         try:
             from decadic.nn.goal_conditioning import GOAL_LABELS, encode_goal
 
             reservoirs = self._reservoirs_norm()  # (hydration, energy, integrity)
-            idx = GOAL_LABELS.index(gs.goal_id)
-            deficit = max(0.0, 1.0 - float(reservoirs[idx]))
-            b_cos, b_sin, b_dist = self._goal_bearing(gs.goal_id)  # M4 (None if unknown)
+            # Dominant need = largest deficit, however small (continuous).
+            deficits = [max(0.0, 1.0 - float(r)) for r in reservoirs]
+            idx = max(range(len(deficits)), key=deficits.__getitem__)
+            goal_id = GOAL_LABELS[idx]
+            b_cos, b_sin, b_dist = self._goal_bearing(goal_id)  # M4 (None if unknown)
             return encode_goal(
-                gs.goal_id,
-                deficit,
+                goal_id,
+                deficits[idx],
                 bearing_cos=b_cos,
                 bearing_sin=b_sin,
                 distance=b_dist,
@@ -3085,6 +3089,15 @@ class AgentRuntime:
                 outbound.get("action", {}).get("type"),
             )
             self._maybe_log_memory_accumulation(wall_ms)
+            # WS6-M2.2: render this cycle's vocal efference through the formant
+            # larynx and close the loop. Additive-never-fatal: the voice organ
+            # failing must never stall the cognitive loop.
+            try:
+                self._emit_voice(outbound)
+            except Exception:
+                logger.debug(
+                    "voice_emit_failed agent_id=%s", self.agent_id, exc_info=True
+                )
             if not self._put_outbound(outbound, drop_oldest=False):
                 logger.warning(
                     "out_queue_full_drop agent_id=%s cycle=%s",
@@ -3092,6 +3105,66 @@ class AgentRuntime:
                     self.state_bus.cycle_index,
                 )
             await asyncio.sleep(0)
+
+    def _emit_voice(self, outbound: dict[str, Any] | None) -> None:
+        """WS6-M2.1/M2.2: voice params -> waveform -> loopback (+ speakers).
+
+        The rendered waveform ALWAYS re-enters the auditory intake when the
+        intake is on -- self-hearing is the design (PRD 3.7), not a mode; the
+        operator's speakers only join when the playback mode allows. Also
+        refreshes the cheap per-cycle audio telemetry, so the intake stats stay
+        visible even on cycles that emitted no voice. Caller wraps this in the
+        additive-never-fatal try/except.
+        """
+        # Cheap per-cycle telemetry for the dashboard/metrics endpoints.
+        if C.audio_intake_mode() != "off":
+            from decadic.audio.intake import get_audio_intake
+
+            self.metrics["audio_intake"] = get_audio_intake().stats()
+        if not C.voice_enabled():
+            return
+        act = outbound.get("action") if isinstance(outbound, dict) else None
+        params = act.get("parameters") if isinstance(act, dict) else None
+        voice = params.get("voice") if isinstance(params, dict) else None
+        if not isinstance(voice, list) or not voice:
+            return
+        from decadic.audio.vocal_tract import VOICE_DIM, FormantSynth
+
+        vec = [float(x) for x in voice[:VOICE_DIM]]
+        vec += [0.0] * (VOICE_DIM - len(vec))
+        synth = getattr(self, "_voice_synth", None)
+        if synth is None:
+            synth = FormantSynth()
+            self._voice_synth = synth
+            # The first frame interpolates FROM silence -- click-free birth.
+            self._voice_prev_params = [-1.0] + [0.0] * (VOICE_DIM - 1)
+        # One cycle-period of samples at 16 kHz so consecutive frames tile the
+        # timeline seamlessly (~1600 @ the default ~100 ms cycle); clamped so a
+        # stalled clock can never render minutes of audio in one cycle.
+        n_samples = int(round(float(self.cycle_interval_s) * 16000.0))
+        n_samples = max(160, min(8000, n_samples if n_samples > 0 else 1600))
+        wav = synth.render(
+            self._voice_prev_params, vec, n_samples=n_samples, sample_rate=16000
+        )
+        self._voice_prev_params = vec
+        self.metrics["voice_params"] = [round(v, 4) for v in vec]
+        # (1) Self-hearing loopback: ALWAYS when the intake is on. The agent
+        # must hear itself through the same organ it hears the world with.
+        if C.audio_intake_mode() != "off":
+            from decadic.audio.intake import get_audio_intake
+
+            get_audio_intake().mix_in(wav)
+        # (2) Operator monitor tee: only when the playback mode allows; the
+        # sink itself degrades to a counted no-op without a device.
+        if C.voice_playback_mode() != "off":
+            playback = getattr(self, "_voice_playback", None)
+            if playback is None:
+                from decadic.audio.playback import VoicePlayback
+
+                playback = VoicePlayback(sample_rate=16000)
+                self._voice_playback = playback
+            playback.play(wav)
+            self.metrics["voice_playback"] = playback.stats()
 
     async def handle_observation_dict(self, obs: dict[str, Any]) -> None:
         """Integrate observation under lock and apply collision fast-path."""
@@ -3101,6 +3174,21 @@ class AgentRuntime:
             self._debug_views = {
                 str(k): v for k, v in views.items() if isinstance(v, str)
             }
+
+        # WS6-M0.5: continuous auditory intake. Before any perception work, an
+        # observation that arrived WITHOUT audio gets the freshest mic/bus
+        # chunk (client audio always wins; the intake only fills silence), so
+        # hearing is a property of the body, not of the mail (PRD 3.8, G9).
+        # Additive-never-fatal: cognition must never die for a microphone.
+        try:
+            if C.audio_intake_mode() != "off":
+                from decadic.audio.intake import get_audio_intake
+
+                get_audio_intake().attach_to_obs(obs)
+        except Exception:
+            logger.debug(
+                "audio_intake_attach_failed agent_id=%s", self.agent_id, exc_info=True
+            )
 
         events = obs.get("events") or []
         if not isinstance(events, list):

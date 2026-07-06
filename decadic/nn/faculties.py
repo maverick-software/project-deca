@@ -71,6 +71,14 @@ class CognitionFaculties:
     # transformer over slot/memory/interoceptive tokens; zero-init ingress
     # into the risk input; deliberative cycles only). Defaults OFF.
     relational_core: bool = False
+    # WS6-M2.1 (speech loop): the vocal motor organ. The stack emits a
+    # VOICE_DIM articulatory parameter vector (voice_u) from the same policy
+    # latent the motor head consumes; the head is zero-init, so at init the
+    # mouth is silent -- the newborn does not speak. Defaults ON (owner
+    # decision 2026-07-04, the represented_self precedent); tests pin OFF via
+    # conftest. Flag-off builds construct NO voice module (byte-identical
+    # state_dict).
+    voice: bool = True
 
     def __post_init__(self) -> None:
         mode = str(self.perception_mode).strip().lower()
@@ -84,6 +92,7 @@ class CognitionFaculties:
         self.wm_slot_tensor = bool(self.wm_slot_tensor)
         self.memory_tokens = bool(self.memory_tokens)
         self.relational_core = bool(self.relational_core)
+        self.voice = bool(self.voice)
 
     @property
     def discovered(self) -> bool:
@@ -104,4 +113,5 @@ class CognitionFaculties:
             wm_slot_tensor=_cfg.wm_slot_tensor_enabled(),
             memory_tokens=_cfg.memory_tokens_enabled(),
             relational_core=_cfg.relational_core_enabled(),
+            voice=_cfg.voice_enabled(),
         )

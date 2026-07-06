@@ -219,6 +219,7 @@ class VastController:
     # --- provisioning steps ------------------------------------------------
     async def _provision(self, req: DeployRequest) -> None:
         try:
+            await self._step_ensure_ssh()
             await self._step_create(req)
             await self._step_wait_running()
             await self._step_upload(req)
@@ -245,6 +246,27 @@ class VastController:
                 except VastCliError as de:
                     self._log(f"auto-destroy error: {de}")
 
+    async def _step_ensure_ssh(self) -> None:
+        """M2.1: the deploy's very first act — BEFORE any money moves.
+
+        Guarantees a local keypair exists and its public half is registered
+        with the Vast account, because every later step (upload/install/serve/
+        tunnel) authenticates over SSH. Failing here costs nothing; failing at
+        upload used to cost a rented box."""
+        from decadic.api.vast.ssh_keys import SshKeyManager, which_ssh
+
+        self._log("checking SSH key (generate + register if needed)")
+        if which_ssh() is None:
+            raise VastCliError(
+                "ssh client not found on this machine — install the OpenSSH "
+                "Client (Windows: Settings > Optional features), then retry"
+            )
+        mgr = SshKeyManager(self._store, self._cli)
+        result = await mgr.ensure_registered()
+        self._ssh_pub = mgr.public_key()
+        fp = result.get("fingerprint") or "unknown"
+        self._log(f"SSH key registered with Vast ({fp})")
+
     async def _step_create(self, req: DeployRequest) -> None:
         self._state.phase = "creating"
         self._log(f"renting offer {req.offer_id} ({req.image}, {req.disk}GB)")
@@ -253,6 +275,16 @@ class VastController:
         )
         self._state.instance_id = iid
         self._log(f"instance created: {iid}")
+        # M2.2: per-instance attach — authorizes this exact box even if the
+        # account-level registration hasn't propagated yet. Best-effort by
+        # design (duplicates can be rejected); account registration covers us.
+        pub = getattr(self, "_ssh_pub", None)
+        if pub:
+            try:
+                await self._cli.attach_ssh(iid, pub)
+                self._log("SSH key attached to the instance")
+            except VastCliError as exc:
+                self._log(f"attach ssh skipped ({exc}); account key applies")
 
     async def _step_wait_running(self, timeout: float = 600.0) -> None:
         self._state.phase = "waiting"
@@ -287,7 +319,17 @@ class VastController:
         self._log("packaging code payload")
         payload = self._build_payload(include_backups=bool(req.restore_agent))
         try:
-            await self._ssh(f"mkdir -p {REMOTE_ROOT}")
+            code, out, err = await self._ssh(f"mkdir -p {REMOTE_ROOT}")
+            if code != 0:
+                blob = (err or out).lower()
+                if "permission denied" in blob or "publickey" in blob:
+                    # M2.3: map raw SSH-auth stderr to the actionable fix.
+                    raise VastCliError(
+                        "SSH not authorized by the instance (permission denied). "
+                        "Run SSH setup (POST /vast/ssh/setup or the dashboard "
+                        "button) and check GET /vast/preflight, then redeploy."
+                    )
+                raise VastCliError(f"remote mkdir failed (exit {code}): {(err or out)[-300:]}")
             self._log("uploading payload to the box")
             await self._cli.copy(f"local:{payload}", f"{self._state.instance_id}:{REMOTE_ROOT}/payload.tgz")
             await self._ssh(f"cd {REMOTE_ROOT} && tar xzf payload.tgz && rm -f payload.tgz")

@@ -29,6 +29,7 @@ claims from psychology and neuroscience about how a mind might work.
 - [The research program (falsifiable by design)](#the-research-program-falsifiable-by-design)
 - [Quickstart](#quickstart)
 - [Watch it think](#watch-it-think)
+- [Hearing and voice (the speech loop)](#hearing-and-voice-the-speech-loop)
 - [Repository map](#repository-map)
 - [Status and roadmap](#status-and-roadmap)
 - [Theoretical lineage](#theoretical-lineage)
@@ -238,6 +239,36 @@ Start the dashboard (`cd dashboard && npm run dev`) and open `127.0.0.1:5173`. Y
 
 Nothing on the dashboard feeds back into cognition — it is a window, not an input.
 
+## Hearing and voice (the speech loop)
+
+Deca ships with an always-on ear and a mouth that starts mute — the spine of WS6
+(`docs/ws6_speech_loop_prd.md`), built on the principle that language must be lived, not
+downloaded: no text corpus, no TTS, no LLM.
+
+**Hearing is an organ, not mail.** A continuous `AudioIntake` service
+(`decadic/audio/intake.py`) captures the system microphone (`DECADIC_AUDIO_INTAKE=mic`,
+the default) or the simulated mixing bus (`bus`) into a ring buffer; every observation
+that arrives without audio is given the freshest ≤250 ms chunk at ingest, in the exact
+schema the frozen Whisper path already decodes. Client-supplied audio always wins (recorded
+scenarios stay byte-reproducible), and an energy silence gate keeps quiet rooms off the
+GPU. Speak into your microphone and the agent hears you — a voice arriving in a silent
+room registers through the same novelty machinery as any other event.
+
+**The voice is a motor organ, silent at birth.** With the `voice` faculty on (default),
+the stack emits an 8-dim articulatory vector (`voice_u`: pitch, energy, voicing, formants)
+from the same policy latent as locomotion; the runtime renders it each cycle through a
+click-free formant synthesizer (`decadic/audio/vocal_tract.py`), plays it through the host
+speakers when a device exists — and **always mixes it back into its own ears**. That
+self-hearing loop is the design: babbling learns the articulation→sound forward model,
+the agency machinery discovers the voice is *mine* the same way it discovered the hands,
+and imitation is the loop run backwards. The head is zero-initialized, so a newborn agent
+is silent until learning moves it, and old checkpoints load into voice-on builds mute.
+
+Live mic/speaker use needs one optional dependency: `pip install sounddevice` (everything
+else — tests, the sim bus, the self-hearing loopback — runs without it). The developmental
+ladder from word-form familiarity to a protoword uttered *because the agent is hungry* is
+specified, with falsifiable probes, in `docs/ws6_speech_loop_wbs.md`.
+
 ## Repository map
 
 ```
@@ -246,6 +277,7 @@ decadic/
   state/        State Bus (A–F), working memory, viability, curiosity, self-model
   perception/   pre-cognitive perception organ, anonymous object files, scene workspace
   memory/       episodic store (LanceDB) + semantic graph (Kuzu) + consolidation
+  audio/        the speech loop: continuous intake (ears), formant synth (voice), playback
   nn/           the trainable neural stack, frozen encoders, faculties, presets
   consolidation/ dual-network replay, successor features, loss-landscape probe
   embodiment/   MuJoCo body integration, stances, NPC village
@@ -261,9 +293,11 @@ tests/          ~830 tests; the suite is byte-identical across GPU/precision/asy
 ## Status and roadmap
 
 Deca is an active research preview under continuous development. Cognition, memory, perception,
-attention, and the embodied stack are all live and instrumented; the current frontier is
-relational binding (compositional thought), followed by a learned attention gate and an
-embodied speech loop. The system is designed to be operated by its successors: every pipeline is
+attention, the embodied stack, and the speech-loop spine (always-on hearing, a mute-at-birth
+vocal organ, self-hearing loopback) are all live and instrumented; the current frontier is
+relational binding (compositional thought), followed by the speech-loop probe ladder
+(word-form familiarity → receptive protowords → babble → imitation → protoword production)
+and a learned attention gate. The system is designed to be operated by its successors: every pipeline is
 runnable from documented runbooks and diagnostic harnesses, and every faculty carries a
 flags-off parity guarantee so the baseline is always one environment variable away.
 

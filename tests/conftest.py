@@ -92,6 +92,10 @@ def _baseline_faculties(monkeypatch):
     monkeypatch.setenv("DECADIC_WM_SLOT_TENSOR", "0")
     monkeypatch.setenv("DECADIC_MEMORY_TOKENS", "0")
     monkeypatch.setenv("DECADIC_RELATIONAL_CORE", "0")
+    # WS6 speech loop: production defaults ON (hearing + voice are organs);
+    # pinned OFF for determinism and device-free CI, same as the flags above.
+    monkeypatch.setenv("DECADIC_VOICE", "0")
+    monkeypatch.setenv("DECADIC_AUDIO_INTAKE", "off")
     # WS-FORAGE: production ships the normalized, longer-horizon SF regime ON,
     # but the suite is pinned to the ORIGINAL SF params so existing numeric
     # expectations stay deterministic (the gate/binding-faculty pattern:

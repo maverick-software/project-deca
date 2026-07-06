@@ -306,6 +306,18 @@ def create_app() -> FastAPI:
             )
         return JSONResponse({"agents": agents})
 
+    @application.get("/api-reference", include_in_schema=False)
+    async def api_reference_page() -> Response:
+        """Serve the hand-maintained API reference (docs/api_reference.html).
+
+        Single source of truth stays in docs/; the dashboard's "API Docs" tab
+        iframes this route, so the page ships wherever the server ships
+        (including Vast deployments) without a second copy in dashboard/."""
+        page = _workspace_root() / "docs" / "api_reference.html"
+        if not page.is_file():
+            raise HTTPException(status_code=404, detail="docs/api_reference.html not found")
+        return Response(content=page.read_text(encoding="utf-8"), media_type="text/html")
+
     @application.get("/debug/tasks")
     async def debug_tasks() -> JSONResponse:
         """Dump every asyncio task's current stack — for diagnosing cycle-loop

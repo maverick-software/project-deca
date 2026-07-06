@@ -4,6 +4,7 @@ import {
   fetchAgents,
   fetchMetrics,
   fetchState,
+  httpBase,
   listAgentPresets,
   type AgentPreset,
   type ScenarioDraft,
@@ -54,6 +55,7 @@ const TABS: TabDef[] = [
   { id: "capacity", label: "Agent Settings" },
   { id: "deploy", label: "Deploy / GPU" },
   { id: "library", label: "Saved Agents" },
+  { id: "api", label: "API Docs" },
 ];
 
 const TAB_STORAGE_KEY = "decadic.activeTab";
@@ -314,12 +316,31 @@ export default function App() {
         </div>
       )}
 
+      {activeTab === "api" && (
+        <div className="grid solo">
+          {/* Served by the mind server (docs/api_reference.html stays the single
+              source of truth); its own styles live safely inside the iframe. */}
+          <iframe
+            src={`${httpBase()}/api-reference`}
+            title="Project Deca API reference"
+            style={{
+              width: "100%",
+              height: "calc(100vh - 170px)",
+              border: "1px solid #1f2a3d",
+              borderRadius: 10,
+              background: "#0b0f17",
+            }}
+          />
+        </div>
+      )}
+
       {activeTab !== "environment" &&
         activeTab !== "dojo" &&
         activeTab !== "training_eval" &&
         activeTab !== "capacity" &&
         activeTab !== "deploy" &&
         activeTab !== "library" &&
+        activeTab !== "api" &&
         !agentId && (
         <div className="panel">
           <div className="empty">
@@ -340,7 +361,7 @@ export default function App() {
         </div>
       )}
 
-      {activeTab !== "environment" && activeTab !== "dojo" && activeTab !== "training_eval" && agentId && state && (
+      {activeTab !== "environment" && activeTab !== "dojo" && activeTab !== "training_eval" && activeTab !== "api" && agentId && state && (
         <>
           {activeTab === "overview" && (
             <div className="overview">

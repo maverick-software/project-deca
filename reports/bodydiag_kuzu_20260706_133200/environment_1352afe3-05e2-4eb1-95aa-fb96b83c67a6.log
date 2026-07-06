@@ -1,0 +1,566 @@
+[body] agent_id=1352afe3-05e2-4eb1-95aa-fb96b83c67a6
+[body] elements=['house', 'food', 'water', 'medical_kit'] props=['prop_house', 'prop_food_s1', 'prop_food_s2', 'prop_food_s3', 'prop_food_s4', 'prop_water_w1', 'prop_water_w2', 'prop_water_w3', 'prop_medical_m1', 'prop_medical_m2']
+[body] actuator contract OK: nu=21
+[body] step=0 pos=(0.00,0.00,1.30) moving=False events=0
+[body] budget ms/obs: physics=0.2 vision=25.3 views=12.4 audio=6.2 send=13.4
+[body] step=50 pos=(-1.03,0.05,0.09) moving=False events=0
+[body] budget ms/obs: physics=5.8 vision=4.1 views=6.3 audio=0.4 send=527.2
+[body] recenter command applied
+[body] step=100 pos=(-1.04,0.05,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.8 vision=3.8 views=5.5 audio=0.3 send=499.0
+[body] step=150 pos=(-1.03,-0.01,0.08) moving=False events=0
+[body] budget ms/obs: physics=5.0 vision=3.9 views=5.8 audio=0.3 send=659.9
+[body] step=200 pos=(-1.02,-0.03,0.09) moving=False events=0
+[body] budget ms/obs: physics=5.3 vision=3.8 views=5.7 audio=0.3 send=669.5
+[body] step=250 pos=(-1.01,-0.06,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.7 vision=4.0 views=5.7 audio=0.3 send=466.9
+[body] step=300 pos=(-1.02,-0.03,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.4 vision=3.8 views=5.3 audio=0.3 send=465.0
+[body] step=350 pos=(-1.02,-0.04,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.9 vision=4.0 views=5.4 audio=0.3 send=617.8
+[body] step=400 pos=(-1.06,0.01,0.08) moving=False events=0
+[body] budget ms/obs: physics=4.8 vision=3.9 views=5.8 audio=0.3 send=518.4
+[body] step=450 pos=(-1.05,0.00,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.4 vision=4.0 views=6.0 audio=0.3 send=645.6
+[body] step=500 pos=(-1.06,0.00,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.3 vision=3.9 views=5.6 audio=0.3 send=535.4
+[body] step=550 pos=(-1.07,0.00,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.2 vision=4.1 views=5.5 audio=0.3 send=586.4
+[body] step=600 pos=(-1.08,0.02,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.2 vision=4.1 views=6.2 audio=0.3 send=590.5
+[body] step=650 pos=(-1.08,0.05,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.4 vision=3.9 views=5.6 audio=0.3 send=563.4
+[body] step=700 pos=(-1.09,0.04,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.7 vision=3.9 views=5.4 audio=0.3 send=640.9
+[body] step=750 pos=(-1.10,0.07,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.4 vision=3.9 views=5.5 audio=0.3 send=591.5
+[body] step=800 pos=(-1.10,0.08,0.08) moving=False events=0
+[body] budget ms/obs: physics=4.4 vision=3.8 views=5.7 audio=0.3 send=625.5
+[body] step=850 pos=(-1.10,0.09,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.6 vision=3.7 views=5.7 audio=0.3 send=542.3
+[body] step=900 pos=(-1.11,0.08,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.8 vision=3.8 views=5.7 audio=0.3 send=678.5
+[body] step=950 pos=(-1.12,0.13,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.7 vision=3.8 views=5.7 audio=0.3 send=612.9
+[body] step=1000 pos=(-1.11,0.13,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.7 vision=4.0 views=5.4 audio=0.3 send=426.2
+[body] step=1050 pos=(-1.12,0.16,0.08) moving=False events=0
+[body] budget ms/obs: physics=4.1 vision=3.8 views=5.6 audio=0.3 send=712.7
+[body] step=1100 pos=(-1.12,0.14,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.5 vision=4.3 views=5.5 audio=0.3 send=550.9
+[body] step=1150 pos=(-1.12,0.10,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.4 vision=3.9 views=5.9 audio=0.3 send=807.1
+[body] step=1200 pos=(-1.11,0.11,0.09) moving=False events=0
+[body] budget ms/obs: physics=5.0 vision=3.8 views=5.5 audio=0.3 send=737.3
+[body] step=1250 pos=(-1.12,0.11,0.09) moving=False events=0
+[body] budget ms/obs: physics=5.0 vision=3.9 views=5.6 audio=0.3 send=730.8
+[body] step=1300 pos=(-1.11,0.12,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.8 vision=3.8 views=5.5 audio=0.3 send=529.4
+[body] step=1350 pos=(-1.11,0.12,0.09) moving=False events=0
+[body] budget ms/obs: physics=5.5 vision=3.9 views=5.6 audio=0.3 send=711.8
+[body] step=1400 pos=(-1.11,0.16,0.09) moving=False events=0
+[body] budget ms/obs: physics=5.0 vision=4.0 views=5.5 audio=0.3 send=570.5
+[body] step=1450 pos=(-1.10,0.17,0.09) moving=False events=0
+[body] budget ms/obs: physics=4.4 vision=4.1 views=5.2 audio=0.3 send=578.5
+[body] step=1500 pos=(-1.09,0.18,0.10) moving=False events=0
+[body] budget ms/obs: physics=4.6 vision=4.2 views=5.5 audio=0.3 send=493.6
+[body] step=1550 pos=(-1.10,0.15,0.10) moving=False events=0
+[body] budget ms/obs: physics=4.8 vision=4.2 views=5.7 audio=0.3 send=641.6
+[body] step=1600 pos=(-1.12,0.12,0.10) moving=False events=0
+[body] budget ms/obs: physics=4.9 vision=4.2 views=6.0 audio=0.3 send=806.6
+[body] step=1650 pos=(-1.13,0.12,0.11) moving=False events=0
+[body] budget ms/obs: physics=6.0 vision=4.1 views=5.8 audio=0.3 send=791.0
+[body] step=1700 pos=(-1.13,0.13,0.10) moving=False events=0
+[body] budget ms/obs: physics=5.2 vision=4.1 views=5.5 audio=0.3 send=511.6
+[body] step=1750 pos=(-1.12,0.14,0.13) moving=False events=0
+[body] budget ms/obs: physics=5.4 vision=4.0 views=5.6 audio=0.3 send=548.1
+[body] step=1800 pos=(-1.12,0.12,0.13) moving=False events=0
+[body] budget ms/obs: physics=4.8 vision=3.8 views=5.4 audio=0.3 send=526.6
+[body] step=1850 pos=(-1.11,0.12,0.13) moving=False events=0
+[body] budget ms/obs: physics=5.2 vision=3.8 views=5.6 audio=0.3 send=548.8
+[body] step=1900 pos=(-1.14,0.11,0.13) moving=False events=0
+[body] budget ms/obs: physics=5.8 vision=3.9 views=5.7 audio=0.3 send=448.1
+[body] stance -> crawl (Crawl (motion))
+[body] stance -> crawl (Crawl (motion))
+[body] stance -> crawl (Crawl (motion))
+[body] stance -> crawl (Crawl (motion))
+[body] stance -> all_fours (Kneel on all fours)
+[body] recenter command applied
+[body] stance -> all_fours (Kneel on all fours)
+[body] recenter command applied
+[body] stance -> all_fours (Kneel on all fours)
+[body] recenter command applied
+[body] stance -> all_fours (Kneel on all fours)
+[body] recenter command applied
+[body] stance -> all_fours (Kneel on all fours)
+[body] recenter command applied
+[body] step=1950 pos=(0.01,-0.08,0.19) moving=True events=0
+[body] budget ms/obs: physics=5.5 vision=4.0 views=5.9 audio=0.3 send=586.6
+[body] step=2000 pos=(-0.04,-0.02,0.15) moving=False events=0
+[body] budget ms/obs: physics=5.1 vision=4.3 views=6.1 audio=0.3 send=720.1
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] placed food within reach of the agent
+[body] step=2050 pos=(0.04,0.07,0.12) moving=False events=0
+[body] budget ms/obs: physics=5.3 vision=4.4 views=6.2 audio=0.4 send=830.7
+[body] step=2100 pos=(0.10,0.10,0.12) moving=False events=0
+[body] budget ms/obs: physics=5.9 vision=4.2 views=5.8 audio=0.4 send=604.5
+[body] step=2150 pos=(0.12,0.07,0.10) moving=False events=0
+[body] budget ms/obs: physics=5.0 vision=4.0 views=5.5 audio=0.3 send=496.9
+[body] step=2200 pos=(0.13,0.06,0.09) moving=False events=0
+[body] budget ms/obs: physics=5.9 vision=4.1 views=5.6 audio=0.4 send=678.2
+[body] step=2250 pos=(0.15,0.06,0.09) moving=False events=0
+[body] budget ms/obs: physics=6.7 vision=4.1 views=5.6 audio=0.4 send=572.6
+[body] step=2300 pos=(0.15,0.07,0.09) moving=False events=0
+[body] budget ms/obs: physics=5.6 vision=4.0 views=5.5 audio=0.4 send=564.2
+[body] step=2350 pos=(0.14,0.09,0.10) moving=False events=0
+[body] budget ms/obs: physics=6.0 vision=4.2 views=5.4 audio=0.4 send=1003.2
+[body] step=2400 pos=(0.14,0.09,0.11) moving=False events=0
+[body] budget ms/obs: physics=6.6 vision=3.9 views=5.7 audio=0.3 send=662.3
+[body] step=2450 pos=(0.12,0.11,0.16) moving=False events=0
+[body] budget ms/obs: physics=5.7 vision=4.2 views=5.8 audio=0.3 send=527.7
+[body] step=2500 pos=(0.06,0.07,0.14) moving=False events=0
+[body] budget ms/obs: physics=5.9 vision=4.0 views=5.7 audio=0.4 send=673.6
+[body] step=2550 pos=(-0.02,0.00,0.15) moving=False events=0
+[body] budget ms/obs: physics=6.8 vision=4.4 views=6.2 audio=0.5 send=583.2
+[body] step=2600 pos=(-0.05,-0.00,0.16) moving=False events=0
+[body] budget ms/obs: physics=5.7 vision=4.3 views=6.2 audio=0.4 send=722.6
+[body] step=2650 pos=(-0.10,-0.01,0.15) moving=False events=0
+[body] budget ms/obs: physics=6.1 vision=4.3 views=6.0 audio=0.4 send=680.6
+[body] step=2700 pos=(-0.15,-0.04,0.17) moving=False events=0
+[body] budget ms/obs: physics=7.1 vision=4.1 views=5.7 audio=0.4 send=595.1
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=2750 pos=(-0.13,-0.06,0.18) moving=False events=0
+[body] budget ms/obs: physics=6.5 vision=4.1 views=6.5 audio=0.4 send=770.5
+[body] step=2800 pos=(-0.16,-0.08,0.23) moving=False events=0
+[body] budget ms/obs: physics=6.9 vision=3.8 views=5.9 audio=0.4 send=979.6
+[body] step=2850 pos=(-0.11,-0.11,0.24) moving=False events=1
+[body] budget ms/obs: physics=7.2 vision=4.0 views=5.8 audio=0.4 send=747.5
+[body] step=2900 pos=(-0.04,-0.10,0.20) moving=False events=1
+[body] budget ms/obs: physics=6.2 vision=2.6 views=5.7 audio=0.3 send=1215.5
+[body] step=2950 pos=(-0.02,-0.16,0.21) moving=False events=0
+[body] budget ms/obs: physics=6.8 vision=2.8 views=6.6 audio=0.4 send=823.2
+[body] connection lost (ConnectionClosedError: received 1011 (internal error) keepalive ping timeout; then sent 1011 (internal error) keepalive ping timeout); reconnecting to agent in 1s (attempt 1)
+[body] elements=['house', 'food', 'water', 'medical_kit'] props=['prop_house', 'prop_food_s1', 'prop_food_s2', 'prop_food_s3', 'prop_food_s4', 'prop_water_w1', 'prop_water_w2', 'prop_water_w3', 'prop_medical_m1', 'prop_medical_m2']
+[body] actuator contract OK: nu=21
+[body] step=0 pos=(0.00,0.00,1.30) moving=False events=0
+[body] budget ms/obs: physics=0.2 vision=6.6 views=10.9 audio=0.4 send=14.3
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=50 pos=(-0.51,-0.05,0.21) moving=False events=0
+[body] budget ms/obs: physics=7.3 vision=3.8 views=5.6 audio=0.3 send=1647.6
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=100 pos=(-0.54,-0.02,0.18) moving=False events=0
+[body] budget ms/obs: physics=7.6 vision=4.5 views=6.4 audio=0.4 send=2068.2
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=150 pos=(-0.58,0.00,0.14) moving=False events=0
+[body] budget ms/obs: physics=7.0 vision=4.7 views=5.9 audio=0.3 send=2292.0
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] step=200 pos=(-0.58,-0.00,0.14) moving=False events=0
+[body] budget ms/obs: physics=6.6 vision=4.4 views=6.2 audio=0.3 send=1887.8
+[body] lifeless=True (passive ragdoll)
+[body] reanimated (brain driving again)
+[body] connection lost (ConnectionClosedError: no close frame received or sent); reconnecting to agent in 1s (attempt 1)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 2s (attempt 2)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 4s (attempt 3)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 8s (attempt 4)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 5)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 6)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 7)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 8)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 9)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 10)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 11)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 12)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 13)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 14)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 15)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 16)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 17)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 18)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 19)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 20)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 21)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 22)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 23)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 24)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 25)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 26)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 27)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 28)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 29)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 30)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 31)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 32)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 33)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 34)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 35)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 36)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 37)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 38)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 39)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 40)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 41)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 42)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 43)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 44)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 45)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 46)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 47)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 48)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 49)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 50)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 51)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 52)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 53)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 54)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 55)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 56)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 57)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 58)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 59)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 60)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 61)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 62)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 63)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 64)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 65)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 66)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 67)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 68)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 69)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 70)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 71)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 72)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 73)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 74)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 75)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 76)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 77)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 78)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 79)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 80)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 81)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 82)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 83)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 84)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 85)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 86)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 87)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 88)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 89)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 90)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 91)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 92)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 93)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 94)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 95)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 96)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 97)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 98)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 99)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 100)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 101)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 102)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 103)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 104)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 105)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 106)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 107)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 108)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 109)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 110)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 111)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 112)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 113)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 114)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 115)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 116)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 117)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 118)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 119)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 120)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 121)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 122)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 123)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 124)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 125)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 126)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 127)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 128)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 129)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 130)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 131)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 132)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 133)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 134)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 135)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 136)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 137)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 138)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 139)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 140)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 141)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 142)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 143)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 144)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 145)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 146)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 147)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 148)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 149)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 150)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 151)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 152)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 153)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 154)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 155)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 156)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 157)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 158)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 159)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 160)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 161)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 162)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 163)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 164)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 165)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 166)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 167)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 168)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 169)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 170)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 171)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 172)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 173)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 174)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 175)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 176)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 177)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 178)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 179)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 180)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 181)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 182)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 183)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 184)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 185)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 186)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 187)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 188)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 189)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 190)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 191)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 192)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 193)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 194)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 195)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 196)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 197)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 198)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 199)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 200)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 201)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 202)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 203)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 204)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 205)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 206)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 207)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 208)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 209)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 210)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 211)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 212)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 213)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 214)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 215)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 216)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 217)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 218)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 219)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 220)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 221)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 222)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 223)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 224)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 225)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 226)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 227)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 228)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 229)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 230)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 231)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 232)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 233)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 234)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 235)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 236)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 237)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 238)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 239)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 240)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 241)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 242)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 243)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 244)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 245)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 246)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 247)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 248)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 249)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 250)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 251)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 252)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 253)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 254)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 255)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 256)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 257)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 258)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 259)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 260)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 261)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 262)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 263)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 264)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 265)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 266)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 267)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 268)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 269)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 270)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 271)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 272)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 273)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 274)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 275)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 276)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 277)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 278)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 279)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 280)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 281)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 282)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 283)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 284)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 285)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 286)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 287)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 288)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 289)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 290)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 291)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 292)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 293)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 294)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 295)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 296)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 297)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 298)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 299)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 300)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 301)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 302)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 303)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 304)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 305)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 306)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 307)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 308)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 309)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 310)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 311)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 312)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 313)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 314)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 315)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 316)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 317)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 318)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 319)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 320)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 321)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 322)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 323)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 324)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 325)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 326)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 327)
+[body] connection lost (ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection); reconnecting to agent in 10s (attempt 328)
+Traceback (most recent call last):
+  File "D:\Users\charl\software\Self-Determination Model\scripts\mujoco_decadic_adapter.py", line 3576, in main
+    asyncio.run(
+    ~~~~~~~~~~~^
+        _run(
+        ^^^^^
+    ...<11 lines>...
+        )
+        ^
+    )
+    ^
+  File "C:\Python313\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\mujoco_decadic_adapter.py", line 3049, in _run
+    async with websockets.connect(
+               ~~~~~~~~~~~~~~~~~~^
+        ws_url,
+        ^^^^^^^
+    ...<2 lines>...
+        ping_timeout=None,
+        ^^^^^^^^^^^^^^^^^^
+    ) as ws:
+    ^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\client.py", line 590, in __aenter__
+    return await self
+           ^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\client.py", line 544, in __await_impl__
+    self.connection = await self.create_connection()
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Users\charl\software\Self-Determination Model\.venv\Lib\site-packages\websockets\asyncio\client.py", line 470, in create_connection
+    _, connection = await loop.create_connection(factory, **kwargs)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1166, in create_connection
+    raise exceptions[0]
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1141, in create_connection
+    sock = await self._connect_sock(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+        exceptions, addrinfo, laddr_infos)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1044, in _connect_sock
+    await self.sock_connect(sock, address)
+  File "C:\Python313\Lib\asyncio\proactor_events.py", line 726, in sock_connect
+    return await self._proactor.connect(sock, address)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\windows_events.py", line 804, in _poll
+    value = callback(transferred, key, ov)
+  File "C:\Python313\Lib\asyncio\windows_events.py", line 600, in finish_connect
+    ov.getresult()
+    ~~~~~~~~~~~~^^
+ConnectionRefusedError: [WinError 1225] The remote computer refused the network connection
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Users\charl\software\Self-Determination Model\scripts\mujoco_decadic_adapter.py", line 3624, in <module>
+    main()
+    ~~~~^^
+  File "D:\Users\charl\software\Self-Determination Model\scripts\mujoco_decadic_adapter.py", line 3619, in main
+    time.sleep(backoff)
+    ~~~~~~~~~~^^^^^^^^^
+KeyboardInterrupt

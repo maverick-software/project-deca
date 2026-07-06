@@ -52,6 +52,25 @@ def test_type2_search_latches_hysteresis():
     assert g.decide(GateInputs()).reason == "hysteresis"
 
 
+def test_type2_trigger_truth_table():
+    from decadic.cycle.attention_gate import type2_trigger
+
+    def gv(deficit, dist, mask):
+        # goal_conditioning layout: [0:3] one-hot, [3] deficit, [4:6] bearing,
+        # [6] distance, [7] target mask.
+        return [1.0, 0.0, 0.0, deficit, 1.0, 0.0, dist, mask]
+
+    kw = dict(far_distance=0.15, min_deficit=0.05)
+    assert type2_trigger(gv(0.3, 0.5, 1.0), **kw) is True  # needy + remembered + far
+    assert type2_trigger(gv(0.3, 0.05, 1.0), **kw) is False  # target is HERE
+    assert type2_trigger(gv(0.3, 0.5, 0.0), **kw) is False  # nothing remembered
+    assert type2_trigger(gv(0.02, 0.5, 1.0), **kw) is False  # deficit below the graded bar
+    assert type2_trigger(gv(0.05, 0.15, 1.0), **kw) is True  # boundary inclusive
+    assert type2_trigger(None, **kw) is False
+    assert type2_trigger([1.0, 0.0], **kw) is False  # malformed -> never raises
+    assert type2_trigger(gv(float("nan"), 0.5, 1.0), **kw) is False
+
+
 def test_extract_gate_inputs_threads_type2():
     gi = extract_gate_inputs(
         best_recall_similarity=1.0,

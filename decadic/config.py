@@ -963,6 +963,43 @@ def relational_core_enabled() -> bool:
     return _env_bool("DECADIC_RELATIONAL_CORE", True)
 
 
+# WS6-M0.5 (speech loop): the continuous auditory intake organ (PRD 3.8, G9).
+# "mic" captures the system microphone into the server-side ring buffer; "bus"
+# runs the same ring fed only by mix_in() (the Rig-1 mixing bus / loopback
+# tap); "off" disables the organ entirely (byte-identical parity).
+def audio_intake_mode() -> str:
+    # Default "mic" (owner decision 2026-07-04: hearing is a property of the
+    # body, default-on -- the DEFAULT_REPRESENTED_SELF precedent). Tests pin
+    # "off" via conftest. Without sounddevice or a device, mic mode degrades
+    # gracefully to an inert capture (the bus tap keeps working), so the
+    # default is safe on headless boxes.
+    raw = os.environ.get("DECADIC_AUDIO_INTAKE", "mic").strip().lower()
+    return raw if raw in ("off", "mic", "bus") else "mic"
+
+
+# WS6-M2.1 (speech loop): the vocal motor organ -- the stack emits a VOICE_DIM
+# articulatory parameter vector beside the motor command.
+def voice_enabled() -> bool:
+    # Default ON (owner decision 2026-07-04: every validated cognition upgrade
+    # runs in a full cognition run -- the DEFAULT_REPRESENTED_SELF precedent).
+    # The head is zero-init, so ON is behaviorally silent until learning moves
+    # it: the newborn does not speak. Tests pin OFF via conftest.
+    return _env_bool("DECADIC_VOICE", True)
+
+
+# WS6-M2.2 (speech loop): whether the rendered voice also reaches the
+# OPERATOR's speakers (the monitor tee, PRD 3.7). NOTE: loopback self-hearing
+# is NOT a playback mode -- whenever voice is on and the intake is running the
+# rendered waveform is ALWAYS mixed back into the intake (the loop IS the
+# design); playback only decides whether the room hears it too.
+def voice_playback_mode() -> str:
+    # "auto" plays through a physical output device when one exists and
+    # degrades silently otherwise; "device" is the same sink, named for
+    # explicitness in rig scripts; "off" keeps the room silent.
+    raw = os.environ.get("DECADIC_VOICE_PLAYBACK", "auto").strip().lower()
+    return raw if raw in ("off", "device", "auto") else "auto"
+
+
 # Memory-efficient training path (self-model program, Phase 6 — hardware-gated).
 # When ON the per-cycle training step uses (a) an 8-bit Adam optimizer when
 # bitsandbytes is importable on CUDA (halving the optimizer-moment memory, the
@@ -2019,10 +2056,24 @@ def goal_bearing_max_dist() -> float:
 # sees. The bearing (M4) already conditions the policy; this makes it deliberate.
 DEFAULT_TYPE2_SEARCH = True
 DEFAULT_TYPE2_FAR_DISTANCE = 0.15  # normalized distance beyond which a target is "not here"
+# With goal conditioning now CONTINUOUS (2026-07-06), Type-2 needs its own
+# deficit bar (deliberation costs compute; a 2% deficit shouldn't buy a memory
+# search every cycle). Much lower than the old episode-latch onset (0.15): a
+# graded System-2 economics gate, eventually to be replaced by the learned value
+# arbitrating when a deliberate detour is worth it.
+DEFAULT_TYPE2_MIN_DEFICIT = 0.05
 
 
 def type2_search_enabled() -> bool:
     return _env_bool("DECADIC_TYPE2_SEARCH", DEFAULT_TYPE2_SEARCH)
+
+
+def type2_min_deficit() -> float:
+    try:
+        v = float(os.environ.get("DECADIC_TYPE2_MIN_DEFICIT", str(DEFAULT_TYPE2_MIN_DEFICIT)))
+    except (TypeError, ValueError):
+        return DEFAULT_TYPE2_MIN_DEFICIT
+    return min(1.0, max(0.0, v))
 
 
 def type2_far_distance() -> float:

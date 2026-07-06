@@ -447,6 +447,17 @@ def test_plasticity_reset_rebuilds_clean(api_app_plastic):
         assert m["plasticity_frozen"] is False
 
 
+def test_api_reference_page_served(api_app_neural):
+    """The dashboard's "API Docs" tab iframes /api-reference; the server serves
+    docs/api_reference.html as the single source of truth."""
+    with TestClient(api_app_neural) as client:
+        r = client.get("/api-reference")
+        assert r.status_code == 200, r.text
+        assert "text/html" in r.headers["content-type"]
+        assert "Project Deca" in r.text
+        assert "/agent/{agent_id}/cycle" in r.text  # the mind-body WS contract is documented
+
+
 def test_agent_defaults_roundtrip(api_app_neural):
     with TestClient(api_app_neural) as client:
         # With no env flags set, defaults resolve to all-off.

@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Project Deca — Cognition System API Reference</title>
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#121826; --panel2:#0e1420; --line:#1f2a3d;
+    --text:#d7e0ee; --dim:#8494ab; --head:#f2f6fc;
+    --get:#2ecc8f; --post:#4da3ff; --del:#ff5f6b; --ws:#c792ea;
+    --accent:#39c6d8; --warn:#ffb454; --code:#0a0e16;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 "Segoe UI",system-ui,sans-serif}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  code,pre{font-family:"Cascadia Code",Consolas,monospace;font-size:13px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;white-space:pre}
+  code.inline{background:var(--code);border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+  .layout{display:flex;min-height:100vh}
+  nav{width:250px;flex:0 0 250px;background:var(--panel2);border-right:1px solid var(--line);
+      padding:18px 14px;position:sticky;top:0;height:100vh;overflow-y:auto}
+  nav h1{font-size:15px;color:var(--head);margin:0 0 2px}
+  nav .sub{font-size:11px;color:var(--dim);margin-bottom:14px}
+  nav a{display:block;color:var(--dim);font-size:13px;padding:4px 8px;border-radius:6px;margin:1px 0}
+  nav a:hover{background:var(--panel);color:var(--text);text-decoration:none}
+  nav .grp{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#5b6b84;margin:14px 6px 4px}
+  main{flex:1;min-width:0;max-width:1100px;padding:28px 40px 90px}
+  h2{color:var(--head);font-size:22px;border-bottom:1px solid var(--line);padding-bottom:8px;margin:44px 0 6px}
+  h3{color:var(--head);font-size:16px;margin:26px 0 8px}
+  p.lead{color:var(--dim)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+  .ep{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .m{font-weight:700;font-size:11px;letter-spacing:.06em;padding:2px 9px;border-radius:5px;color:#08111e}
+  .GET{background:var(--get)} .POST{background:var(--post)} .DELETE{background:var(--del)} .WS{background:var(--ws)}
+  .path{font-family:Consolas,monospace;font-size:14px;color:var(--head)}
+  .desc{color:var(--dim);font-size:13.5px;margin:6px 0 0}
+  .desc b{color:var(--text)}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--head);font-weight:600}
+  td:first-child{font-family:Consolas,monospace;white-space:nowrap;color:var(--accent)}
+  .tag{font-size:10px;border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--dim);margin-left:4px}
+  .warn{border-left:3px solid var(--warn);background:#1a1610;padding:10px 14px;border-radius:6px;color:#e8d6b0;font-size:13.5px;margin:10px 0}
+  .note{border-left:3px solid var(--accent);background:#0d1a20;padding:10px 14px;border-radius:6px;font-size:13.5px;margin:10px 0}
+  #filter{width:100%;background:var(--code);border:1px solid var(--line);border-radius:6px;
+          color:var(--text);padding:7px 10px;font-size:13px;margin-bottom:10px}
+  .hidden{display:none}
+  footer{color:#57647a;font-size:12px;margin-top:60px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <h1>Project Deca API</h1>
+  <div class="sub">Decadic Cycle cognition server &mdash; REST + WebSocket reference</div>
+  <input id="filter" placeholder="filter endpoints&hellip;" oninput="flt(this.value)">
+  <div class="grp">Start here</div>
+  <a href="#setup">Server setup</a>
+  <a href="#quickstart">Quick start</a>
+  <div class="grp">Core</div>
+  <a href="#lifecycle">Agent lifecycle</a>
+  <a href="#cycle">Cycle WebSocket</a>
+  <a href="#config">Live configuration</a>
+  <a href="#observe">Observation &amp; telemetry</a>
+  <a href="#memory">Memory</a>
+  <div class="grp">Embodiment</div>
+  <a href="#homeostasis">Homeostasis &amp; provisioning</a>
+  <a href="#body">Body control</a>
+  <a href="#speech">Voice &amp; hearing</a>
+  <a href="#environment">Environment</a>
+  <div class="grp">Persistence</div>
+  <a href="#checkpoints">Checkpoints</a>
+  <a href="#saved">Saved agents</a>
+  <a href="#presets">Agent presets</a>
+  <div class="grp">Training &amp; eval</div>
+  <a href="#dojo">Skill Dojo</a>
+  <a href="#eval">Evaluation</a>
+  <div class="grp">Ops</div>
+  <a href="#vast">GPU deployment (Vast)</a>
+  <a href="#env">Key environment flags</a>
+</nav>
+<main>
+
+<h2 id="setup" style="margin-top:6px">Server setup</h2>
+<p class="lead">One FastAPI process hosts every agent (a 204M-parameter neural cognitive stack per agent), the
+REST control surface, and the per-agent cycle WebSocket. A body (MuJoCo adapter or any custom client)
+connects over the WebSocket and streams observations; the mind streams motor actions back.</p>
+<pre># 1. the mind server (port 8765)
+.venv\Scripts\python.exe -m uvicorn decadic.api.app:app --host 127.0.0.1 --port 8765
+
+# 2. the dashboard (Vite dev server, port 5173)
+cd dashboard &amp;&amp; npm run dev
+
+# 3. a body (MuJoCo humanoid; runs until stopped; --view opens the native viewer)
+.venv\Scripts\python.exe scripts\mujoco_decadic_adapter.py --port 8765 --view
+
+# or: the all-in-one instrumented run (clean env, teardown, verdict summary)
+powershell -ExecutionPolicy Bypass -File scripts\run_body_diag.ps1 -GraphBackend kuzu -Seconds 3600 -Watch</pre>
+<div class="note">CORS defaults allow <code class="inline">localhost:8080</code> and
+<code class="inline">localhost:5173</code> (override with <code class="inline">DECADIC_CORS_ORIGINS</code>).
+Base URL below is assumed <code class="inline">http://127.0.0.1:8765</code>.</div>
+
+<h2 id="quickstart">Quick start</h2>
+<pre># create a mind (full 204M preset by default; "tiny" for CPU/tests)
+curl -X POST "http://127.0.0.1:8765/agent"
+# =&gt; {"agent_id": "83dc95e8-..."}
+
+# watch its vitals
+curl "http://127.0.0.1:8765/agent/{id}/state"
+curl "http://127.0.0.1:8765/agent/{id}/metrics"</pre>
+<pre># minimal Python body: stream observations, receive actions
+import asyncio, json, websockets
+
+async def body(aid):
+    async with websockets.connect(f"ws://127.0.0.1:8765/agent/{aid}/cycle",
+                                  max_size=None, ping_interval=None) as ws:
+        async def listen():
+            async for raw in ws:
+                msg = json.loads(raw)
+                if msg.get("type") == "body_command":  # control lane (give_*, stances...)
+                    print("command:", msg["command"])
+                elif "action" in msg:                   # motor output, one per cycle
+                    ctrl = msg["action"]["parameters"].get("ctrl")  # 21 PD targets in [-1,1]
+        asyncio.create_task(listen())
+        while True:
+            await ws.send(json.dumps({
+                "timestamp": "2026-07-06T12:00:00Z",
+                "proprioception": {"position":[0,0,1.3], "orientation":[0,0,0],
+                                   "velocity":[0,0,0], "current_action":"idle"},
+                "events": [],
+            }))
+            await asyncio.sleep(0.1)</pre>
+
+<h2 id="lifecycle">Agent lifecycle</h2>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent</span><span class="tag">?preset=tiny|full</span></div>
+<p class="desc">Create an agent (mind). Builds the neural stack (all validated faculties ON by default,
+new capabilities zero-init so a fresh agent is birth-identical). Returns <b>agent_id</b>.</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agents</span></div>
+<p class="desc">List live agents with cycle counts and status. <b>One brain per server</b> for measurement runs — a second agent shares GPU/CPU/IO and confounds every number.</p></div>
+<div class="card"><div class="ep"><span class="m DELETE">DELETE</span><span class="path">/agent/{agent_id}</span></div>
+<p class="desc">Terminate and remove the agent.</p></div>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/pause</span> &nbsp;/&nbsp; <span class="path">/agent/{agent_id}/resume</span></div>
+<p class="desc">Suspend / resume the cycle worker (state preserved; body goes limp on command drought).</p></div>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/reset</span></div>
+<p class="desc">Rebuild the mind from its creation-time flags (fresh weights, memory cleared).</p></div>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/preset</span><span class="tag">?preset=</span></div>
+<p class="desc">Switch neural architecture preset (<b>rebuilds the brain</b>; interface dims stay frozen across presets).</p></div>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/revive</span><span class="tag">?restore_to=</span></div>
+<p class="desc">Bring a dead (viability-zero) agent back, optionally restoring reservoirs to a level.</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/settings/agent-defaults</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/settings/agent-defaults</span></div>
+<p class="desc">Read / partially update the defaults applied to <b>new</b> agents: plasticity flags
+(<code class="inline">plasticity_enabled, sparse_enabled, growth_enabled, plasticity_alpha, sparse_density,
+max_neurons, growable_hidden_ceiling</code>) and faculties (<code class="inline">perception_feedback,
+self_model_feedback, predictive_affect, represented_self, perception_mode, encoder_mode</code>). Existing agents are untouched.</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/debug/tasks</span></div>
+<p class="desc">Live asyncio task inventory (debugging stalls/orphans).</p></div>
+
+<h2 id="cycle">Cycle WebSocket — the mind↔body contract</h2>
+<div class="card"><div class="ep"><span class="m WS">WS</span><span class="path">/agent/{agent_id}/cycle</span></div>
+<p class="desc">The body streams observations in; the mind streams actions and telemetry out. One decadic
+cycle runs per integrated observation. Two outbound lanes share the socket: the <b>control lane</b>
+(priority: <code class="inline">body_command</code>, <code class="inline">death</code>) and the telemetry/action lane.</p></div>
+<h3>Inbound: ObservationMessage</h3>
+<table>
+<tr><th>field</th><th>type</th><th>notes</th></tr>
+<tr><td>timestamp</td><td>ISO string</td><td>observation time</td></tr>
+<tr><td>proprioception</td><td>object</td><td><code class="inline">position[3]</code>, <code class="inline">orientation[3]</code> (roll,pitch,yaw — yaw feeds the goal bearing), <code class="inline">velocity[3]</code>, <code class="inline">current_action</code>, optional <code class="inline">motor</code> efference copy, joint qpos/qvel, palm/sole touch</td></tr>
+<tr><td>vision</td><td>object/b64</td><td>egocentric camera frame (encoded by frozen CLIP when <code class="inline">encoder_mode=hf</code>)</td></tr>
+<tr><td>audio</td><td>object</td><td>waveform window (frozen Whisper lane)</td></tr>
+<tr><td>events</td><td>list</td><td><code class="inline">{type, intensity, source}</code> — e.g. <code class="inline">food</code> / <code class="inline">water</code> / <code class="inline">medical_kit</code> (consumption relief), <code class="inline">collision</code>, <code class="inline">threat_near</code> (gate fast-path)</td></tr>
+<tr><td>world_state</td><td>object</td><td>oracle-mode ground truth (<code class="inline">nearby_entities</code>...); ignored in discovered perception</td></tr>
+</table>
+<h3>Outbound messages</h3>
+<table>
+<tr><th>message</th><th>lane</th><th>shape</th></tr>
+<tr><td>action</td><td>telemetry</td><td><code class="inline">{"action":{"type":"motor","parameters":{"ctrl":[21 PD targets in -1..1],"direction":[3],"speed":f}}, ...cycle telemetry}</code></td></tr>
+<tr><td>body_command</td><td>control</td><td><code class="inline">{"type":"body_command","command":"give_food_reach|give_water_near|set_stance:stand|recenter|pause|resume|randomize_resources:seed|..."}</code></td></tr>
+<tr><td>death</td><td>control</td><td><code class="inline">{"type":"death"}</code> — the mind froze; body goes limp</td></tr>
+</table>
+<div class="note">Client discipline (from <code class="inline">scripts/mujoco_decadic_adapter.py</code>): connect with
+<code class="inline">max_size=None, ping_interval=None</code> (viewer stalls false-trip keepalive), reconnect with backoff
+to the <b>same agent_id</b> on socket resets (the brain persists server-side;
+<code class="inline">DECADIC_BODY_MAX_RECONNECTS</code>), and treat a command drought &gt;
+<code class="inline">DECADIC_BODY_COMMAND_STALE_S</code> as "go limp".</div>
+
+<h2 id="config">Live configuration</h2>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/config</span><span class="tag">query params, all optional</span></div>
+<p class="desc">Live knobs on a running agent. Most apply instantly; the marked ones <b>rebuild the brain</b> (fresh weights).</p></div>
+<table>
+<tr><th>param</th><th>effect</th></tr>
+<tr><td>viability_mode</td><td><code class="inline">metabolic</code> (real drain, can die) | <code class="inline">immortal</code> (reservoirs pinned — use for learning runs)</td></tr>
+<tr><td>metabolic_compression</td><td>time-compression multiplier on reservoir drain</td></tr>
+<tr><td>parallel_sessions / processing_mode / perceptual_processing_mode</td><td>perception pipeline capacity &amp; mode (persistent_parallel | batching_observations)</td></tr>
+<tr><td>working_memory_slots / working_memory_decay</td><td>WM capacity (default 12) and decay</td></tr>
+<tr><td>assist_override / curriculum_mode</td><td>motor assist level (-1 = auto) · <code class="inline">guided</code> | <code class="inline">legacy</code></td></tr>
+<tr><td>ai_intero_pref_weight / drive_priority_gain / motor_babble_sigma</td><td>live curriculum reweights of the existing self-supervised objective</td></tr>
+<tr><td>plasticity_alpha / sparse_density / max_neurons</td><td>live A/B/C neuroplasticity knobs (growth stays governance-gated)</td></tr>
+<tr><td>perception_mode / perception_feedback / encoder_mode</td><td><b>rebuilds the brain</b> — oracle|discovered · feedback spine · hf|zeros encoders</td></tr>
+<tr><td>self_model_feedback / predictive_affect / represented_self</td><td>self-model program faculties</td></tr>
+<tr><td>gwt_enabled / integration_window_ms</td><td>global-workspace competition · temporal integration window (0=off) — live, no rebuild</td></tr>
+<tr><td>cognition_trace / probe_capture</td><td>read-only observability toggles</td></tr>
+<tr><td>episodic_async / ltm_async</td><td>write-behind persistence toggles</td></tr>
+</table>
+
+<h2 id="observe">Observation &amp; telemetry</h2>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/state</span></div>
+<p class="desc">Full state snapshot: State Bus A–F, vitals (viability/pain/pleasure), priority label, working
+memory, perceptual state, LTM graph snapshot — what the dashboard renders.</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/metrics</span></div>
+<p class="desc">The telemetry dump: cycle timings, pc-loss/EMA, plasticity &amp; <b>growth governance</b>
+(<code class="inline">growth_events, growth_blocked_reason</code>), <b>successor value</b> (incentive salience — must climb
+off ~0 for foraging), store health (<code class="inline">graph_flush_*, graph_writes_deferred,
+graph_coalesce_dedup_rows, ltm_match_ms, commit_lag_ms</code>), reservoirs, goal status.</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/explain</span><span class="tag">?history=&amp;counterfactuals=&amp;attribution=</span></div>
+<p class="desc">Cognitive trace: per-cycle "why" (drive contributions, counterfactual action values, attributions).</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/discovery</span></div>
+<p class="desc">Discovered-perception scoreboard: slots, agency ("mine") classification, egocentric graph.</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/vision</span><span class="tag">?camera=</span> &nbsp;·&nbsp; <span class="m GET">GET</span><span class="path">/agent/{agent_id}/audio</span></div>
+<p class="desc">Latest egocentric frame (PNG) / audio window — dashboard taps, not cognition inputs.</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/brain/topology</span> &nbsp;·&nbsp; <span class="path">/agent/{agent_id}/brain/landscape</span></div>
+<p class="desc">3D brain map (blocks, awake neurons, strongest weights, live activations) · loss-landscape slice
+(needs <code class="inline">DECADIC_LANDSCAPE_ENABLED=1</code>).</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/debug/stage-sessions</span><span class="tag">?limit=24</span></div>
+<p class="desc">Recent per-stage timing sessions (the decadic ring's data).</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/body/stances</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/agent/{agent_id}/body/stance</span><span class="tag">?name=</span></div>
+<p class="desc">List / apply body stances (stand, crawl scaffolds...) via the control lane.</p></div>
+
+<h2 id="memory">Memory</h2>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/memory</span><span class="tag">?limit=50</span></div>
+<p class="desc">Recent episodic records (cycle, summary, salience).</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent/{agent_id}/memory/similar</span><span class="tag">?limit=</span></div>
+<p class="desc">Nearest episodes to the current state-bus query vector (the recall the mind itself uses).</p></div>
+<div class="note">Backends (defaults): episodic = <b>LanceDB</b>, long-term graph = <b>Kuzu</b> with the WS4B
+off-lock flusher + <b>write governance</b> (per-key throttle <code class="inline">DECADIC_KUZU_WRITE_MIN_CYCLES=25</code>,
+keyed coalesce-dedup). Memory is the read model; the stores are durability.</div>
+
+<h2 id="homeostasis">Homeostasis &amp; provisioning</h2>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/give</span><span class="tag">?resource=water|food|medical_kit&amp;mode=&amp;amount=</span></div>
+<p class="desc">Provision the agent. The <b>mode ladder</b> is a curriculum — how much of the approach must be earned:</p>
+<table>
+<tr><th>mode</th><th>behavior</th><th>use for</th></tr>
+<tr><td>admin</td><td>instant reservoir credit (no body)</td><td>rescue / testing</td></tr>
+<tr><td>direct | visual_direct</td><td>item shown in view, delivered to the head, auto-consumed</td><td>object→relief association only (no approach learned)</td></tr>
+<tr><td>within_reach | reach</td><td>placed ~0.6 m ahead (<code class="inline">DECADIC_BODY_REACH_DISTANCE</code>) — a lean/step earns it</td><td><b>bootstrapping act→relief</b> (the value learner's food)</td></tr>
+<tr><td>near</td><td>placed ~1.6 m ahead — a full approach</td><td>foraging once reaching exists</td></tr>
+</table>
+<p class="desc">Consumption is <b>contact-gated</b> by default (<code class="inline">DECADIC_BODY_CONSUME_MODE=contact</code>):
+a body part must come within <code class="inline">DECADIC_BODY_CONTACT_RADIUS</code> (0.30 m) of the item — proximity alone no
+longer feeds. Direct delivery is exempt. Responses include <code class="inline">supervised</code> and the grant
+<code class="inline">cycle</code> (pairs with the <code class="inline">nourishment</code> log line for grant→retrieval analysis:
+<code class="inline">scripts/analyze_feeding.py</code>).</p>
+<div class="warn">Against a standalone body (diag harness), set
+<code class="inline">DECADIC_ALLOW_EXTERNAL_BODY_PROVISION=1</code> or non-admin modes return 409
+("no running body"). The harness sets it automatically.</div></div>
+
+<h2 id="body">Body control</h2>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/body/recenter</span> · <span class="path">reset_braces</span> · <span class="path">braces?enabled=</span> · <span class="path">movement_hold?enabled=</span> · <span class="path">manual_auto_reset?enabled=</span> · <span class="path">npc?paused=</span> · <span class="path">viewer?open=</span></div>
+<p class="desc">All queue a control-lane <code class="inline">body_command</code> to the connected body: recenter the humanoid,
+manage the joint-brace orthosis, hold/loop a movement, auto-reset motion stances after falls, freeze/resume the
+parent/crowd NPCs, open/close the native MuJoCo viewer window.</p></div>
+
+<h2 id="environment">Environment (server-managed body)</h2>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/environment</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/environment</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/environment/pause|resume|stop</span> &nbsp;·&nbsp; <span class="m DELETE">DELETE</span><span class="path">/environment</span></div>
+<p class="desc">Start/manage a supervised scenario: the server spawns its own MuJoCo body <b>and a new agent</b>.
+Body: <code class="inline">{"elements":["food","water","medical_kit","house","obstacles","npc","crowd"],
+"vision":true,"audio":false,"braces":false,"replace":false,"preset":null,
+"curriculum":{"kind":"forage","place_every_s":8,"rescue_floor":12,"rescue_to":35}}</code>.
+The <b>forage curriculum</b> places the most-depleted resource within reach on a tick and rescues any reservoir
+below the floor — the survival net for metabolic learning runs. <code class="inline">pause</code> freezes physics and the
+mind in lockstep.</p>
+<div class="warn">Starting an environment while another agent is running adds a second 204M brain to the same
+GPU — the diag harness will warn in red. Don't do it during measurement runs.</div></div>
+
+<h2 id="checkpoints">Checkpoints (in-place)</h2>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/checkpoint</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/agent/{agent_id}/restore</span></div>
+<p class="desc">Snapshot / restore the same agent in place (brain weights, state bus, viability, memory stores
+via quiesced backup). Returns the checkpoint path / restored payload.</p></div>
+
+<h2 id="saved">Saved agents (library)</h2>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/agent/{agent_id}/save</span><span class="tag">body: {name, notes}</span></div>
+<p class="desc">Save the full agent (manifest + state + brain.pt + memory snapshots; faculties self-described in the
+manifest) into the durable library.</p></div>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/saved-agents</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/saved-agents/{save_id}/load</span> &nbsp;·&nbsp; <span class="m DELETE">DELETE</span><span class="path">/saved-agents/{save_id}</span></div>
+<p class="desc">List, load (spawns a NEW agent from the save — memory fidelity included), delete.
+Loading is checkpoint-compatible across faculty additions (shape-filtered; new zero-init heads keep fresh init).</p></div>
+
+<h2 id="presets">Agent presets</h2>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/agent-presets</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/agent-presets</span> &nbsp;·&nbsp; <span class="m DELETE">DELETE</span><span class="path">/agent-presets/{preset_id}</span></div>
+<p class="desc">Named scenario/body/config bundles for the dashboard dropdown (seeded with built-ins).</p></div>
+
+<h2 id="dojo">Skill Dojo (training curricula)</h2>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/dojo/skills</span> · <span class="path">/dojo/skills/{skill_id}</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/dojo/skills/upload</span> &nbsp;·&nbsp; <span class="m DELETE">DELETE</span><span class="path">/dojo/skills/{skill_id}</span></div>
+<p class="desc">Built-in + uploaded skill curricula (e.g. teacher-guided standing → perturbation recovery →
+autonomy). Teacher hints enter only replay/consolidation metadata — the live loop stays self-supervised.</p></div>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/dojo/start</span> &nbsp;·&nbsp; <span class="m GET">GET</span><span class="path">/dojo/status</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/dojo/pause|resume|stop|phase</span></div>
+<p class="desc">Run a skill: phased criteria (e.g. <code class="inline">resource_relief_events trend&gt;=1</code>), periodic body
+commands, assist fading, per-phase config overrides; <code class="inline">phase</code> forces a phase transition.</p></div>
+
+<h2 id="eval">Evaluation</h2>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/eval/scenarios</span> · <span class="path">/eval/scenarios/{id}</span> · <span class="path">/eval/reports</span> · <span class="path">/eval/reports/{id}</span></div>
+<p class="desc">Scenario specs (<code class="inline">docs/eval_scenarios/</code>) and archived reports with metric gates.</p></div>
+<div class="card"><div class="ep"><span class="m POST">POST</span><span class="path">/eval/start</span> &nbsp;·&nbsp; <span class="m GET">GET</span><span class="path">/eval/status</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/eval/stop</span></div>
+<p class="desc">Run a scenario against the live agent; gates evaluate metric deltas (e.g. consume_events ≥ 1).</p></div>
+
+<h2 id="vast">GPU deployment (Vast.ai)</h2>
+<div class="card"><div class="ep"><span class="m GET">GET</span><span class="path">/vast/settings|account|offers|gpu-names|browse-fs|local-checkpoints|deployment</span> &nbsp;·&nbsp; <span class="m POST">POST</span><span class="path">/vast/settings|deploy|deployment/stop|deployment/destroy</span></div>
+<p class="desc">Rent a cloud GPU, deploy the server + a checkpoint to it, proxy the dashboard at it, stop/destroy.
+API key via <code class="inline">/vast/settings</code>.</p></div>
+
+<h2 id="speech">Voice &amp; hearing (WS6 speech loop)</h2>
+<div class="card"><div class="ep"><span class="m WS">organ</span><span class="path">continuous auditory intake (server-side, always on by default)</span></div>
+<p class="desc">Hearing is a property of the body, not of the client: an always-on <code class="inline">AudioIntake</code>
+service (<code class="inline">decadic/audio/intake.py</code>) captures continuously — system microphone
+(<code class="inline">mic</code>) or the simulated mixing bus (<code class="inline">bus</code>) — into a ring buffer, and every
+observation that arrives WITHOUT audio is given the freshest &le;250&nbsp;ms chunk at ingest
+(pcm16-base64, the schema the frozen Whisper path already decodes). <b>Client-supplied audio always wins</b>,
+so recorded scenarios stay byte-reproducible. An energy silence gate (with one-chunk hysteresis for word
+tails) keeps quiet rooms off the GPU. Live mic capture needs <code class="inline">pip install sounddevice</code>;
+without it the service degrades to inert and the bus/loopback path still works.</p></div>
+<div class="card"><div class="ep"><span class="m WS">organ</span><span class="path">voice output (cognition-driven, silent at birth)</span></div>
+<p class="desc">The stack emits an 8-dim articulatory vector <code class="inline">voice_u</code>
+(f0, energy, voicing, formants) from the same policy latent as the motor heads — the action dict carries it as
+<code class="inline">parameters.voice</code> beside <code class="inline">ctrl</code>. Each cycle the runtime renders it
+through a formant synthesizer (<code class="inline">decadic/audio/vocal_tract.py</code>, click-free interpolation,
+~one cycle-period of 16&nbsp;kHz samples), <b>always mixes it back into the intake</b> (self-hearing — the loop that
+makes babbling, vocal agency, and imitation learnable), and tees it to the host speakers when a device exists.
+The head is zero-initialized: a newborn agent is silent until learning moves it; old checkpoints load into
+voice-on builds mute. Per-cycle stats surface in agent metrics (<code class="inline">audio_intake</code>,
+<code class="inline">voice_params</code>, <code class="inline">voice_playback</code>).</p></div>
+
+<h2 id="env">Key environment flags (server-side)</h2>
+<table>
+<tr><th>flag</th><th>default</th><th>meaning</th></tr>
+<tr><td>DECADIC_NEURAL_PRESET</td><td>full</td><td>architecture preset (tiny for CPU/tests)</td></tr>
+<tr><td>DECADIC_DEVICE / DECADIC_ENCODER_MODE</td><td>cuda / hf</td><td>compute device · frozen CLIP+Whisper vs zeros encoders</td></tr>
+<tr><td>DECADIC_MEMORY_BACKEND / DECADIC_GRAPH_BACKEND</td><td>lancedb / kuzu</td><td>episodic · long-term graph stores</td></tr>
+<tr><td>DECADIC_KUZU_WRITE_MIN_CYCLES</td><td>25</td><td>write governance: per-key throttle (0 = off); barriers stay exact</td></tr>
+<tr><td>DECADIC_KUZU_FLUSH_OPS / _FLUSH_S / _FLUSH_QUEUE_CAP</td><td>512 / 10 / 4</td><td>off-lock flusher window &amp; backpressure</td></tr>
+<tr><td>DECADIC_GROWTH_MIN_PROGRESS / _MIN_GAIN</td><td>0.01 / 0.02</td><td>growth governance: grow only when stalled AND the last growth paid (0 disables a gate)</td></tr>
+<tr><td>DECADIC_SF_GAMMA / _LAMBDA / _VALUE_WEIGHT / _NORMALIZE_RETURNS</td><td>0.995 / 0.8 / 10.0 / on</td><td>credit horizon (~50 s) · (1−γ)-normalized targets · value shaping</td></tr>
+<tr><td>DECADIC_GOAL_CONDITIONED_POLICY / DECADIC_GOAL_BEARING</td><td>on / on</td><td>continuous goal vector (dominant need, graded deficit) · egocentric bearing to the remembered resource</td></tr>
+<tr><td>DECADIC_TYPE2_SEARCH / _FAR_DISTANCE / _MIN_DEFICIT</td><td>on / 0.15 / 0.05</td><td>System-2 escalation: need ∧ remembered-but-not-here → deliberate pursuit</td></tr>
+<tr><td>DECADIC_GATE_ENABLED / DECADIC_GATE_LOG</td><td>on / off</td><td>WS3 attention gate · off-thread per-cycle decision log</td></tr>
+<tr><td>DECADIC_AUDIO_INTAKE</td><td>mic</td><td>always-on hearing: off | mic (system microphone) | bus (sim mixing bus); client audio always wins</td></tr>
+<tr><td>DECADIC_AUDIO_SILENCE_RMS</td><td>0.01</td><td>silence gate: quiet chunks skip attach/encode (hysteresis keeps word tails)</td></tr>
+<tr><td>DECADIC_VOICE</td><td>on</td><td>vocal organ faculty: zero-init voice_u head (silent at birth); off builds no module</td></tr>
+<tr><td>DECADIC_VOICE_PLAYBACK</td><td>auto</td><td>host speaker tee: off | device | auto; self-hearing loopback is ALWAYS on when voice is on</td></tr>
+<tr><td>DECADIC_BODY_CONSUME_MODE / _CONTACT_RADIUS / _REACH_DISTANCE</td><td>contact / 0.30 / 0.6</td><td>earned consumption (body-part contact) · placement distances</td></tr>
+<tr><td>DECADIC_ALLOW_EXTERNAL_BODY_PROVISION</td><td>0</td><td>let /give drive a standalone (non-supervised) body</td></tr>
+<tr><td>DECADIC_MEMORY_TELEMETRY_EVERY</td><td>200</td><td>memory_accumulation log cadence (0 = off)</td></tr>
+</table>
+
+<footer>Project Deca — Decadic Cycle of Expression · cognition server API reference · generated 2026-07-06.
+Source of truth: <code class="inline">decadic/api/app.py</code> and registered route modules
+(saved_agents, presets, vast, training, evaluation). No LLM in the loop — language must be lived, not downloaded.</footer>
+</main>
+</div>
+<script>
+function flt(q){
+  q=q.trim().toLowerCase();
+  document.querySelectorAll('.card').forEach(function(c){
+    c.classList.toggle('hidden', q!=='' && c.textContent.toLowerCase().indexOf(q)===-1);
+  });
+}
+</script>
+</body>
+</html>

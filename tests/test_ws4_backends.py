@@ -748,6 +748,95 @@ def test_ws4b_m34_multirow_failure_replay_still_converges(tmp_path, monkeypatch)
         g2.close()
 
 
+def test_ws4b_write_governance_throttles_and_drain_is_exact(tmp_path, monkeypatch):
+    """Write governance (2026-07-06): re-touching the same key every cycle no
+    longer floods the pending window -- intermediate upserts park in the
+    deferred map (upserts carry full row state, so only the newest matters) --
+    and a drain barrier promotes the newest payload EXACTLY, so reopen always
+    sees the latest state."""
+    pytest.importorskip("kuzu")
+    monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "1")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")  # manual flush timing
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")
+    monkeypatch.setenv("DECADIC_KUZU_WRITE_MIN_CYCLES", "25")
+    apps = _rand_apps(1, seed=70)
+    g = _kuzu_graph(tmp_path, "wg_kuzu")
+    nid = g.upsert_node(apps[0], kind="npc", cycle=0)
+    # 30 consecutive-cycle re-touches of the SAME node: only cycles 0 and 25
+    # pass the gate; the rest are absorbed (their newest payload retained).
+    for c in range(1, 31):
+        assert g.upsert_node(apps[0], kind="npc", cycle=c) == nid
+    m = g.persistence_metrics()
+    assert m["graph_writes_deferred"] >= 25  # the flood was absorbed
+    assert m["graph_deferred_depth"] >= 1  # newest payload parked, not lost
+    assert g.drain(timeout=15) is True  # barrier: promotes deferred exactly
+    assert g.persistence_metrics()["graph_deferred_depth"] == 0
+    g.close()
+    g2 = _kuzu_graph(tmp_path, "wg_kuzu")
+    try:
+        assert g2._nodes[nid]["last_cycle"] == 30  # newest state durable
+    finally:
+        g2.close()
+
+
+def test_ws4b_write_governance_disabled_is_parity(tmp_path, monkeypatch):
+    """DECADIC_KUZU_WRITE_MIN_CYCLES=0 restores the ungoverned write path."""
+    pytest.importorskip("kuzu")
+    monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "1")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")
+    monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")
+    monkeypatch.setenv("DECADIC_KUZU_WRITE_MIN_CYCLES", "0")
+    apps = _rand_apps(1, seed=71)
+    g = _kuzu_graph(tmp_path, "wg_off_kuzu")
+    nid = g.upsert_node(apps[0], kind="npc", cycle=0)
+    for c in range(1, 11):
+        g.upsert_node(apps[0], kind="npc", cycle=c)
+    m = g.persistence_metrics()
+    assert m["graph_writes_deferred"] == 0 and m["graph_deferred_depth"] == 0
+    assert g.drain(timeout=15) is True
+    g.close()
+    g2 = _kuzu_graph(tmp_path, "wg_off_kuzu")
+    try:
+        assert g2._nodes[nid]["last_cycle"] == 10
+    finally:
+        g2.close()
+
+
+def test_ws4b_merge_batches_keyed_lastwins_and_delete_barrier():
+    """Coalesce-dedup is a pure keyed merge: same-key upserts collapse to the
+    FIRST position/template with the LATEST payload (CREATE+SET -> CREATE with
+    new values -- the row does not exist yet); deletes are ordered barriers and
+    a post-delete upsert starts fresh AFTER them (delete->recreate preserved)."""
+    pytest.importorskip("kuzu")
+    from decadic.memory.kuzu_graph import (
+        _Q_NODE_CREATE,
+        _Q_NODE_DEL,
+        _Q_NODE_SET,
+        _merge_batches,
+    )
+
+    tail_s = [(_Q_NODE_CREATE, {"id": "x", "salience": 0.1}), (_Q_NODE_SET, {"id": "y", "salience": 0.1})]
+    tail_o = [("node", {"id": "x", "salience": 0.1}), ("node", {"id": "y", "salience": 0.1})]
+    new_s = [
+        (_Q_NODE_SET, {"id": "x", "salience": 0.9}),
+        (_Q_NODE_DEL, {"id": "y"}),
+        (_Q_NODE_CREATE, {"id": "y", "salience": 0.7}),
+    ]
+    new_o = [
+        ("node", {"id": "x", "salience": 0.9}),
+        ("del_node", {"id": "y"}),
+        ("node", {"id": "y", "salience": 0.7}),
+    ]
+    ms, mo, merged = _merge_batches(tail_s, tail_o, new_s, new_o)
+    assert merged == 1  # x's SET folded into its CREATE
+    assert ms[0] == (_Q_NODE_CREATE, {"id": "x", "salience": 0.9})  # latest payload, CREATE kept
+    assert ms[1] == (_Q_NODE_SET, {"id": "y", "salience": 0.1})  # pre-delete write stays put
+    assert ms[2] == (_Q_NODE_DEL, {"id": "y"})  # barrier ordered
+    assert ms[3] == (_Q_NODE_CREATE, {"id": "y", "salience": 0.7})  # recreate AFTER delete
+    assert [k for k, _ in mo] == ["node", "node", "del_node", "node"]
+    assert _merge_batches([], [], [], []) == ([], [], 0)
+
+
 def test_ws4b_inline_mode_still_works(tmp_path, monkeypatch):
     """DECADIC_KUZU_OFFLOCK_FLUSH=0 restores the 07-04 inline path (A/B arm)."""
     pytest.importorskip("kuzu")

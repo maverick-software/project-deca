@@ -253,7 +253,10 @@ class EnvironmentSupervisor:
         without dying. One metrics read + one queued command per tick, off the
         cognition path. Cancelled by ``_terminate_locked`` on stop/replace/delete.
         """
-        every = max(1.0, float(params.get("place_every_s", 8.0)))
+        # Floor 0.05s: prevents a zero/negative param from busy-spinning while
+        # still allowing sub-second ticks (the unit test drives the loop at
+        # 0.02s->0.05s; production passes seconds-scale values, default 8.0).
+        every = max(0.05, float(params.get("place_every_s", 8.0)))
         floor = float(params.get("rescue_floor", 12.0))
         rescue_to = float(params.get("rescue_to", 35.0))
         try:

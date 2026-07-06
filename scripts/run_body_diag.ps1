@@ -106,7 +106,14 @@ try {
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         Start-Sleep -Seconds 10
         try {
-            $ag = (Invoke-RestMethod "$BaseUrl/agents" -TimeoutSec 5).agents | Select-Object -First 1
+            $agAll = (Invoke-RestMethod "$BaseUrl/agents" -TimeoutSec 5).agents
+            # Run hygiene (2026-07-06): a second brain started mid-run (e.g. a
+            # dashboard scenario) invalidates every number this diag reports --
+            # two 204M-param models share one GPU/server. Warn loudly.
+            if ($agAll.Count -gt 1) {
+                Write-Host ("[diag] WARNING: {0} agents on this server -- measurements are now confounded (second brain competing for GPU/CPU/IO)" -f $agAll.Count) -ForegroundColor Red
+            }
+            $ag = $agAll | Select-Object -First 1
             if ($null -ne $ag) {
                 $samples += [pscustomobject]@{
                     t_s = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
@@ -147,8 +154,21 @@ finally {
         if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
     }
     # Only stop the dashboard if THIS run started it (leave a pre-existing one).
+    # IMPORTANT: `cmd /c npm run dev` spawns cmd -> npm -> node(Vite). Stopping
+    # the cmd PID alone ORPHANS the node/Vite child, which then runs for the whole
+    # session and bloats (HMR + module graph + the Three.js/graph panels) -- the
+    # cause of the RAM creep. taskkill /T kills the entire process tree so the
+    # Vite node dies too; the port-based sweep catches any stray that outlived it.
     if ($Dash -and -not $Dash.HasExited) {
+        & taskkill /F /T /PID $Dash.Id 2>$null | Out-Null
         Stop-Process -Id $Dash.Id -Force -ErrorAction SilentlyContinue
+        # Belt-and-suspenders: kill whatever still holds the Vite port (5173).
+        try {
+            $viteConns = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
+            foreach ($c in $viteConns) {
+                Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
     }
 }
 
@@ -169,8 +189,8 @@ $budget = Select-String -Path "$RunDir\body.out.log" -Pattern "budget ms/obs" -E
 if ($budget) { $sum += "body budget (last 3):"; $sum += $budget }
 if (Test-Path "$RunDir\metrics.json") {
     $gm = Select-String -Path "$RunDir\metrics.json" `
-        -Pattern '"(graph_flush_ms|graph_flush_lock_ms|graph_flush_queue_depth|graph_flush_rows|graph_flush_stmts|graph_flush_error_batches|sqlite_last_commit_ms|sqlite_commit_count|sqlite_batch_commit_count|kuzu_vector_index_rebuilds|ltm_match_ms|commit_lag_ms|lance_last_commit_ms|match_cache_hits|match_cache_misses|growth_events|awake_neurons|plasticity_pc_ema|growth_blocked_reason)[^,]*' |
-        ForEach-Object { $_.Matches.Value.Trim() } | Select-Object -First 24
+        -Pattern '"(graph_flush_ms|graph_flush_lock_ms|graph_flush_queue_depth|graph_flush_rows|graph_flush_stmts|graph_flush_error_batches|graph_writes_deferred|graph_coalesce_dedup_rows|graph_deferred_depth|sqlite_last_commit_ms|sqlite_commit_count|sqlite_batch_commit_count|kuzu_vector_index_rebuilds|ltm_match_ms|commit_lag_ms|lance_last_commit_ms|match_cache_hits|match_cache_misses|growth_events|awake_neurons|plasticity_pc_ema|growth_blocked_reason)[^,]*' |
+        ForEach-Object { $_.Matches.Value.Trim() } | Select-Object -First 28
     if ($gm) { $sum += "store telemetry:"; $sum += ($gm | ForEach-Object { "  $_" }) }
 }
 # Memory-accumulation trend: is per-cycle recall/match latency creeping up as
