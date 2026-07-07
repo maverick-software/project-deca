@@ -216,10 +216,15 @@ class ConsolidationManager:
         if C.sf_enabled() and C.imagination_enabled():
             from decadic.consolidation.imagination import imagined_sf_loss
 
+            # E2.4: the discount comes through the horizon channel's published
+            # value (== C.sf_gamma() when the controller is off/neutral). This
+            # thread only READS the shared slot; the cycle loop writes it.
+            from decadic.nn.learning_control import effective_sf_gamma as _eff_gamma
+
             il = imagined_sf_loss(
                 self.cons_stack,
                 batch,
-                gamma=C.sf_gamma(),
+                gamma=_eff_gamma(),
                 horizon=C.imagination_horizon(),
                 device=self.device,
                 normalize=C.sf_normalize_returns(),

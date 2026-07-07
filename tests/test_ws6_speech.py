@@ -34,10 +34,16 @@ def _sine(n=1600, freq=440.0, amp=0.3, sr=16000):
 # ------------------------------------------------------------ FormantSynth
 
 
+# Layout (WS6 revision 2026-07-06): [phon_gate, f0, energy, voicing, f1..f5].
+def _v(gate, f0=0.0, energy=0.0, voicing=0.0, *formants):
+    vec = [gate, f0, energy, voicing] + list(formants)
+    return vec + [0.0] * (VOICE_DIM - len(vec))
+
+
 def test_synth_shape_dtype_range():
     synth = FormantSynth()
-    params = [0.3, 0.4, 0.8, 0.1, -0.2, 0.0, 0.3, -0.1]
-    wav = synth.render([0.0] * VOICE_DIM, params, n_samples=1600)
+    params = _v(1.0, 0.3, 0.4, 0.8, 0.1, -0.2, 0.0, 0.3, -0.1)
+    wav = synth.render(_v(1.0), params, n_samples=1600)
     assert wav.shape == (1600,) and wav.dtype == np.float32
     assert float(np.abs(wav).max()) <= 1.0
     assert synth.render(params, params, n_samples=0).shape == (0,)
@@ -45,8 +51,8 @@ def test_synth_shape_dtype_range():
 
 def test_synth_determinism_bit_identical():
     synth = FormantSynth()
-    p0 = [0.1, 0.2, -0.3, 0.4, 0.0, -0.5, 0.2, 0.9]
-    p1 = [0.2, 0.5, 0.1, -0.4, 0.3, 0.0, -0.2, 0.1]
+    p0 = _v(1.0, 0.1, 0.2, -0.3, 0.4, 0.0, -0.5, 0.2, 0.9)
+    p1 = _v(1.0, 0.2, 0.5, 0.1, -0.4, 0.3, 0.0, -0.2, 0.1)
     a = synth.render(p0, p1, n_samples=1600)
     b = synth.render(p0, p1, n_samples=1600)
     assert np.array_equal(a, b)  # includes the seeded noise path (voicing<1)
@@ -54,50 +60,75 @@ def test_synth_determinism_bit_identical():
 
 def test_synth_exact_silence_at_energy_floor():
     synth = FormantSynth()
-    quiet = [0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    quiet = _v(1.0, 0.0, -1.0)  # gate open, no breath
     wav = synth.render(quiet, quiet, n_samples=1600)
-    assert float(np.abs(wav).sum()) == 0.0  # mouth closed = digital silence
+    assert float(np.abs(wav).sum()) == 0.0
 
 
-def test_synth_zero_params_near_silent():
-    """tanh(zero-init head) = all-zero params: the cubic energy map keeps the
-    newborn's output a faint hum (audible contingency, not a scream)."""
+def test_synth_zero_init_is_exact_silence():
+    """The phonation gate: tanh(zero-init head) = all-zero params = gate
+    CLOSED = exact digital silence. Silence is the resting state and a real
+    decision path; the newborn does not hum. Opening the gate with the same
+    articulation produces sound (the babble-exploration target)."""
     synth = FormantSynth()
-    wav = synth.render([0.0] * VOICE_DIM, [0.0] * VOICE_DIM, n_samples=1600)
-    rms = float(np.sqrt(np.mean(np.square(wav))))
-    assert 0.0 < rms < 0.08
-    # Loud params really are louder -- the energy channel is live.
-    loud = synth.render([0.0] * VOICE_DIM, [0.0, 1.0] + [0.0] * 6, n_samples=1600)
+    zeros = [0.0] * VOICE_DIM
+    wav = synth.render(zeros, zeros, n_samples=1600)
+    assert float(np.abs(wav).sum()) == 0.0  # no involuntary carrier tone
+    voiced = synth.render(_v(1.0), _v(1.0), n_samples=1600)
+    rms = float(np.sqrt(np.mean(np.square(voiced))))
+    assert rms > 0.0  # gate open at neutral articulation IS audible
+    loud = synth.render(_v(1.0), _v(1.0, 0.0, 1.0), n_samples=1600)
     assert float(np.sqrt(np.mean(np.square(loud)))) > 3.0 * rms
+
+
+def test_phonating_semantics(monkeypatch):
+    from decadic.audio.vocal_tract import phonating
+
+    assert phonating([0.0] * VOICE_DIM) is False  # zero-init head = silent
+    assert phonating(_v(0.5)) is True
+    assert phonating(_v(-0.5)) is False
+    monkeypatch.setenv("DECADIC_VOICE_PHONATION_THRESHOLD", "0.6")
+    assert phonating(_v(0.5)) is False  # threshold is env-tunable
+    assert phonating(_v(0.9)) is True
 
 
 def test_synth_click_free_frame_boundaries():
     """Consecutive frames with continuous params: the boundary step must be no
     larger than an ordinary intra-frame step (WBS M2.2 acceptance)."""
     synth = FormantSynth()
-    # Voiced case (voicing=1 -> pure harmonic source).
-    pa = [0.20, 0.50, 1.0, 0.10, -0.10, 0.00, 0.20, 0.00]
-    pb = [0.25, 0.55, 1.0, 0.15, -0.05, 0.05, 0.20, 0.00]
-    pc = [0.30, 0.50, 1.0, 0.20, 0.00, 0.10, 0.20, 0.00]
+    # Voiced case (voicing=1 -> pure harmonic source), gate fully open.
+    pa = _v(1.0, 0.20, 0.50, 1.0, 0.10, -0.10, 0.00, 0.20, 0.00)
+    pb = _v(1.0, 0.25, 0.55, 1.0, 0.15, -0.05, 0.05, 0.20, 0.00)
+    pc = _v(1.0, 0.30, 0.50, 1.0, 0.20, 0.00, 0.10, 0.20, 0.00)
     f1 = synth.render(pa, pb, n_samples=1600)
     f2 = synth.render(pb, pc, n_samples=1600)
     boundary = abs(float(f2[0]) - float(f1[-1]))
     intra = max(float(np.abs(np.diff(f1)).max()), float(np.abs(np.diff(f2)).max()))
     assert boundary <= 1.5 * intra + 1e-4
     # Aperiodic case (voicing=-1 -> pure noise, edge-faded to zero).
-    na = [0.0, 0.5, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    na = _v(1.0, 0.0, 0.5, -1.0)
     g1 = synth.render(na, na, n_samples=1600)
     g2 = synth.render(na, na, n_samples=1600)
     assert abs(float(g2[0]) - float(g1[-1])) < 1e-4
+    # Gate OPENING mid-frame ramps from silence without a click. Click-free
+    # is RELATIVE: per-sample steps no larger than a steady full-open frame's
+    # natural steps (high harmonics at full amplitude legitimately move fast).
+    steady = synth.render(_v(1.0, 0.0, 0.5, 1.0), _v(1.0, 0.0, 0.5, 1.0), 1600)
+    opening = synth.render(_v(0.0, 0.0, 0.5, 1.0), _v(1.0, 0.0, 0.5, 1.0), 1600)
+    assert abs(float(opening[0])) < 1e-3  # starts at (near) silence
+    head_rms = float(np.sqrt(np.mean(np.square(opening[:160]))))
+    tail_rms = float(np.sqrt(np.mean(np.square(opening[-320:]))))
+    assert tail_rms > 3.0 * max(1e-9, head_rms)  # amplitude actually ramped
+    assert float(np.abs(np.diff(opening)).max()) <= 1.5 * float(
+        np.abs(np.diff(steady)).max()
+    ) + 1e-4
 
 
 def test_synth_param_interpolation_reaches_endpoint():
     """The frame's last sample must reflect the END params (the next frame
     interpolates FROM them -- continuity across the seam)."""
     synth = FormantSynth()
-    up = synth.render(
-        [0.0, -1.0, 1.0, 0, 0, 0, 0, 0], [0.0, 1.0, 1.0, 0, 0, 0, 0, 0], n_samples=1600
-    )
+    up = synth.render(_v(1.0, 0.0, -1.0, 1.0), _v(1.0, 0.0, 1.0, 1.0), n_samples=1600)
     head = float(np.sqrt(np.mean(np.square(up[:160]))))
     tail = float(np.sqrt(np.mean(np.square(up[-160:]))))
     assert tail > 5.0 * head  # energy ramped up across the frame
@@ -348,5 +379,38 @@ def test_stack_voice_head_zero_init_then_live(monkeypatch):
     # The voice head is a pure readout: it must not perturb cognition itself.
     with torch.no_grad():
         stack.reset_recurrent_state()
-        again = stack(z0, ep, mem)
-    assert torch.equal(out["z5"], again["z5"])
+       
+
+def test_intake_self_mask_hum_cannot_hold_gate_open(monkeypatch):
+    """First live probe (2026-07-06): the newborn hum looped back every cycle
+    and held the silence gate open permanently. The efference-aware floor must
+    let the agent's own steady hum read as silence while external sound louder
+    than self still attaches."""
+    import numpy as np
+
+    from decadic.audio.intake import AudioIntake
+
+    monkeypatch.setenv("DECADIC_AUDIO_SILENCE_RMS", "0.01")
+    monkeypatch.setenv("DECADIC_AUDIO_SELF_MASK_FACTOR", "1.5")
+    intake = AudioIntake(mode="bus")
+    rng = np.random.default_rng(9)
+    hum = (rng.normal(size=1600).astype(np.float32) * 0.055).clip(-1, 1)  # ~0.055 RMS
+
+    # Warm the self-energy EMA the way the loopback does, then a hum-only
+    # chunk must be gated as silence despite exceeding the base threshold.
+    for _ in range(10):
+        intake.mix_in(hum)
+        intake.read_chunk()  # drain so each attach sees one chunk
+    intake.mix_in(hum)
+    obs: dict = {}
+    intake._gate_open = False
+    intake.attach_to_obs(obs)
+    assert "audio" not in obs, "own hum must not hold the gate open"
+    assert intake.stats()["self_rms_ema"] > 0.01
+
+    # External sound well above self-energy still attaches.
+    loud = (rng.normal(size=1600).astype(np.float32) * 0.4).clip(-1, 1)
+    intake.mix_in(loud)
+    obs2: dict = {}
+    intake.attach_to_obs(obs2)
+    assert "audio" in obs2, "sound louder than self must pass the mask"

@@ -75,52 +75,56 @@ M2.2 -> M2.4 (desk rig: gates LIVE sessions only; M3-M6 train on Rig 1)
 M1 and M2+ parallelize after the M0.4 gate.
 ```
 
-## M0.5 / M2.1 / M2.2 implementation notes (2026-07-06)
+### Revision 2026-07-06: phonation gate (silence is a decision)
 
-Landed:
+First live probe finding, root cause: there was NO path where the agent does
+not speak. The voice head emitted every cycle, all-zero params mapped to a
+deliberate "faint hum" (dead-gradient avoidance), and the runtime rendered
+unconditionally -- an involuntary permanent carrier tone that held the
+intake's silence gate open via loopback. Fixes, in layers:
 
-- **M0.5 intake.** `decadic/audio/intake.py`: `AudioIntake` (process-wide
-  singleton via `get_audio_intake()`), thread-safe ~4 s ring, modes
-  `off|mic|bus` (`DECADIC_AUDIO_INTAKE`, production default `mic`; tests pin
-  `off`), `mix_in()` bus/loopback tap in both live modes, `read_chunk()`
-  capped at 250 ms with drop-oldest overrun, silence gate
-  (`DECADIC_AUDIO_SILENCE_RMS`, default 0.01) with one-chunk hysteresis for
-  word tails, client-audio-wins `attach_to_obs()` emitting EXACTLY the
-  `_waveform_from_obs` schema (pcm16 base64 + `sample_rate`). Attach point:
-  top of `AgentRuntime.handle_observation_dict` (before predecode/perception),
-  additive-never-fatal. sounddevice is optional: missing lib/device degrades
-  mic capture to inert with one log line; the bus tap keeps working.
-- **M2.1 voice head.** `CognitionFaculties.voice` (default ON per the
-  2026-07-04 owner decision; tests pin off), `DECADIC_VOICE` via
-  `config.voice_enabled()`. Stack builds `voice_head` (zero-init weight+bias)
-  over the same policy latent as the motor head, emits `voice_u = tanh(...)`;
-  flag-off builds construct NO module (state_dict byte-identical). Action dict
-  gains `"voice": [...]` beside `ctrl` when the head exists. Checkpoint compat
-  rides the existing shape-filtered `strict=False` bundle load: old brains
-  load into voice-on builds with the head left at zero init (newborn silence).
-- **M2.2 vocal tract + loopback.** `decadic/audio/vocal_tract.py`:
-  `FormantSynth.render(prev, cur, n_samples, sr)`, `VOICE_DIM = 8`
-  ([f0, energy, voicing, formant1..5], tanh range), per-sample linear param
-  interpolation, deterministic (noise seeded from a hash of the inputs).
-  Post-cycle `AgentRuntime._emit_voice`: renders ~one cycle-period of samples,
-  ALWAYS `mix_in()`s into the intake (self-hearing loopback; not a mode), and
-  tees to speakers per `DECADIC_VOICE_PLAYBACK=off|device|auto` (default
-  `auto`) via `decadic/audio/playback.py` (`VoicePlayback`, non-blocking,
-  no-device no-op). Intake/voice stats surface in `metrics["audio_intake"]`,
-  `metrics["voice_params"]`, `metrics["voice_playback"]`.
-- **Tests.** `tests/test_ws6_speech.py` (+ conftest pins `DECADIC_VOICE=0`,
-  `DECADIC_AUDIO_INTAKE=off`): synth determinism/click-free/silence/range,
-  ring continuity/overrun/cursor, precedence, silence-gate hysteresis,
-  schema round-trip through `_waveform_from_obs`, mic/playback degrade paths
-  (sounddevice import poisoned), stack flag-off/zero-init/live-head probes.
-  The whole file passes with no sounddevice and no devices.
+- VOICE_DIM 8 -> 9: index 0 is now a PHONATION GATE (vocal-fold adduction,
+  separate from pitch/articulation). Zero-init head => gate closed => EXACT
+  digital silence. Vocalizing requires driving the gate above
+  DECADIC_VOICE_PHONATION_THRESHOLD (default 0.0). Gate interpolates across
+  the frame (click-free open/close).
+- Runtime consults phonating() BEFORE rendering: a closed gate renders
+  nothing, loops back nothing, plays nothing (metrics: voice_phonating).
+- The "hum for gradient" rationale is retired: the efference->sound gradient
+  belongs to the babble curriculum (M3.1), which explores by OPENING the
+  gate -- not to a constant carrier tone.
+- The intake's efference-aware self-mask (self_rms_ema floor) stays as
+  defense-in-depth for when the agent genuinely vocalizes.
 
-Deviations from the WBS letter:
+### Live validation session 2026-07-06 (audio-cognition probe, 4 runs)
 
-- **Formants are an envelope, not biquads.** The synth realizes the resonances
-  as a 3-bump spectral envelope applied to an additive harmonic source (and to
-  rFFT-shaped noise) instead of recursive bandpass biquads: `render` is
-  stateless per frame, and recursive filters with per-frame zero state ring at
+The first end-to-end test of ears+mouth against a live human. Findings, in
+discovery order, each now fixed and regression-covered:
+
+1. Involuntary hum -> phonation gate (revision above). Confirmed live:
+   self_rms_ema = 0.0 across the whole session -- the agent is truly silent
+   by default.
+2. Probe time-order confound -> transition scoring with a discarded warmup.
+3. Host default mic delivered digital silence -> DECADIC_AUDIO_DEVICE
+   selection + scripts/mic_check.py sweep (working device found at index 4).
+4. Working mic at ~0.002 RMS speech (below the gate) -> DECADIC_AUDIO_GAIN
+   capture stage (mic path only; loopback stays true-level).
+5. Measured room reality: per-chunk energy CANNOT separate speech from a
+   lived-in room (typing transients ~ speech level; inter-word gaps ~
+   silence level; ambient p90 0.107 vs speech p50 0.009 at gain 30).
+   Design conclusion recorded: the energy gate's job is dead-air economy
+   (skip Whisper on nothing), NOT discrimination -- selection belongs to
+   cognition, and finer-grain hearing to the M0 audio-token lane. Probe
+   verdict recalibrated to layer-honest criteria.
+
+VALIDATED RESULT: cognitive response PASS -- operator speech raised gate
+escalation rate at both silence->speak transitions (0.53->1.90 esc/s at the
+second), through the full circuit mic -> intake -> Whisper -> fused percept ->
+salience -> deliberation. First confirmed instance of a human voice reaching
+and moving the agent's cognition. Pooled-pathway novelty response measured
+blunt as predicted (the M0.2/M0.3 before-baseline, archived in
+reports/audioprobe_20260706_200702).
+r frame, and recursive filters with per-frame zero state ring at
   every boundary, which would fail the click-free acceptance this milestone
   exists to meet. The fundamental's phase is corrected to land on integer
   cycles at frame edges and the noise is edge-faded, so boundaries are

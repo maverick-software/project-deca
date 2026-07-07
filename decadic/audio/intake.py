@@ -86,6 +86,14 @@ class AudioIntake:
         self._chunks_attached = 0
         self._silence_skips = 0
         self._mix_ins = 0
+        # Efference-aware self-masking (lite). First live probe (2026-07-06):
+        # the newborn hum (~0.04 RMS) loops back every cycle and held the
+        # 0.01 silence gate open PERMANENTLY -- the agent's own voice made the
+        # room never-quiet. Track an EMA of self-mixed energy and floor the
+        # gate above it: "silence" means quiet RELATIVE TO MY OWN VOICE.
+        # Proper spectral subtraction is the M2.4 self-masking item.
+        self._self_rms_ema = 0.0
+        self._last_chunk_rms = 0.0
 
     # ------------------------------------------------------------- lifecycle
 
@@ -110,20 +118,55 @@ class AudioIntake:
                 "(bus tap / loopback still live). Install sounddevice for mic mode."
             )
             return
+        # Capture gain: DECADIC_AUDIO_GAIN multiplies MIC samples only (never
+        # the bus/loopback path -- self-heard voice must stay at true level).
+        # Diagnosed 2026-07-06: a working device delivered speech at ~0.002 RMS,
+        # 4x below the silence threshold; low host input gain is common and the
+        # organ should not depend on Windows mixer settings. mic_check.py
+        # recommends a value (target ~0.08 RMS speech).
+        try:
+            self._mic_gain = max(
+                0.1, min(100.0, float(os.environ.get("DECADIC_AUDIO_GAIN", "1.0")))
+            )
+        except ValueError:
+            self._mic_gain = 1.0
+        # Device selection: DECADIC_AUDIO_DEVICE (index from scripts/mic_check.py)
+        # overrides the host default. Diagnosed 2026-07-06: a default device can
+        # open successfully yet deliver digital silence (wrong endpoint / Windows
+        # mic privacy), so the default is not trustworthy on every host.
+        device: int | None = None
+        raw_dev = os.environ.get("DECADIC_AUDIO_DEVICE", "").strip()
+        if raw_dev:
+            try:
+                device = int(raw_dev)
+            except ValueError:
+                logger.warning(
+                    "audio_intake: DECADIC_AUDIO_DEVICE=%r is not an index; "
+                    "using the host default input device",
+                    raw_dev,
+                )
         try:
             self._stream = sd.InputStream(
                 samplerate=self.sample_rate,
                 channels=1,
                 dtype="float32",
+                device=device,
                 callback=self._mic_callback,
             )
             self._stream.start()
             self._device_active = True
+            self._device_label = "default" if device is None else str(device)
+            logger.info(
+                "audio_intake: mic stream open (device=%s gain=%.1f)",
+                self._device_label,
+                getattr(self, "_mic_gain", 1.0),
+            )
         except Exception:
             self._stream = None
             logger.warning(
-                "audio_intake: no usable input device; mic capture inert "
-                "(bus tap / loopback still live)."
+                "audio_intake: no usable input device (device=%s); mic capture "
+                "inert (bus tap / loopback still live).",
+                "default" if device is None else device,
             )
 
     def stop(self) -> None:
@@ -145,7 +188,11 @@ class AudioIntake:
     def _mic_callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         # sounddevice callback thread: keep it allocation-light and non-fatal.
         try:
-            self._push(np.asarray(indata, dtype=np.float32).reshape(-1, indata.shape[-1])[:, 0])
+            mono = np.asarray(indata, dtype=np.float32).reshape(-1, indata.shape[-1])[:, 0]
+            gain = getattr(self, "_mic_gain", 1.0)
+            if gain != 1.0:
+                mono = np.clip(mono * gain, -1.0, 1.0)
+            self._push(mono)
         except Exception:
             pass  # a malformed device buffer is dropped, never raised
 
@@ -181,8 +228,10 @@ class AudioIntake:
         if wav.size == 0:
             return
         self._push(wav)
+        rms = float(np.sqrt(np.mean(np.square(wav, dtype=np.float64))))
         with self._lock:
             self._mix_ins += 1
+            self._self_rms_ema = 0.8 * self._self_rms_ema + 0.2 * rms
 
     def read_chunk(self, max_ms: int = DEFAULT_MAX_CHUNK_MS) -> np.ndarray | None:
         """Everything since the last read, capped at max_ms (freshest wins).
@@ -233,8 +282,19 @@ class AudioIntake:
         if chunk is None or chunk.size == 0:
             return
         rms = float(np.sqrt(np.mean(np.square(chunk, dtype=np.float64))))
-        loud = rms >= _silence_rms_threshold()
         with self._lock:
+            # Effective floor rides above the agent's own recent voice energy
+            # (efference-aware masking lite): the hum cannot hold its own gate
+            # open, while external sound louder than self still passes.
+            try:
+                factor = float(os.environ.get("DECADIC_AUDIO_SELF_MASK_FACTOR", "1.5"))
+            except ValueError:
+                factor = 1.5
+            threshold = max(
+                _silence_rms_threshold(), factor * self._self_rms_ema
+            )
+            loud = rms >= threshold
+            self._last_chunk_rms = rms
             attach = loud or self._gate_open
             self._gate_open = loud
             if not attach:
@@ -262,6 +322,10 @@ class AudioIntake:
                 "chunks_attached": int(self._chunks_attached),
                 "silence_skips": int(self._silence_skips),
                 "mix_ins": int(self._mix_ins),
+                "self_rms_ema": round(float(self._self_rms_ema), 5),
+                "last_chunk_rms": round(float(self._last_chunk_rms), 5),
+                "mic_gain": round(float(getattr(self, "_mic_gain", 1.0)), 2),
+                "device": getattr(self, "_device_label", None),
             }
 
 

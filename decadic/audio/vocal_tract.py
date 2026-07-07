@@ -33,27 +33,61 @@ Design notes (why, not what):
   weights, which is safe because harmonic amplitudes only matter away from the
   zero crossings that bracket each frame).
 
-- All-zero params (a zero-init voice head through tanh) map to NEAR-silence,
-  not full loudness: the energy mapping is cubic in (energy+1)/2, so energy=0
-  gives (0.5)^3 = 12.5% of max amplitude -- a quiet breathy hum. Why: the
-  newborn must not scream at birth (zero-init = silence-ish), but a strictly
-  zero output would give babble learning a dead gradient plateau at the
-  origin; a faint hum keeps the efference->sound contingency observable from
-  the very first cycle. energy = -1 is EXACT digital silence.
+- PHONATION GATE (index 0): silence is a DECISION and the resting state, not
+  a tone to suppress. The gate is the larynx's on/off (vocal-fold adduction,
+  anatomically separate from pitch and articulation). A zero-init voice head
+  emits all-zeros through tanh, so the gate reads 0 -> CLOSED -> the render is
+  EXACT digital silence: the newborn is silent, and there is a real path where
+  the agent does not speak (it is the default). Vocalizing is an active
+  emission that must drive the gate above threshold. The gate param interpolates
+  across the frame, so opening/closing is click-free. The old "faint hum at the
+  origin" is gone: the babble-exploration curriculum (WS6-M3.1), not a constant
+  carrier tone, supplies the efference->sound gradient -- exploration opens the
+  gate, and only then does sound (and its learning signal) exist.
+- Once phonating, energy = -1 is still EXACT silence (mouth open but no breath);
+  energy maps cubically so quiet phonation stays observable for the forward
+  model.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 
 import numpy as np
 
 # Frozen interface width of the voice efference channel (PRD 3.2, G3).
-# Layout: [f0, energy, voicing, formant1..formant5], each expected in [-1, 1]
-# (the stack emits them through tanh). Changing this is a versioned PRD
-# amendment, never an accident -- the stack head, the action schema, and this
-# synth all share it.
-VOICE_DIM = 8
+# Layout: [phon_gate, f0, energy, voicing, formant1..formant5], each expected
+# in [-1, 1] (the stack emits them through tanh). Changing this is a versioned
+# PRD amendment, never an accident -- the stack head, the action schema, and
+# this synth all share it. (WS6 revision 2026-07-06: added the phonation gate
+# at index 0; the newborn hum was an involuntary artifact, not a decision.)
+VOICE_DIM = 9
+PHON_GATE_IDX = 0
+
+
+def phonation_threshold() -> float:
+    """Gate param above which the larynx is voicing. Default 0.0 => a zero-init
+    head (gate=tanh(0)=0) is exactly at the closed boundary: SILENT until the
+    decision (or babble exploration) drives the gate strictly positive."""
+    try:
+        return float(os.environ.get("DECADIC_VOICE_PHONATION_THRESHOLD", "0.0"))
+    except ValueError:
+        return 0.0
+
+
+def phonating(params, threshold: float | None = None) -> bool:
+    """Is the agent vocalizing this frame? (gate strictly above threshold).
+
+    The runtime consults this to decide whether to render + loop back at all:
+    a closed gate means no sound leaves the mouth and none re-enters the ear --
+    a genuinely silent cycle."""
+    thr = phonation_threshold() if threshold is None else float(threshold)
+    try:
+        g = float(np.asarray(list(params))[PHON_GATE_IDX])
+    except (IndexError, ValueError, TypeError):
+        return False
+    return g > thr + 1e-6
 
 # f0 maps geometrically over the human-ish phonation range.
 _F0_MIN_HZ = 80.0
@@ -142,17 +176,29 @@ class FormantSynth:
             return np.zeros(max(0, n), dtype=np.float32)
         p0 = _clip_params(prev_params)
         p1 = _clip_params(params)
-        # Mouth fully closed across the whole frame => exact digital silence.
-        if max(p0[1], p1[1]) <= -1.0 + _SILENCE_EPS:
+        thr = phonation_threshold()
+        # Phonation gate CLOSED across the whole frame => exact digital silence.
+        # This is the newborn resting state (zero-init gate = 0 <= threshold)
+        # and the "does not speak" path -- reached by default, every cycle,
+        # until cognition (or babble) drives the gate open.
+        if max(p0[PHON_GATE_IDX], p1[PHON_GATE_IDX]) <= thr + 1e-6:
+            return np.zeros(n, dtype=np.float32)
+        # Mouth open but no breath across the whole frame => also silence.
+        if max(p0[2], p1[2]) <= -1.0 + _SILENCE_EPS:
             return np.zeros(n, dtype=np.float32)
 
         # Per-sample linear interpolation ramp. It ends exactly on p1 (so the
         # next frame, which starts interpolating FROM p1, is continuous) and
         # starts one sample past p0 (the previous frame already emitted p0).
         t = (np.arange(n, dtype=np.float64) + 1.0) / float(n)
-        f0 = _f0_hz(p0[0] + (p1[0] - p0[0]) * t)
-        amp = _amplitude(p0[1] + (p1[1] - p0[1]) * t)
-        voiced_mix = (np.clip(p0[2] + (p1[2] - p0[2]) * t, -1.0, 1.0) + 1.0) / 2.0
+        # Phonation gate as a per-sample amplitude multiplier in [0, 1]: a
+        # threshold crossing mid-frame ramps amplitude smoothly from 0, so
+        # opening/closing the larynx is click-free (like every other param).
+        gate = p0[PHON_GATE_IDX] + (p1[PHON_GATE_IDX] - p0[PHON_GATE_IDX]) * t
+        phon = np.clip((gate - thr) / max(1e-6, 1.0 - thr), 0.0, 1.0)
+        f0 = _f0_hz(p0[1] + (p1[1] - p0[1]) * t)
+        amp = _amplitude(p0[2] + (p1[2] - p0[2]) * t) * phon
+        voiced_mix = (np.clip(p0[3] + (p1[3] - p0[3]) * t, -1.0, 1.0) + 1.0) / 2.0
 
         # Voiced source: harmonics of the (interpolated) fundamental. The
         # accumulated phase is rescaled so the frame ends on an INTEGER cycle
@@ -165,8 +211,8 @@ class FormantSynth:
         cycles = cycles * (target / max(total, 1e-9))
         phase = 2.0 * np.pi * cycles
 
-        f0_mid = float(_f0_hz(0.5 * (p0[0] + p1[0])))
-        formants_mid = 0.5 * (p0[3:] + p1[3:])
+        f0_mid = float(_f0_hz(0.5 * (p0[1] + p1[1])))
+        formants_mid = 0.5 * (p0[4:] + p1[4:])
         n_h = int(max(1, min(_MAX_HARMONICS, np.floor(0.45 * sr / f0_mid))))
         harmonics = np.arange(1, n_h + 1, dtype=np.float64)
         weights = _formant_envelope(harmonics * f0_mid, formants_mid) / harmonics

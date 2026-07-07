@@ -1,0 +1,1031 @@
+INFO:     127.0.0.1:53976 - "GET /agent/a05d738a-65eb-4b41-bcac-bb226f81f2f4/state HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53976 - "GET /agent/a05d738a-65eb-4b41-bcac-bb226f81f2f4/metrics HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53977 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53977 - "POST /agent HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/a05d738a-65eb-4b41-bcac-bb226f81f2f4/state HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65184 - "GET /agent/a05d738a-65eb-4b41-bcac-bb226f81f2f4/metrics HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49523 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61002 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1941 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52087 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=0 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65107 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=15 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61267 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=25 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60344 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=34 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64713 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=43 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57399 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=53 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60764 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=62 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61625 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=71 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56873 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=80 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59105 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=89 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62359 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=98 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56049 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=108 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51261 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=117 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62733 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=126 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49372 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=135 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62152 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=144 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50264 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=154 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50834 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=163 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56200 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=172 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56203 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56204 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51855 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=182 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51856 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51857 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53342 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=191 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53343 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53344 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54703 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=200 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54704 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54705 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61497 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=209 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61500 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60122 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=218 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60123 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64233 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63312 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=227 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63313 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63314 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65059 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=236 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65060 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52510 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=239 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58355 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58356 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62271 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=261 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62272 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64017 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=275 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64020 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49523 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52051 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=288 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52052 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52053 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62214 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=306 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62215 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50706 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=323 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50707 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50709 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54667 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62333 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=345 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62334 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62335 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56086 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=364 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56087 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56088 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57162 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=373 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57163 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57165 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64304 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=383 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64305 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64306 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51165 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=392 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51166 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51167 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65170 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=401 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65171 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64081 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=410 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64082 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64083 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51559 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=419 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51560 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51561 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59399 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=428 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59400 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59401 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59128 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=438 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59129 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59131 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55861 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=447 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55862 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55863 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64217 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=456 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64220 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51407 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=465 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51408 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51409 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55012 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=474 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55014 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55015 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53035 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=484 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53037 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53038 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53475 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=493 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53476 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53477 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57610 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=502 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57611 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57612 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56785 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=511 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56786 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55699 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=520 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55700 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55701 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55409 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=530 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55410 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55411 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58669 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=539 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58670 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55889 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53258 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=548 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53259 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53260 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59403 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=557 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59404 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59405 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62798 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=567 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62800 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62802 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55188 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=576 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55189 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58104 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=585 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58105 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58106 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61142 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=594 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61143 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61144 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63215 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=604 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63216 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63218 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55042 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=612 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55043 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55044 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49291 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=621 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49292 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49293 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52142 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=631 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52144 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61861 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=640 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61862 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61864 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50260 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=649 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50261 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50263 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52595 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=658 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52596 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52597 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62855 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=668 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62857 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58716 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=677 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49788 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49789 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52116 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=686 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52117 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58601 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58793 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=696 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58794 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58795 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63008 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=705 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63009 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63010 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49592 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=714 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49593 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50803 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=723 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50804 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50805 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51173 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=732 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51174 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51175 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62279 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=741 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62280 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62282 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63779 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=751 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63780 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63781 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65153 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=760 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65154 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65155 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54312 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=769 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54313 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63364 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=778 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63365 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63366 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59566 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=788 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59567 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59568 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63748 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=797 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63749 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63750 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57607 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=806 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57608 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57609 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55303 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=815 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55304 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55305 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55180 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=825 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55181 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55182 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61621 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=834 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61622 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57181 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=843 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57182 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57183 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60686 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=852 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60687 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60688 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59338 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=861 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59339 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59340 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54063 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=871 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54064 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54065 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51696 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=880 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51698 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51699 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60520 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=889 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52112 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50285 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=898 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50286 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50287 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53647 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=907 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53648 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53649 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62298 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=917 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62299 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62300 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53910 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=926 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53911 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53912 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59190 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=935 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59191 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59192 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65452 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=944 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65453 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65454 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58002 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=953 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58004 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64021 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=962 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64022 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64023 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54948 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=971 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54949 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54950 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58034 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=981 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58035 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57681 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=990 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57682 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57683 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62324 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=999 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62325 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62326 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61727 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1009 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61728 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61729 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62157 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1018 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62160 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63719 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1027 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63720 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63722 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60769 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1036 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60770 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60772 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52556 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1045 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52557 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52559 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50265 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1055 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50267 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50268 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49952 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1064 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49953 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49954 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63257 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1073 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63258 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52188 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56738 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1082 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56739 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64024 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1091 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64025 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64026 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65193 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1100 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65194 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65195 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53204 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1109 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53205 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53207 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56413 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1118 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56414 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49686 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1127 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49687 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49688 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64219 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1137 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64221 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64222 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50269 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1146 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50270 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50271 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64637 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1155 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64638 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64639 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53845 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1164 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53846 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50730 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49418 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1173 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49419 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55438 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50649 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1183 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50650 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62406 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1191 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62407 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62408 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53093 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1201 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53094 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53095 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59539 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1210 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59540 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59541 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57810 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1219 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57811 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57812 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57343 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1228 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57344 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57345 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60787 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1237 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54395 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54396 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63723 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1247 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63724 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57863 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1256 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57864 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57865 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54243 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1265 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54244 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54245 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54932 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1274 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54933 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54937 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59511 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1283 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59512 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59513 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65057 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1292 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65058 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52883 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1301 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52884 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59315 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54357 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1311 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54358 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61498 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54021 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1320 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54022 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54023 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52320 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1329 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52321 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62953 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1337 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62954 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62955 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56994 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1347 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56995 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56996 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63725 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1357 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63726 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63727 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54823 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1366 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54824 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58931 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1375 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58932 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58933 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52118 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1384 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52119 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52125 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65167 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1394 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61116 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61117 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56384 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1403 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56385 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56386 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59120 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1412 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59121 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59122 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63073 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1421 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63074 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63075 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61187 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1431 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61188 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54486 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1440 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54487 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54488 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62826 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1449 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62827 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62828 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62792 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1458 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62793 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62794 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65100 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1467 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65101 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65102 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51440 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1477 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51441 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51443 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53050 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1486 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53051 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52202 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1495 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52203 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52204 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58602 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1504 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58603 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58604 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52173 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1514 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52174 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52175 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60848 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1523 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60849 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60850 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60187 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1532 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60188 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60190 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51233 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1541 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51234 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56619 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1550 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56620 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56621 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60488 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1559 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60489 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60490 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51029 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1569 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51030 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51032 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50722 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1578 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50723 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50724 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62469 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1587 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62470 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62471 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63166 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1596 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63167 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63168 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60831 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1606 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60833 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60834 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63815 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1615 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64019 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59886 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1624 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59887 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59889 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60332 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1632 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60333 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60334 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54175 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1642 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54176 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52817 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1651 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52818 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52819 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63808 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1660 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63809 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63812 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59450 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1669 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59451 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53586 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1678 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53587 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53588 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57164 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1687 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57165 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57166 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55463 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1698 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59090 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59091 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61256 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1707 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61257 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61258 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62705 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1716 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62706 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63516 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1725 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63517 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63518 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58869 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1734 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58870 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58871 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59855 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1744 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59856 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59857 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61514 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1753 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61515 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61516 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51513 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1762 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51514 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64423 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63481 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1771 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63482 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63483 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64217 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1781 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64220 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54892 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1790 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54893 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54894 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52730 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1799 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52731 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52732 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55732 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1808 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55733 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55734 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63776 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1818 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63777 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63778 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57540 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1827 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57541 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57542 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53677 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1836 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53678 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50637 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1845 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50638 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50640 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60757 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1854 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60758 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60759 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52189 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1864 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65033 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65036 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61742 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1873 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61743 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61744 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62238 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1882 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62239 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62240 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50462 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1891 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50464 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50465 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53834 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1901 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53835 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52292 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1910 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52293 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52294 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65184 - "GET /agents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63728 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1919 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63729 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63730 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60305 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1928 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60306 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60307 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54666 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53976 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/metrics HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50914 - "GET /agent/d67825e0-7e44-4a6d-80f5-3d4faaff3663/vision?t=1937 HTTP/1.1" 404 Not Found

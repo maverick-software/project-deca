@@ -28,7 +28,7 @@ def test_goal_labels_match_state_source():
 
 
 def test_encode_goal_layout_frozen():
-    assert GOAL_VEC_DIM == 8
+    assert GOAL_VEC_DIM == 12  # grew 8 -> 12 in WS-EXPAND E1.3 (positional code)
     # No goal -> all zeros (no conditioning).
     assert encode_goal(None, 0.5) == [0.0] * GOAL_VEC_DIM
     # A latched need -> one-hot at its index + deficit; M4 fields stay zero/off.
@@ -39,6 +39,21 @@ def test_encode_goal_layout_frozen():
     assert v[DEFICIT_IDX] == pytest.approx(0.7)
     assert v[4:8] == [0.0, 0.0, 0.0, 0.0]  # bearing/mask off in M3
     assert v[TARGET_MASK_IDX] == 0.0
+    assert v[8:12] == [0.0, 0.0, 0.0, 0.0]  # E1.3 pose slots off by default
+
+
+def test_e13_positional_slots_populate_when_supplied():
+    import math
+
+    v = encode_goal("energy", 0.2, pos_nx=0.25, pos_ny=-0.5, yaw=math.pi / 2)
+    assert v[8] == pytest.approx(0.25) and v[9] == pytest.approx(-0.5)
+    assert v[10] == pytest.approx(1.0)  # sin(pi/2)
+    assert v[11] == pytest.approx(0.0, abs=1e-9)  # cos(pi/2)
+    # Out-of-range normalized position clamps; partial pose stays all-zero.
+    v2 = encode_goal("energy", 0.2, pos_nx=5.0, pos_ny=-5.0, yaw=0.0)
+    assert v2[8] == 1.0 and v2[9] == -1.0 and v2[11] == 1.0
+    v3 = encode_goal("energy", 0.2, pos_nx=0.5, pos_ny=None, yaw=0.0)
+    assert v3[8:12] == [0.0, 0.0, 0.0, 0.0]
 
 
 def test_encode_goal_clamps_and_survives_bad_input():

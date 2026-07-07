@@ -347,6 +347,7 @@ class AttentionGate:
         hysteresis_k: int | None = None,
         rate_window: int | None = None,
         budget_gain: float | None = None,
+        type2_refractory: int | None = None,
     ) -> None:
         self.threshold = gate_threshold() if threshold is None else float(threshold)
         self.weights = gate_weights() if weights is None else weights
@@ -354,6 +355,17 @@ class AttentionGate:
         self.hysteresis_k = gate_hysteresis_k() if hysteresis_k is None else max(1, int(hysteresis_k))
         self.rate_window = gate_rate_window() if rate_window is None else max(10, int(rate_window))
         self.budget_gain = gate_budget_gain() if budget_gain is None else max(0.0, float(budget_gain))
+        if type2_refractory is None:
+            from decadic.config import type2_refractory_cycles
+
+            type2_refractory = type2_refractory_cycles()
+        self.type2_refractory = max(0, int(type2_refractory))
+        self._type2_cooldown = 0
+        # WS-EXPAND E2.2/E2.3: learning-control threshold bias. Set each cycle
+        # from the LearningController's channels (surprise + excess volatility
+        # -> more willing to deliberate). Bounded by the setter; 0.0 (the
+        # default and the neutral-channel value) is byte-identical to pre-E2.
+        self._modulation_bias = 0.0
         self._history: deque[int] = deque(maxlen=self.rate_window)
         self._latch_remaining = 0
         self.decisions = 0
@@ -384,6 +396,8 @@ class AttentionGate:
     # -- core ------------------------------------------------------------------
     def decide(self, inputs: GateInputs) -> GateDecision:
         self.decisions += 1
+        if self._type2_cooldown > 0:
+            self._type2_cooldown -= 1
         w_nov, w_pe, w_aff, w_pri = self.weights
         w_total = max(1e-9, w_nov + w_pe + w_aff + w_pri)
         contributions = {
@@ -395,23 +409,36 @@ class AttentionGate:
         score = sum(contributions.values())
 
         # Soft budget: overshooting the target rate raises the bar; it can
-        # never block the fast path.
+        # never block the fast path. The learning-control bias (E2) lowers the
+        # bar when the world just got surprising/volatile; it is bounded at
+        # set time, and a floor keeps the gate from becoming free.
         overshoot = max(0.0, self.escalation_rate - self.target_rate)
         threshold_eff = self.threshold + self.budget_gain * overshoot
+        if self._modulation_bias > 0.0:
+            # Floor applies only on the bias path: bias == 0 (flag off /
+            # neutral channels) leaves the arithmetic byte-identical.
+            threshold_eff = max(0.05, threshold_eff - self._modulation_bias)
 
         if inputs.fast_path_threat:
             decision = GateDecision(True, score, threshold_eff, "fast_path", contributions)
             self._latch_remaining = self.hysteresis_k
-        elif inputs.type2_search:
+        elif inputs.type2_search and self._type2_cooldown <= 0:
             # WS-FORAGE M5: need + remembered-but-not-here -> engage the
-            # deliberate path to pursue the resource from memory. Additive (never
-            # suppresses another escalation); the remembered bearing already
-            # conditions the policy (M3/M4), so this makes the agent deliberate
-            # about GETTING there rather than only reacting to what is in view.
+            # deliberate path to pursue the resource from memory. Additive
+            # (never suppresses another escalation). REFRACTORY (2026-07-06):
+            # the condition is level-true for long stretches of a hungry life,
+            # and unbounded re-firing re-deliberated the same intention every
+            # cycle (observed 55% of ALL cycles). The deliberation's output
+            # persists between fires -- the goal vector + bearing condition the
+            # policy continuously and the stage-4 precedent decays -- so one
+            # fire forms the intention, the cooldown covers execution, and the
+            # next fire is a periodic re-check. Type-2 deliberation is thus
+            # bounded near (1 + hysteresis_k) / refractory of cycles.
             decision = GateDecision(
                 True, score, threshold_eff, "type2_memory_search", contributions
             )
             self._latch_remaining = self.hysteresis_k
+            self._type2_cooldown = self.type2_refractory
         elif self._latch_remaining > 0:
             decision = GateDecision(True, score, threshold_eff, "hysteresis", contributions)
             self._latch_remaining -= 1
@@ -425,6 +452,20 @@ class AttentionGate:
         if decision.escalate:
             self.escalations += 1
         return decision
+
+    def set_modulation_bias(self, bias: float) -> None:
+        """WS-EXPAND E2: per-cycle learning-control threshold bias.
+
+        Callers pass ``LearningController.gate_threshold_bias()`` (already
+        bounded); re-clamped here so no caller can push the gate negative or
+        wedge it open. NaN reads as 0 (neutral).
+        """
+        b = float(bias)
+        if b != b:  # NaN guard
+            b = 0.0
+        from decadic.config import lc_gate_max_bias
+
+        self._modulation_bias = min(max(0.0, b), lc_gate_max_bias())
 
     def note_novelty(self, novelty: float, cycle: int) -> float:
         """Record this cycle's novelty input; returns the rolling-window max.
@@ -448,6 +489,7 @@ class AttentionGate:
             "gate_skip_streak": self.skip_streak,
             "gate_latch_remaining": self._latch_remaining,
             "gate_i_novelty_peak": round(float(self.novelty_peak), 6),
+            "gate_modulation_bias": round(float(self._modulation_bias), 6),
         }
 
 

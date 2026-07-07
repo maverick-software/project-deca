@@ -372,6 +372,7 @@ def apply_plasticity_step(
     modulation: float,
     canary_state: str = "healthy",
     canary_pressure: float = 0.0,
+    eta_scale: float = 1.0,
 ) -> dict:
     """Post-optimizer A/B/C updates + instability guard; returns telemetry.
 
@@ -399,9 +400,15 @@ def apply_plasticity_step(
     connections_rewired = 0
     neurons_woken = 0
     if not st.frozen:
-        # A — neuromodulated Hebbian trace update (gated by pleasure - pain).
+        # A — neuromodulated Hebbian trace update. Modulation is the E2 reward
+        # channel (== pleasure - pain, the pre-E2 scalar); eta_scale carries
+        # the uncertainty x surprise rate channels (1.0 when the multi-channel
+        # controller is off/neutral -> byte-identical arithmetic).
         if C.plasticity_enabled() and st.effective_alpha > 0.0:
-            stack.hebbian_update_all(modulation, C.plasticity_eta())
+            eta = C.plasticity_eta()
+            if eta_scale != 1.0:
+                eta = min(0.9, eta * max(0.0, eta_scale))
+            stack.hebbian_update_all(modulation, eta)
 
         # B — keep pruned/dormant weights pinned at 0; periodic prune+grow rewire.
         if C.sparse_enabled():
@@ -797,6 +804,12 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             observation_events=obs_events,
             type2_search=type2,
         )
+        # WS-EXPAND E2.2/E2.3: the learning controller's surprise/volatility
+        # channels (computed at the END of the previous cycle) lower this
+        # cycle's escalation bar. Neutral channels -> bias 0.0 -> byte-parity.
+        lc_prev = getattr(bundle, "_learning_controller", None)
+        if lc_prev is not None and C.learn_control_multi_enabled():
+            attn_gate.set_modulation_bias(lc_prev.gate_threshold_bias())
         gate_decision = attn_gate.decide(gate_inputs)
         # Telemetry-only rolling max: short first-exposure spikes must survive
         # the eval sampler's stride (surfaces as gate_i_novelty_peak).
@@ -1132,6 +1145,44 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                     if torch.isfinite(value):
                         loss = loss - sf_value_w * value  # maximize value
                         sf_value_last = float(value.detach().item())
+
+                    # --- WS-EXPAND E1.6: online rollout action selection ---
+                    # Deliberate cycles only: imagine K variations of the
+                    # chosen action through the interoceptive world model,
+                    # score by the SAME deficit-gated successor value as the
+                    # shaping term above, and bias (never override) the motor
+                    # command toward the best. Effective gain scales with the
+                    # SF ramp share -> a naive agent (ramp 0) never plans;
+                    # trust in the plan grows exactly as trust in the value.
+                    if (
+                        C.planner_enabled()
+                        and gate_decision is not None
+                        and gate_decision.escalate
+                    ):
+                        from decadic.nn.action_planner import plan_action_bias
+                        from decadic.nn.learning_control import effective_sf_gamma
+
+                        ramp_share = min(
+                            1.0, sf_value_w / max(1e-9, C.sf_value_weight())
+                        )
+                        planned = plan_action_bias(
+                            bundle.stack,
+                            z5_t,
+                            motor_u,
+                            intero_now,
+                            w_gated,
+                            k=C.planner_k(),
+                            horizon=C.planner_horizon(),
+                            gamma=effective_sf_gamma(),
+                            sigma=C.planner_sigma(),
+                            bias_gain=C.planner_bias_gain() * ramp_share,
+                            bias_max=C.planner_bias_max(),
+                            cycle=int(ctx.state_bus.cycle_index),
+                        )
+                        if planned is not None:
+                            delta, plan_diag = planned
+                            motor_u = motor_u + delta
+                            ctx.latents["planner"] = plan_diag
 
     # --- Cognitive trace: capture the raw "why" arrays from the action-producing
     # (pre-optimizer-step) weights. Read-only and gated, so the oracle/no-trace
@@ -1731,6 +1782,28 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         _finite(float(l_percept.detach().cpu().item())) if z0_hat is not None else None
     )
 
+    # WS-EXPAND E2: multi-channel learning control. The controller turns this
+    # cycle's prediction error + reward + viability into routed channels:
+    # reward -> the modulation scalar below (unchanged expression), eta_scale ->
+    # the plasticity rate, surprise/volatility -> next cycle's gate threshold
+    # bias (set just before decide()), viability trend -> the published SF
+    # discount (clamped + rate-limited inside the controller). Flag off or
+    # pre-warmup: channels are exactly neutral -> byte-identical cycle.
+    lc_channels = None
+    if C.learn_control_multi_enabled():
+        from decadic.nn import learning_control as LC
+
+        lc = getattr(bundle, "_learning_controller", None)
+        if lc is None:
+            lc = LC.LearningController()
+            bundle._learning_controller = lc
+        lc_channels = lc.update(
+            pc_loss=pc_val,
+            reward=float(ctx.state_bus.pleasure_scalar - ctx.state_bus.pain_scalar),
+            viability=float(getattr(ctx.viability, "value", 100.0)),
+        )
+        LC.publish_gamma(lc_channels.gamma)
+
     # Neuroplasticity post-step (A/B/C). Runs while .grad is still populated so
     # sparse rewiring can score inactive edges by gradient magnitude. No-op when
     # the stack has no plastic blocks (full parity with the dense baseline).
@@ -1741,7 +1814,10 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         modulation=float(ctx.state_bus.pleasure_scalar - ctx.state_bus.pain_scalar),
         canary_state=objective_health.state,
         canary_pressure=objective_health.pressure,
+        eta_scale=(lc_channels.eta_scale if lc_channels is not None else 1.0),
     )
+    if lc_channels is not None and isinstance(plast_diag, dict):
+        plast_diag.update(bundle._learning_controller.telemetry())
 
     # Sanitize every value pulled out of the forward pass: if the network just
     # diverged (NaN/inf), the instability guard above already froze plasticity

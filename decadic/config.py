@@ -2076,12 +2076,248 @@ def type2_min_deficit() -> float:
     return min(1.0, max(0.0, v))
 
 
+# Type-2 refractory (2026-07-06 calibration): the trigger condition (needy +
+# remembered + not-here) is LEVEL-true for long stretches of a hungry life, and
+# an unconditional level-triggered escalation re-deliberated the same intention
+# every cycle (observed: 55% of all cycles -- perseveration, not thought). The
+# deliberation's OUTPUT persists between fires (goal vector + bearing condition
+# the policy continuously; the stage-4 precedent decays), so Type-2 now fires,
+# latches its hysteresis, then holds a cooldown before re-firing on a merely
+# persisting condition -- one intention, execution, periodic re-checks. With
+# hysteresis k, type2-attributable deliberation is bounded near (1+k)/refractory.
+DEFAULT_TYPE2_REFRACTORY_CYCLES = 32
+
+
+def type2_refractory_cycles() -> int:
+    try:
+        return max(0, int(os.environ.get("DECADIC_TYPE2_REFRACTORY_CYCLES", str(DEFAULT_TYPE2_REFRACTORY_CYCLES))))
+    except (TypeError, ValueError):
+        return DEFAULT_TYPE2_REFRACTORY_CYCLES
+
+
 def type2_far_distance() -> float:
     try:
         v = float(os.environ.get("DECADIC_TYPE2_FAR_DISTANCE", str(DEFAULT_TYPE2_FAR_DISTANCE)))
     except (TypeError, ValueError):
         return DEFAULT_TYPE2_FAR_DISTANCE
     return min(1.0, max(0.0, v))
+
+
+# WS-EXPAND E2: multi-channel learning control. Four routed channels replace
+# the single plasticity-modulation scalar: reward (== the old scalar), an
+# expected-uncertainty rate scale (volatility raises it, plain noise lowers
+# it), a transient surprise boost (also raises gate escalation propensity),
+# and a viability-trend discount modulation CLAMPED to [LC_GAMMA_MIN,
+# LC_GAMMA_MAX] and rate-limited to LC_GAMMA_STEP per LC_GAMMA_RATE_CYCLES
+# (the meta-gradient instability guard). Neutral until LC_WARMUP cycles ->
+# birth-identical with the flag ON; the flag is the kill switch. Tests pin OFF.
+DEFAULT_LEARN_CONTROL_MULTI = True
+DEFAULT_LC_WARMUP_CYCLES = 64
+DEFAULT_LC_FAST_ALPHA = 0.2  # fast prediction-error EMA (recent level)
+DEFAULT_LC_SLOW_ALPHA = 0.02  # slow EMA (baseline level; fast-slow = trend)
+DEFAULT_LC_NOISE_ALPHA = 0.05  # EMA of |pc - fast| (noise scale)
+DEFAULT_LC_TREND_ALPHA = 0.05  # viability per-cycle delta EMA
+DEFAULT_LC_NOISE_FLOOR = 1e-3  # regularizer: quiet+converged reads neutral 1.0
+DEFAULT_LC_ETA_MIN_SCALE = 0.25  # noise-dominated stream learns SLOWER, floor
+DEFAULT_LC_ETA_MAX_SCALE = 3.0  # volatility+surprise cap (channels never compound past it)
+DEFAULT_LC_TREND_MARGIN = 2.0  # trend must exceed this x noise before the rate rises
+DEFAULT_LC_SPIKE_K = 3.0  # spike = pc beyond k noise-scales above recent level
+DEFAULT_LC_SURPRISE_TAU = 16.0  # cycles for the transient boost to decay by 1/e
+DEFAULT_LC_SURPRISE_GAIN = 1.0  # spike peak adds up to +100% rate (pre-cap)
+DEFAULT_LC_GAMMA_MIN = 0.99  # hard discount band (default SF_GAMMA 0.995 is inside)
+DEFAULT_LC_GAMMA_MAX = 0.997
+DEFAULT_LC_GAMMA_STEP = 0.0002  # max discount move per rate window
+DEFAULT_LC_GAMMA_RATE_CYCLES = 100  # rate-limit window
+DEFAULT_LC_GAMMA_TREND_SCALE = 0.05  # viability pts/cycle for a full-band swing
+DEFAULT_LC_GATE_SURPRISE_GAIN = 0.10  # threshold drop per unit surprise
+DEFAULT_LC_GATE_UNCERTAINTY_GAIN = 0.05  # threshold drop per unit excess eta-scale
+DEFAULT_LC_GATE_MAX_BIAS = 0.15  # gate keeps a floor: threshold 0.30 never below 0.15
+
+
+def learn_control_multi_enabled() -> bool:
+    return _env_bool("DECADIC_LEARN_CONTROL_MULTI", DEFAULT_LEARN_CONTROL_MULTI)
+
+
+def _lc_float(name: str, default: float, lo: float | None = None, hi: float | None = None) -> float:
+    try:
+        v = float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    if lo is not None:
+        v = max(lo, v)
+    if hi is not None:
+        v = min(hi, v)
+    return v
+
+
+def lc_warmup_cycles() -> int:
+    return max(1, int(_lc_float("DECADIC_LC_WARMUP_CYCLES", DEFAULT_LC_WARMUP_CYCLES, 1)))
+
+
+def lc_fast_alpha() -> float:
+    return _lc_float("DECADIC_LC_FAST_ALPHA", DEFAULT_LC_FAST_ALPHA, 0.001, 1.0)
+
+
+def lc_slow_alpha() -> float:
+    return _lc_float("DECADIC_LC_SLOW_ALPHA", DEFAULT_LC_SLOW_ALPHA, 0.0001, 1.0)
+
+
+def lc_noise_alpha() -> float:
+    return _lc_float("DECADIC_LC_NOISE_ALPHA", DEFAULT_LC_NOISE_ALPHA, 0.001, 1.0)
+
+
+def lc_trend_alpha() -> float:
+    return _lc_float("DECADIC_LC_TREND_ALPHA", DEFAULT_LC_TREND_ALPHA, 0.001, 1.0)
+
+
+def lc_noise_floor() -> float:
+    return _lc_float("DECADIC_LC_NOISE_FLOOR", DEFAULT_LC_NOISE_FLOOR, 1e-9)
+
+
+def lc_eta_min_scale() -> float:
+    return _lc_float("DECADIC_LC_ETA_MIN_SCALE", DEFAULT_LC_ETA_MIN_SCALE, 0.0, 1.0)
+
+
+def lc_eta_max_scale() -> float:
+    return _lc_float("DECADIC_LC_ETA_MAX_SCALE", DEFAULT_LC_ETA_MAX_SCALE, 1.0)
+
+
+def lc_trend_margin() -> float:
+    return _lc_float("DECADIC_LC_TREND_MARGIN", DEFAULT_LC_TREND_MARGIN, 1.0)
+
+
+def lc_spike_k() -> float:
+    return _lc_float("DECADIC_LC_SPIKE_K", DEFAULT_LC_SPIKE_K, 0.5)
+
+
+def lc_surprise_tau() -> float:
+    return _lc_float("DECADIC_LC_SURPRISE_TAU", DEFAULT_LC_SURPRISE_TAU, 1.0)
+
+
+def lc_surprise_gain() -> float:
+    return _lc_float("DECADIC_LC_SURPRISE_GAIN", DEFAULT_LC_SURPRISE_GAIN, 0.0)
+
+
+def lc_gamma_min() -> float:
+    return _lc_float("DECADIC_LC_GAMMA_MIN", DEFAULT_LC_GAMMA_MIN, 0.0, 0.9999)
+
+
+def lc_gamma_max() -> float:
+    return max(lc_gamma_min(), _lc_float("DECADIC_LC_GAMMA_MAX", DEFAULT_LC_GAMMA_MAX, 0.0, 0.9999))
+
+
+def lc_gamma_step() -> float:
+    return _lc_float("DECADIC_LC_GAMMA_STEP", DEFAULT_LC_GAMMA_STEP, 0.0)
+
+
+def lc_gamma_rate_cycles() -> int:
+    return max(1, int(_lc_float("DECADIC_LC_GAMMA_RATE_CYCLES", DEFAULT_LC_GAMMA_RATE_CYCLES, 1)))
+
+
+def lc_gamma_trend_scale() -> float:
+    return _lc_float("DECADIC_LC_GAMMA_TREND_SCALE", DEFAULT_LC_GAMMA_TREND_SCALE, 1e-6)
+
+
+def lc_gate_surprise_gain() -> float:
+    return _lc_float("DECADIC_LC_GATE_SURPRISE_GAIN", DEFAULT_LC_GATE_SURPRISE_GAIN, 0.0)
+
+
+def lc_gate_uncertainty_gain() -> float:
+    return _lc_float("DECADIC_LC_GATE_UNCERTAINTY_GAIN", DEFAULT_LC_GATE_UNCERTAINTY_GAIN, 0.0)
+
+
+def lc_gate_max_bias() -> float:
+    return _lc_float("DECADIC_LC_GATE_MAX_BIAS", DEFAULT_LC_GATE_MAX_BIAS, 0.0, 0.5)
+
+
+# WS-EXPAND E1: cognitive map — pose estimation, experiential breadcrumb graph
+# with MEASURED hop costs, and stall-gated waypoint routing. Conservative by
+# design: the straight-line bearing stays the default; the planner only diverts
+# a target's bearing after repeated measured stalls (evidence the direct route
+# fails). Default ON (pose/graph accrue silently; behavior identical until a
+# blockage is evidenced); tests pin OFF.
+DEFAULT_COGNITIVE_MAP = True
+DEFAULT_CMAP_BREADCRUMB_M = 1.5  # meters of measured travel per breadcrumb node
+DEFAULT_CMAP_CONNECT_RADIUS_M = 3.0  # max anchor distance for plan endpoints
+DEFAULT_CMAP_MAX_NODES = 512  # graph memory bound (oldest breadcrumbs evicted)
+DEFAULT_CMAP_STALL_CYCLES = 150  # ~40 s at 4 cyc/s without progress = one strike
+DEFAULT_CMAP_MIN_PROGRESS_M = 0.15  # approach that counts as progress
+DEFAULT_CMAP_BLOCK_THRESHOLD = 2  # strikes before the planner may reroute
+DEFAULT_CMAP_POSE_BLEND = 0.5  # complementary-filter gain toward observed pose
+DEFAULT_CMAP_POS_SCALE_M = 20.0  # world meters mapping to +/-1.0 positional code
+
+
+def cognitive_map_enabled() -> bool:
+    return _env_bool("DECADIC_COGNITIVE_MAP", DEFAULT_COGNITIVE_MAP)
+
+
+def cmap_breadcrumb_m() -> float:
+    return _lc_float("DECADIC_CMAP_BREADCRUMB_M", DEFAULT_CMAP_BREADCRUMB_M, 0.1)
+
+
+def cmap_connect_radius_m() -> float:
+    return _lc_float("DECADIC_CMAP_CONNECT_RADIUS_M", DEFAULT_CMAP_CONNECT_RADIUS_M, 0.1)
+
+
+def cmap_max_nodes() -> int:
+    return max(8, int(_lc_float("DECADIC_CMAP_MAX_NODES", DEFAULT_CMAP_MAX_NODES, 8)))
+
+
+def cmap_stall_cycles() -> int:
+    return max(5, int(_lc_float("DECADIC_CMAP_STALL_CYCLES", DEFAULT_CMAP_STALL_CYCLES, 5)))
+
+
+def cmap_min_progress_m() -> float:
+    return _lc_float("DECADIC_CMAP_MIN_PROGRESS_M", DEFAULT_CMAP_MIN_PROGRESS_M, 0.001)
+
+
+def cmap_block_threshold() -> int:
+    return max(1, int(_lc_float("DECADIC_CMAP_BLOCK_THRESHOLD", DEFAULT_CMAP_BLOCK_THRESHOLD, 1)))
+
+
+def cmap_pose_blend() -> float:
+    return _lc_float("DECADIC_CMAP_POSE_BLEND", DEFAULT_CMAP_POSE_BLEND, 0.01, 1.0)
+
+
+def cmap_pos_scale_m() -> float:
+    return _lc_float("DECADIC_CMAP_POS_SCALE_M", DEFAULT_CMAP_POS_SCALE_M, 1.0)
+
+
+# WS-EXPAND E1.6: online rollout action selection on the deliberate path.
+# K sampled action variations, short interoceptive rollout truncated by the
+# successor value, bounded bias toward the best. Effective bias additionally
+# scales with the SF value ramp share, so a naive agent never plans (birth-
+# identical); the search only runs on escalated cycles (refractory-bounded).
+DEFAULT_PLANNER = True
+DEFAULT_PLANNER_K = 7  # sampled candidates (+1 for the policy's own choice)
+DEFAULT_PLANNER_HORIZON = 5  # short rollout steps (compounding-error control)
+DEFAULT_PLANNER_SIGMA = 0.3  # candidate perturbation scale in action units
+DEFAULT_PLANNER_BIAS_GAIN = 0.5  # fraction of the winning delta applied
+DEFAULT_PLANNER_BIAS_MAX = 0.25  # L-inf clamp on the delta before gain
+
+
+def planner_enabled() -> bool:
+    return _env_bool("DECADIC_PLANNER", DEFAULT_PLANNER)
+
+
+def planner_k() -> int:
+    return max(0, int(_lc_float("DECADIC_PLANNER_K", DEFAULT_PLANNER_K, 0, 64)))
+
+
+def planner_horizon() -> int:
+    return max(1, int(_lc_float("DECADIC_PLANNER_HORIZON", DEFAULT_PLANNER_HORIZON, 1, 32)))
+
+
+def planner_sigma() -> float:
+    return _lc_float("DECADIC_PLANNER_SIGMA", DEFAULT_PLANNER_SIGMA, 0.01, 2.0)
+
+
+def planner_bias_gain() -> float:
+    return _lc_float("DECADIC_PLANNER_BIAS_GAIN", DEFAULT_PLANNER_BIAS_GAIN, 0.0, 1.0)
+
+
+def planner_bias_max() -> float:
+    return _lc_float("DECADIC_PLANNER_BIAS_MAX", DEFAULT_PLANNER_BIAS_MAX, 0.0, 1.0)
 
 
 def sf_gamma() -> float:

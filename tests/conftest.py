@@ -110,6 +110,19 @@ def _baseline_faculties(monkeypatch):
     monkeypatch.setenv("DECADIC_GOAL_CONDITIONED_POLICY", "0")
     monkeypatch.setenv("DECADIC_GOAL_BEARING", "0")
     monkeypatch.setenv("DECADIC_TYPE2_SEARCH", "0")
+    # WS-EXPAND E2: multi-channel learning control is prod-on (neutral until
+    # warmup -> birth-identical) but pinned OFF in the suite so plasticity/gate
+    # numeric expectations stay deterministic; test_learning_control.py enables
+    # it explicitly.
+    monkeypatch.setenv("DECADIC_LEARN_CONTROL_MULTI", "0")
+    # WS-EXPAND E1: cognitive map is prod-on (behavior-identical until a
+    # measured stall evidences a blockage) but pinned OFF in the suite;
+    # test_cognitive_map.py enables it explicitly.
+    monkeypatch.setenv("DECADIC_COGNITIVE_MAP", "0")
+    # WS-EXPAND E1.6: rollout planner is prod-on (inert until the SF value
+    # ramp opens) but pinned OFF in the suite; test_action_planner.py tests
+    # the helper directly.
+    monkeypatch.setenv("DECADIC_PLANNER", "0")
 
 
 @pytest.fixture

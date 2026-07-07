@@ -87,6 +87,7 @@ from decadic.config import (
     work_energy_scale,
 )
 from decadic.consolidation.consolidator import ConsolidationManager
+from decadic.nn.learning_control import effective_sf_gamma
 from decadic.consolidation.landscape import LossLandscapeProbe
 from decadic.consolidation.episodes import (
     EpisodeAccumulator,
@@ -372,10 +373,22 @@ class AgentRuntime:
         )
         # Ordered goal-episode accumulator: collects the live transitions of each
         # open goal and writes lambda-returns back into them (in the replay buffer)
-        # when it closes -- the distal credit-assignment timeline.
+        # when it closes -- the distal credit-assignment timeline. The discount is
+        # resolved at close time through the E2 horizon channel (== config value
+        # when the multi-channel controller is off/neutral).
         self._episode_acc = EpisodeAccumulator(
-            gamma=sf_gamma(), lam=sf_lambda(), normalize=sf_normalize_returns()
+            gamma=sf_gamma(),
+            lam=sf_lambda(),
+            normalize=sf_normalize_returns(),
+            gamma_provider=effective_sf_gamma,
         )
+        # WS-EXPAND E1: cognitive map — pose estimate + experiential breadcrumb
+        # graph + stall-gated waypoint routing. Constructed unconditionally
+        # (cheap); every USE is behind C.cognitive_map_enabled(). Reset with
+        # the mind (a new life maps anew).
+        from decadic.state.cognitive_map import CognitiveMap
+
+        self._cognitive_map = CognitiveMap()
         self._consolidator: ConsolidationManager | None = None
         # Live loss-landscape probe (visualization only): a flagged background task
         # evaluates a filter-normalized 2D slice of the live objective on its own
@@ -2313,8 +2326,14 @@ class AgentRuntime:
                 max_cycles=goal_max_cycles(),
             )
             self._episode_acc = EpisodeAccumulator(
-            gamma=sf_gamma(), lam=sf_lambda(), normalize=sf_normalize_returns()
+            gamma=sf_gamma(),
+            lam=sf_lambda(),
+            normalize=sf_normalize_returns(),
+            gamma_provider=effective_sf_gamma,
         )
+            from decadic.state.cognitive_map import CognitiveMap as _CMap
+
+            self._cognitive_map = _CMap()  # E1: new life, fresh map
             self._cognitive_history.clear()
             self._obs_buffer.clear()
             self._clear_perception_pipeline()
@@ -2771,12 +2790,29 @@ class AgentRuntime:
             idx = max(range(len(deficits)), key=deficits.__getitem__)
             goal_id = GOAL_LABELS[idx]
             b_cos, b_sin, b_dist = self._goal_bearing(goal_id)  # M4 (None if unknown)
+            # WS-EXPAND E1.3: positional code — the map's pose, normalized to
+            # [-1, 1], through the (zero-init/zero-padded) ingress. None when
+            # the map is off or has no fix -> slots stay zero (pre-E1 parity).
+            pos_nx = pos_ny = pose_yaw = None
+            if C.cognitive_map_enabled():
+                try:
+                    pose = self._cognitive_map.pose()
+                    if pose is not None:
+                        scale = C.cmap_pos_scale_m()
+                        pos_nx = pose[0] / scale
+                        pos_ny = pose[1] / scale
+                        pose_yaw = pose[2]
+                except Exception:
+                    pos_nx = pos_ny = pose_yaw = None
             return encode_goal(
                 goal_id,
                 deficits[idx],
                 bearing_cos=b_cos,
                 bearing_sin=b_sin,
                 distance=b_dist,
+                pos_nx=pos_nx,
+                pos_ny=pos_ny,
+                yaw=pose_yaw,
             )
         except Exception:
             return None
@@ -2806,8 +2842,32 @@ class AgentRuntime:
             ori = prop.get("orientation")  # [roll, pitch, yaw]
             if not spos or not ori or len(ori) < 3 or len(spos) < 2:
                 return None, None, None
+            # WS-EXPAND E1.5: stall-gated waypoint routing. The straight-line
+            # bearing stays the default; only after the map has EVIDENCE that
+            # direct pursuit of this target stalls (repeated no-progress
+            # strikes) does the bearing point at the first hop of an A* route
+            # through the experiential breadcrumb graph. Defensive: any
+            # failure leaves the direct bearing untouched.
+            tpos_eff = tpos
+            if C.cognitive_map_enabled():
+                try:
+                    cmap = self._cognitive_map
+                    cmap.note_landmark(_tid, tpos)
+                    dist_m = math.hypot(
+                        float(tpos[0]) - float(spos[0]), float(tpos[1]) - float(spos[1])
+                    )
+                    cmap.note_pursuit(_tid, dist_m)
+                    wp = cmap.plan_next_waypoint(
+                        (float(spos[0]), float(spos[1])),
+                        (float(tpos[0]), float(tpos[1])),
+                        _tid,
+                    )
+                    if wp is not None:
+                        tpos_eff = [wp[0], wp[1], tpos[2] if len(tpos) > 2 else 0.0]
+                except Exception:
+                    tpos_eff = tpos
             return egocentric_bearing(
-                spos, float(ori[2]), tpos, max_dist=C.goal_bearing_max_dist()
+                spos, float(ori[2]), tpos_eff, max_dist=C.goal_bearing_max_dist()
             )
         except Exception:
             return None, None, None
@@ -2820,6 +2880,16 @@ class AgentRuntime:
         result into metrics. Returns the lifecycle events; the episodic-replay
         pathway consumes them to open/close return-annotated episodes.
         """
+        # WS-EXPAND E1.1: advance the cognitive map's pose from this cycle's
+        # proprioception (observed position -> complementary blend; breadcrumbs
+        # + measured hop costs accrue as a side effect). Fully defensive.
+        if C.cognitive_map_enabled():
+            try:
+                obs = self._last_observation if isinstance(self._last_observation, dict) else {}
+                self._cognitive_map.update_pose(obs.get("proprioception"))
+                self.metrics.update(self._cognitive_map.telemetry())
+            except Exception:
+                pass
         gs = self.goal_state
         cycle = int(self.state_bus.cycle_index)
         events = gs.update(self._reservoirs_norm(), cycle, alive=(self.status == "alive"))
@@ -2873,7 +2943,7 @@ class AgentRuntime:
         if not achieved or max(achieved) <= 1e-6:
             return  # nothing was actually achieved -> no hindsight success to learn
         copies = build_hindsight_copies(
-            steps, achieved, gamma=sf_gamma(), lam=sf_lambda(), k=her_relabel_k(),
+            steps, achieved, gamma=effective_sf_gamma(), lam=sf_lambda(), k=her_relabel_k(),
             normalize=sf_normalize_returns(),
         )
         pushed = sum(1 for c in copies if self.replay_buffer.push(c))
@@ -3128,16 +3198,27 @@ class AgentRuntime:
         voice = params.get("voice") if isinstance(params, dict) else None
         if not isinstance(voice, list) or not voice:
             return
-        from decadic.audio.vocal_tract import VOICE_DIM, FormantSynth
+        from decadic.audio.vocal_tract import VOICE_DIM, FormantSynth, phonating
 
         vec = [float(x) for x in voice[:VOICE_DIM]]
         vec += [0.0] * (VOICE_DIM - len(vec))
+        self.metrics["voice_params"] = [round(v, 4) for v in vec]
+        # Phonation gate (WS6 2026-07-06): if the larynx is closed this cycle
+        # the agent is SILENT -- render nothing, loop back nothing, play
+        # nothing. Silence is the default DECISION (zero-init gate = closed),
+        # not a tone to mute. Track prev_params through the silent intent so
+        # the next open interpolates from the true resting state.
+        is_phon = phonating(vec)
+        self.metrics["voice_phonating"] = bool(is_phon)
+        if not is_phon:
+            self._voice_prev_params = vec
+            return
         synth = getattr(self, "_voice_synth", None)
         if synth is None:
             synth = FormantSynth()
             self._voice_synth = synth
             # The first frame interpolates FROM silence -- click-free birth.
-            self._voice_prev_params = [-1.0] + [0.0] * (VOICE_DIM - 1)
+            self._voice_prev_params = [0.0] * VOICE_DIM
         # One cycle-period of samples at 16 kHz so consecutive frames tile the
         # timeline seamlessly (~1600 @ the default ~100 ms cycle); clamped so a
         # stalled clock can never render minutes of audio in one cycle.
@@ -3147,7 +3228,6 @@ class AgentRuntime:
             self._voice_prev_params, vec, n_samples=n_samples, sample_rate=16000
         )
         self._voice_prev_params = vec
-        self.metrics["voice_params"] = [round(v, 4) for v in vec]
         # (1) Self-hearing loopback: ALWAYS when the intake is on. The agent
         # must hear itself through the same organ it hears the world with.
         if C.audio_intake_mode() != "off":

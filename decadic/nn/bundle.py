@@ -354,6 +354,25 @@ class NeuralBundle:
         # the cognitive stack is restored verbatim.
         incoming = payload["stack"]
         own = self.stack.state_dict()
+        # WS-EXPAND E1.3: the goal-vector layout GREW (8 -> 12 with positional
+        # slots appended). An old checkpoint's trained goal_ingress must not be
+        # dropped by the shape filter: pad the weight with ZERO input columns —
+        # function-preserving (the new inputs contribute exactly 0 until
+        # trained), so the M3/M4-earned conditioning survives the migration.
+        _gk = "goal_ingress.weight"
+        if _gk in incoming and _gk in own:
+            _v, _t = incoming[_gk], own[_gk]
+            if (
+                hasattr(_v, "shape")
+                and len(_v.shape) == 2
+                and _v.shape[0] == _t.shape[0]
+                and _v.shape[1] < _t.shape[1]
+            ):
+                pad = torch.zeros(
+                    _v.shape[0], _t.shape[1] - _v.shape[1], dtype=_v.dtype, device=_v.device
+                )
+                incoming = dict(incoming)
+                incoming[_gk] = torch.cat([_v, pad], dim=1)
         compatible = {
             k: v
             for k, v in incoming.items()

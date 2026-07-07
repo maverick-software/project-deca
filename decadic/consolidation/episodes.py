@@ -42,6 +42,13 @@ class EpisodeAccumulator:
     lam: float
     max_steps: int = 4096  # bound retained refs per open episode (memory safety)
     normalize: bool = False  # WS-FORAGE M1: (1-gamma) target normalization
+    # WS-EXPAND E2.4: optional live discount source, resolved at close time so
+    # the horizon channel's (clamped, rate-limited) discount reaches episode
+    # returns. None -> the constructor-time ``gamma`` exactly (pre-E2 behavior;
+    # with the flag off the provider also returns the config value, so both
+    # paths agree). Returns are normalized by (1-gamma) when ``normalize`` is
+    # on, so magnitude stays comparable across small discount moves.
+    gamma_provider: Any = None
 
     _episode_id: int = 0
     _open: bool = False
@@ -96,11 +103,17 @@ class EpisodeAccumulator:
             return []
         rewards = [float(getattr(t, "reward", 0.0)) for t in steps]
         feats = [_as_list(getattr(t, "feat", None)) for t in steps]
+        gamma = self.gamma
+        if self.gamma_provider is not None:
+            try:
+                gamma = float(self.gamma_provider())
+            except Exception:
+                gamma = self.gamma  # provider failure -> constructor value
         rets = lambda_returns(
-            rewards, gamma=self.gamma, lam=self.lam, normalize=self.normalize
+            rewards, gamma=gamma, lam=self.lam, normalize=self.normalize
         )
         sf_targets = lambda_returns_vec(
-            feats, gamma=self.gamma, lam=self.lam, normalize=self.normalize
+            feats, gamma=gamma, lam=self.lam, normalize=self.normalize
         )
         for t, g, sft in zip(steps, rets, sf_targets):
             t.ret = float(g)

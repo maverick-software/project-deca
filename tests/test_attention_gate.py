@@ -52,6 +52,25 @@ def test_type2_search_latches_hysteresis():
     assert g.decide(GateInputs()).reason == "hysteresis"
 
 
+def test_type2_refractory_prevents_perseveration():
+    # A PERSISTING condition must not re-deliberate every cycle: fire, latch
+    # hysteresis, cool down (execution), then a periodic re-check -- Type-2
+    # deliberation bounded near (1+k)/refractory instead of ~100%.
+    g = _gate(hysteresis_k=2, type2_refractory=6)
+    seq = [g.decide(GateInputs(type2_search=True)).reason for _ in range(13)]
+    assert seq[0] == "type2_memory_search"
+    assert seq[1:3] == ["hysteresis", "hysteresis"]
+    assert all(r == "skip" for r in seq[3:6])  # cooling down: no re-fire on a level
+    assert seq[6] == "type2_memory_search"  # periodic re-check
+    assert seq[7:9] == ["hysteresis", "hysteresis"]
+    assert seq[12] == "type2_memory_search"  # steady period == refractory
+    # refractory=0 is the env escape hatch back to level-triggered behavior.
+    g0 = _gate(hysteresis_k=2, type2_refractory=0)
+    assert [g0.decide(GateInputs(type2_search=True)).reason for _ in range(3)] == [
+        "type2_memory_search"
+    ] * 3
+
+
 def test_type2_trigger_truth_table():
     from decadic.cycle.attention_gate import type2_trigger
 
