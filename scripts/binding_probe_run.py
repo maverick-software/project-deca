@@ -18,7 +18,15 @@ import time
 import urllib.request
 from pathlib import Path
 
-KEEP = ("cycle", "cycles_completed", "cycle_index", "priority_scalar", "pain_scalar", "priority_label")
+KEEP = (
+    "cycle",
+    "cycles_completed",
+    "cycle_index",
+    "priority_scalar",
+    "pain_scalar",
+    "priority_label",
+    "viability",
+)
 
 
 def _get(url: str) -> dict | None:
@@ -76,6 +84,8 @@ def main() -> int:
     )
     n = 0
     t0 = time.time()
+    last_cycle = None
+    stall_polls = 0
     try:
         with out.open("w", encoding="utf-8") as f:
             while client.poll() is None:
@@ -88,8 +98,30 @@ def main() -> int:
                     # with the freshest sent frame, so t/rate maps samples to
                     # scenario steps (the verdict windows on this).
                     row["step_est"] = round(row["t"] / max(0.01, args.rate), 1)
+                    # RECORD FIRST, then evaluate watchdogs: the checker's
+                    # DIED/STALLED validity guard needs the terminal sample on
+                    # disk (an abort that drops it would hide the evidence).
                     f.write(json.dumps(row) + "\n")
                     n += 1
+                    # Death / cognitive-arrest watchdog (2026-07-06, run B: the
+                    # agent DIED at cycle 1268 and the probe polled the corpse
+                    # for 20 minutes). Viability 0 or a frozen cycle counter
+                    # aborts loudly -- a dead agent yields no verdict data.
+                    via = src.get("viability")
+                    if isinstance(via, (int, float)) and via <= 0.0:
+                        f.flush()
+                        print(f"[probe] ABORT: agent died (viability={via}) at t={time.time()-t0:.0f}s")
+                        break
+                    cyc_now = src.get("cycles_completed")
+                    if cyc_now is not None and cyc_now == last_cycle:
+                        stall_polls += 1
+                        if stall_polls >= 60:  # ~30 s with no cycle progress
+                            f.flush()
+                            print(f"[probe] ABORT: cycle counter frozen at {cyc_now} for 30s (cognitive arrest)")
+                            break
+                    else:
+                        stall_polls = 0
+                        last_cycle = cyc_now
                     if n % 60 == 0:
                         f.flush()
                         step_est = row["t"] / max(0.01, args.rate)

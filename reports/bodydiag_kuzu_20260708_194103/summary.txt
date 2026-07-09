@@ -1,0 +1,9 @@
+body diag: graph_backend=kuzu seconds=600 stamp=20260708_194103
+insufficient samples - see logs
+freeze watchdog: no stalls detected
+body stderr tail:
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\socket.py", line 719, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+TimeoutError: timed out

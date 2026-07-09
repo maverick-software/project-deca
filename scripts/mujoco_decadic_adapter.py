@@ -793,6 +793,89 @@ def body_events(
     return events, fallen
 
 
+class _Companion:
+    """WS-DEPTH A1 — a second, body-pose-perceivable entity in the arena.
+
+    Two movement modes exercise the E10 adaptivity gate from both sides:
+    ``scripted`` walks a constant-velocity line between two waypoints (a
+    ballistic prior predicts it -> the gate must stay CLOSED), ``adaptive``
+    pursues the agent with heading jitter and sharp random direction changes
+    (defeats the prior -> the gate must OPEN, the other-vector populates, and
+    the E10.4 inverse model gets a demonstrator whose joint pose it can see).
+    Kinematic, not physically simulated: this is a perceivable other, not a
+    second brain (keeps the diag's one-cognition guarantee intact).
+    """
+
+    def __init__(self, mode: str = "scripted") -> None:
+        import random as _rnd
+        import time as _time
+
+        self.mode = mode if mode in ("scripted", "adaptive") else "scripted"
+        self.pos = [3.0, 3.0, 0.9]
+        self._wp = ([3.0, 3.0], [-3.0, 3.0])  # scripted patrol segment
+        self._leg = 0
+        self.speed = 0.6  # m/s
+        self._rng = _rnd.Random(1337)
+        self._last_t = _time.monotonic()
+        self._heading = 0.0
+        self._travel = 0.0
+
+    def step(self, agent_pos: "list[float]") -> None:
+        import math as _math
+        import time as _time
+
+        now = _time.monotonic()
+        dt = max(0.0, min(0.25, now - self._last_t))
+        self._last_t = now
+        if dt <= 0.0:
+            return
+        if self.mode == "scripted":
+            tgt = self._wp[self._leg]
+            dx, dy = tgt[0] - self.pos[0], tgt[1] - self.pos[1]
+            d = _math.hypot(dx, dy)
+            if d < 0.1:
+                self._leg = 1 - self._leg
+                return
+            step = min(d, self.speed * dt)
+            self.pos[0] += step * dx / d
+            self.pos[1] += step * dy / d
+            self._travel += step
+        else:  # adaptive: pursue with jitter + sharp random re-heading
+            dx, dy = agent_pos[0] - self.pos[0], agent_pos[1] - self.pos[1]
+            base = _math.atan2(dy, dx)
+            if self._rng.random() < 0.15:  # sharp change: prior-defeating
+                self._heading = base + self._rng.uniform(-1.8, 1.8)
+            else:
+                self._heading = base + self._rng.uniform(-0.5, 0.5)
+            d = _math.hypot(dx, dy)
+            spd = self.speed if d > 1.2 else 0.2 * self.speed  # keeps distance
+            step = spd * dt
+            self.pos[0] += step * _math.cos(self._heading)
+            self.pos[1] += step * _math.sin(self._heading)
+            self._travel += step
+
+    def entity(self, agent_pos: "list[float]") -> dict:
+        import math as _math
+
+        # A gait-like joint pose keyed to distance traveled: enough signal for
+        # observation-side pose perception and E10.4 labeling.
+        phase = self._travel * 4.0
+        joints = [
+            round(0.5 * _math.sin(phase + k * _math.pi / 4.0), 4) for k in range(8)
+        ]
+        return {
+            "id": "companion",
+            "kind": "agent",
+            "position": [round(p, 4) for p in self.pos],
+            "relative": [round(self.pos[i] - agent_pos[i], 4) for i in range(3)],
+            "pose_joints": joints,
+            "mode": self.mode,
+        }
+
+
+_COMPANION: "_Companion | None" = None
+
+
 def build_body_observation(
     snap: BodySnapshot,
     *,
@@ -819,6 +902,14 @@ def build_body_observation(
                 "relative": [ppos[i] - pos[i] for i in range(3)],
             }
         )
+    # WS-DEPTH A1: the companion is a perceivable other with a visible pose —
+    # stepped here (kinematic, wall-clock dt) and appended as one more entity.
+    if _COMPANION is not None:
+        try:
+            _COMPANION.step(pos)
+            entities.append(_COMPANION.entity(pos))
+        except Exception:
+            pass
 
     standing = pos[2] >= FALL_ROOT_HEIGHT
 
@@ -3254,6 +3345,21 @@ async def _run(
                                 seed = None
                         used = sim._randomize_resources(seed)
                         print(f"[body] resources randomized (seed={used})", flush=True)
+                    elif cmd.startswith("companion_spawn"):
+                        # WS-DEPTH A1: "companion_spawn" | "companion_spawn:adaptive"
+                        global _COMPANION
+                        _mode = cmd.split(":", 1)[1] if ":" in cmd else "scripted"
+                        _COMPANION = _Companion(mode=_mode)
+                        print(f"[body] companion spawned (mode={_COMPANION.mode})")
+                    elif cmd.startswith("companion_mode:"):
+                        if _COMPANION is not None:
+                            _m = cmd.split(":", 1)[1]
+                            if _m in ("scripted", "adaptive"):
+                                _COMPANION.mode = _m
+                                print(f"[body] companion mode -> {_m}")
+                    elif cmd == "companion_despawn":
+                        _COMPANION = None
+                        print("[body] companion despawned")
                     elif cmd in ("npc_pause", "parent_pause"):
                         sim._npc_frozen = True
                         if sim.crowd is not None:

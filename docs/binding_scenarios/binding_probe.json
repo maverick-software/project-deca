@@ -1,11 +1,13 @@
 {
-  "workstream": "WS5-M5.1",
-  "relation": "threat_adjacency",
+  "workstream": "WS5-M5.1-v3",
+  "relation": "predator_prey_threat_adjacency",
   "seed": 42,
+  "laps": 2,
   "entities": [
     {
       "id": "ent-A",
       "kind": "entity",
+      "role_truth": "predator",
       "appearance": [
         0.085916,
         -0.293226,
@@ -35,6 +37,7 @@
     {
       "id": "ent-B",
       "kind": "entity",
+      "role_truth": "predator",
       "appearance": [
         0.118533,
         -0.308227,
@@ -64,6 +67,7 @@
     {
       "id": "ent-C",
       "kind": "entity",
+      "role_truth": "prey",
       "appearance": [
         -0.199155,
         -0.316387,
@@ -93,6 +97,7 @@
     {
       "id": "ent-D",
       "kind": "entity",
+      "role_truth": "prey",
       "appearance": [
         0.203642,
         0.020271,
@@ -122,6 +127,7 @@
     {
       "id": "ent-E",
       "kind": "entity",
+      "role_truth": "prey",
       "appearance": [
         0.260759,
         0.290867,
@@ -151,6 +157,7 @@
     {
       "id": "ent-F",
       "kind": "entity",
+      "role_truth": "prey",
       "appearance": [
         0.153789,
         -0.222861,
@@ -180,410 +187,494 @@
   ],
   "schedule": [
     {
-      "start": 600,
-      "steps": 120,
-      "pair": [
-        "ent-E",
-        "ent-F"
-      ],
-      "kind": "train",
-      "gap": 1.5,
-      "event": {
-        "type": "threat_near",
-        "intensity": 0.6,
-        "every": 10
-      }
-    },
-    {
-      "start": 1000,
-      "steps": 120,
+      "start": 300,
+      "steps": 80,
       "pair": [
         "ent-B",
         "ent-E"
       ],
-      "kind": "train",
+      "kind": "train_threat",
       "gap": 1.5,
       "event": {
-        "type": "threat_near",
-        "intensity": 0.6,
-        "every": 10
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
       }
     },
     {
-      "start": 1400,
-      "steps": 120,
+      "start": 480,
+      "steps": 80,
+      "pair": [
+        "ent-D",
+        "ent-E"
+      ],
+      "kind": "train_safe",
+      "gap": 1.5,
+      "event": {
+        "type": "heal",
+        "intensity": 0.8,
+        "every": 25
+      }
+    },
+    {
+      "start": 660,
+      "steps": 80,
+      "pair": [
+        "ent-B",
+        "ent-F"
+      ],
+      "kind": "train_threat",
+      "gap": 1.5,
+      "event": {
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
+      }
+    },
+    {
+      "start": 840,
+      "steps": 80,
+      "pair": [
+        "ent-C",
+        "ent-F"
+      ],
+      "kind": "train_safe",
+      "gap": 1.5,
+      "event": {
+        "type": "heal",
+        "intensity": 0.8,
+        "every": 25
+      }
+    },
+    {
+      "start": 1020,
+      "steps": 80,
+      "pair": [
+        "ent-A",
+        "ent-C"
+      ],
+      "kind": "train_threat",
+      "gap": 1.5,
+      "event": {
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
+      }
+    },
+    {
+      "start": 1200,
+      "steps": 80,
+      "pair": [
+        "ent-D",
+        "ent-F"
+      ],
+      "kind": "train_safe",
+      "gap": 1.5,
+      "event": {
+        "type": "heal",
+        "intensity": 0.8,
+        "every": 25
+      }
+    },
+    {
+      "start": 1380,
+      "steps": 80,
+      "pair": [
+        "ent-B",
+        "ent-D"
+      ],
+      "kind": "train_threat",
+      "gap": 1.5,
+      "event": {
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
+      }
+    },
+    {
+      "start": 1560,
+      "steps": 80,
+      "pair": [
+        "ent-A",
+        "ent-B"
+      ],
+      "kind": "train_safe",
+      "gap": 1.5,
+      "event": {
+        "type": "heal",
+        "intensity": 0.8,
+        "every": 25
+      }
+    },
+    {
+      "start": 1740,
+      "steps": 80,
       "pair": [
         "ent-A",
         "ent-F"
       ],
-      "kind": "train",
+      "kind": "train_threat",
       "gap": 1.5,
       "event": {
-        "type": "threat_near",
-        "intensity": 0.6,
-        "every": 10
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
       }
     },
     {
-      "start": 1800,
-      "steps": 120,
+      "start": 1920,
+      "steps": 80,
       "pair": [
         "ent-B",
-        "ent-C"
+        "ent-E"
       ],
-      "kind": "train",
+      "kind": "train_threat",
       "gap": 1.5,
       "event": {
-        "type": "threat_near",
-        "intensity": 0.6,
-        "every": 10
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
       }
     },
     {
-      "start": 2200,
-      "steps": 120,
+      "start": 2100,
+      "steps": 80,
+      "pair": [
+        "ent-D",
+        "ent-E"
+      ],
+      "kind": "train_safe",
+      "gap": 1.5,
+      "event": {
+        "type": "heal",
+        "intensity": 0.8,
+        "every": 25
+      }
+    },
+    {
+      "start": 2280,
+      "steps": 80,
       "pair": [
         "ent-B",
         "ent-F"
       ],
-      "kind": "train",
+      "kind": "train_threat",
       "gap": 1.5,
       "event": {
-        "type": "threat_near",
-        "intensity": 0.6,
-        "every": 10
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
       }
     },
     {
-      "start": 2600,
-      "steps": 120,
+      "start": 2460,
+      "steps": 80,
       "pair": [
         "ent-C",
-        "ent-D"
+        "ent-F"
       ],
-      "kind": "train",
+      "kind": "train_safe",
       "gap": 1.5,
       "event": {
-        "type": "threat_near",
-        "intensity": 0.6,
-        "every": 10
+        "type": "heal",
+        "intensity": 0.8,
+        "every": 25
+      }
+    },
+    {
+      "start": 2640,
+      "steps": 80,
+      "pair": [
+        "ent-A",
+        "ent-C"
+      ],
+      "kind": "train_threat",
+      "gap": 1.5,
+      "event": {
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
+      }
+    },
+    {
+      "start": 2820,
+      "steps": 80,
+      "pair": [
+        "ent-D",
+        "ent-F"
+      ],
+      "kind": "train_safe",
+      "gap": 1.5,
+      "event": {
+        "type": "heal",
+        "intensity": 0.8,
+        "every": 25
       }
     },
     {
       "start": 3000,
-      "steps": 120,
-      "pair": [
-        "ent-A",
-        "ent-C"
-      ],
-      "kind": "train",
-      "gap": 1.5,
-      "event": {
-        "type": "threat_near",
-        "intensity": 0.6,
-        "every": 10
-      }
-    },
-    {
-      "start": 3400,
-      "steps": 120,
-      "pair": [
-        "ent-D",
-        "ent-E"
-      ],
-      "kind": "train",
-      "gap": 1.5,
-      "event": {
-        "type": "threat_near",
-        "intensity": 0.6,
-        "every": 10
-      }
-    },
-    {
-      "start": 3800,
-      "steps": 120,
-      "pair": [
-        "ent-E",
-        "ent-F"
-      ],
-      "kind": "probe_trained",
-      "gap": 1.5
-    },
-    {
-      "start": 4200,
-      "steps": 120,
+      "steps": 80,
       "pair": [
         "ent-B",
         "ent-D"
       ],
-      "kind": "probe_novel",
-      "gap": 1.5
+      "kind": "train_threat",
+      "gap": 1.5,
+      "event": {
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
+      }
     },
     {
-      "start": 4600,
-      "steps": 120,
-      "pair": [
-        "ent-B",
-        "ent-E"
-      ],
-      "kind": "probe_trained",
-      "gap": 1.5
-    },
-    {
-      "start": 5000,
-      "steps": 120,
-      "pair": [
-        "ent-D",
-        "ent-F"
-      ],
-      "kind": "probe_novel",
-      "gap": 1.5
-    },
-    {
-      "start": 5400,
-      "steps": 120,
-      "pair": [
-        "ent-A",
-        "ent-F"
-      ],
-      "kind": "probe_trained",
-      "gap": 1.5
-    },
-    {
-      "start": 5800,
-      "steps": 120,
-      "pair": [
-        "ent-C",
-        "ent-F"
-      ],
-      "kind": "probe_novel",
-      "gap": 1.5
-    },
-    {
-      "start": 6200,
-      "steps": 120,
-      "pair": [
-        "ent-B",
-        "ent-C"
-      ],
-      "kind": "probe_trained",
-      "gap": 1.5
-    },
-    {
-      "start": 6600,
-      "steps": 120,
-      "pair": [
-        "ent-C",
-        "ent-E"
-      ],
-      "kind": "probe_novel",
-      "gap": 1.5
-    },
-    {
-      "start": 7000,
-      "steps": 120,
-      "pair": [
-        "ent-B",
-        "ent-F"
-      ],
-      "kind": "probe_trained",
-      "gap": 1.5
-    },
-    {
-      "start": 7400,
-      "steps": 120,
+      "start": 3180,
+      "steps": 80,
       "pair": [
         "ent-A",
         "ent-B"
       ],
-      "kind": "probe_novel",
-      "gap": 1.5
+      "kind": "train_safe",
+      "gap": 1.5,
+      "event": {
+        "type": "heal",
+        "intensity": 0.8,
+        "every": 25
+      }
     },
     {
-      "start": 7800,
-      "steps": 120,
-      "pair": [
-        "ent-C",
-        "ent-D"
-      ],
-      "kind": "probe_trained",
-      "gap": 1.5
-    },
-    {
-      "start": 8200,
-      "steps": 120,
+      "start": 3360,
+      "steps": 80,
       "pair": [
         "ent-A",
-        "ent-E"
+        "ent-F"
       ],
-      "kind": "probe_novel",
-      "gap": 1.5
+      "kind": "train_threat",
+      "gap": 1.5,
+      "event": {
+        "type": "combat_hit",
+        "intensity": 0.5,
+        "every": 25
+      }
     },
     {
-      "start": 8600,
-      "steps": 120,
+      "start": 3540,
+      "steps": 80,
       "pair": [
         "ent-A",
         "ent-C"
       ],
-      "kind": "probe_trained",
+      "kind": "probe_trained_threat",
       "gap": 1.5
     },
     {
-      "start": 9000,
-      "steps": 120,
+      "start": 3720,
+      "steps": 80,
+      "pair": [
+        "ent-C",
+        "ent-E"
+      ],
+      "kind": "probe_novel_safe",
+      "gap": 1.5
+    },
+    {
+      "start": 3900,
+      "steps": 80,
+      "pair": [
+        "ent-B",
+        "ent-F"
+      ],
+      "kind": "probe_trained_threat",
+      "gap": 1.5
+    },
+    {
+      "start": 4080,
+      "steps": 80,
+      "pair": [
+        "ent-C",
+        "ent-F"
+      ],
+      "kind": "probe_trained_safe",
+      "gap": 1.5
+    },
+    {
+      "start": 4260,
+      "steps": 80,
+      "pair": [
+        "ent-D",
+        "ent-E"
+      ],
+      "kind": "probe_trained_safe",
+      "gap": 1.5
+    },
+    {
+      "start": 4440,
+      "steps": 80,
+      "pair": [
+        "ent-C",
+        "ent-D"
+      ],
+      "kind": "probe_novel_safe",
+      "gap": 1.5
+    },
+    {
+      "start": 4620,
+      "steps": 80,
       "pair": [
         "ent-A",
         "ent-D"
       ],
-      "kind": "probe_novel",
+      "kind": "probe_novel_threat",
+      "gap": 1.5
+    },
+    {
+      "start": 4800,
+      "steps": 80,
+      "pair": [
+        "ent-E",
+        "ent-F"
+      ],
+      "kind": "probe_novel_safe",
+      "gap": 1.5
+    },
+    {
+      "start": 4980,
+      "steps": 80,
+      "pair": [
+        "ent-D",
+        "ent-F"
+      ],
+      "kind": "probe_trained_safe",
+      "gap": 1.5
+    },
+    {
+      "start": 5160,
+      "steps": 80,
+      "pair": [
+        "ent-B",
+        "ent-C"
+      ],
+      "kind": "probe_novel_threat",
+      "gap": 1.5
+    },
+    {
+      "start": 5340,
+      "steps": 80,
+      "pair": [
+        "ent-A",
+        "ent-E"
+      ],
+      "kind": "probe_novel_threat",
+      "gap": 1.5
+    },
+    {
+      "start": 5520,
+      "steps": 80,
+      "pair": [
+        "ent-B",
+        "ent-E"
+      ],
+      "kind": "probe_trained_threat",
       "gap": 1.5
     }
-  ],
-  "holdout_pairs": [
-    [
-      "ent-B",
-      "ent-D"
-    ],
-    [
-      "ent-D",
-      "ent-F"
-    ],
-    [
-      "ent-C",
-      "ent-F"
-    ],
-    [
-      "ent-C",
-      "ent-E"
-    ],
-    [
-      "ent-A",
-      "ent-B"
-    ],
-    [
-      "ent-A",
-      "ent-E"
-    ],
-    [
-      "ent-A",
-      "ent-D"
-    ]
   ],
   "probe_order": [
     {
-      "start": 3800,
-      "kind": "probe_trained",
+      "start": 3540,
+      "kind": "probe_trained_threat",
+      "pair": [
+        "ent-A",
+        "ent-C"
+      ]
+    },
+    {
+      "start": 3720,
+      "kind": "probe_novel_safe",
+      "pair": [
+        "ent-C",
+        "ent-E"
+      ]
+    },
+    {
+      "start": 3900,
+      "kind": "probe_trained_threat",
+      "pair": [
+        "ent-B",
+        "ent-F"
+      ]
+    },
+    {
+      "start": 4080,
+      "kind": "probe_trained_safe",
+      "pair": [
+        "ent-C",
+        "ent-F"
+      ]
+    },
+    {
+      "start": 4260,
+      "kind": "probe_trained_safe",
+      "pair": [
+        "ent-D",
+        "ent-E"
+      ]
+    },
+    {
+      "start": 4440,
+      "kind": "probe_novel_safe",
+      "pair": [
+        "ent-C",
+        "ent-D"
+      ]
+    },
+    {
+      "start": 4620,
+      "kind": "probe_novel_threat",
+      "pair": [
+        "ent-A",
+        "ent-D"
+      ]
+    },
+    {
+      "start": 4800,
+      "kind": "probe_novel_safe",
       "pair": [
         "ent-E",
         "ent-F"
       ]
     },
     {
-      "start": 4200,
-      "kind": "probe_novel",
-      "pair": [
-        "ent-B",
-        "ent-D"
-      ]
-    },
-    {
-      "start": 4600,
-      "kind": "probe_trained",
-      "pair": [
-        "ent-B",
-        "ent-E"
-      ]
-    },
-    {
-      "start": 5000,
-      "kind": "probe_novel",
+      "start": 4980,
+      "kind": "probe_trained_safe",
       "pair": [
         "ent-D",
         "ent-F"
       ]
     },
     {
-      "start": 5400,
-      "kind": "probe_trained",
-      "pair": [
-        "ent-A",
-        "ent-F"
-      ]
-    },
-    {
-      "start": 5800,
-      "kind": "probe_novel",
-      "pair": [
-        "ent-C",
-        "ent-F"
-      ]
-    },
-    {
-      "start": 6200,
-      "kind": "probe_trained",
+      "start": 5160,
+      "kind": "probe_novel_threat",
       "pair": [
         "ent-B",
         "ent-C"
       ]
     },
     {
-      "start": 6600,
-      "kind": "probe_novel",
+      "start": 5340,
+      "kind": "probe_novel_threat",
       "pair": [
-        "ent-C",
+        "ent-A",
         "ent-E"
       ]
     },
     {
-      "start": 7000,
-      "kind": "probe_trained",
+      "start": 5520,
+      "kind": "probe_trained_threat",
       "pair": [
         "ent-B",
-        "ent-F"
-      ]
-    },
-    {
-      "start": 7400,
-      "kind": "probe_novel",
-      "pair": [
-        "ent-A",
-        "ent-B"
-      ]
-    },
-    {
-      "start": 7800,
-      "kind": "probe_trained",
-      "pair": [
-        "ent-C",
-        "ent-D"
-      ]
-    },
-    {
-      "start": 8200,
-      "kind": "probe_novel",
-      "pair": [
-        "ent-A",
         "ent-E"
-      ]
-    },
-    {
-      "start": 8600,
-      "kind": "probe_trained",
-      "pair": [
-        "ent-A",
-        "ent-C"
-      ]
-    },
-    {
-      "start": 9000,
-      "kind": "probe_novel",
-      "pair": [
-        "ent-A",
-        "ent-D"
       ]
     }
   ],
-  "total_steps_hint": 9800,
-  "leakage_controls": "every entity appears in >=1 train AND >=1 holdout pair (marginal entity statistics uninformative); probe phases eventless (pain cannot carry the signal); probe_trained/probe_novel interleaved (drift cannot masquerade as generalization); pairs balanced by round-robin split of all C(n,2) pairings"
+  "total_steps_hint": 6100,
+  "leakage_controls": "role-structured: damage ONLY on predator-prey adjacency; safe adjacencies scheduled as explicit negatives (proximity shortcut is a WRONG generalization); every entity in train and holdout splits; probe phases eventless and shuffled; two-direction test (novel threat must deflect, novel safe must not)"
 }

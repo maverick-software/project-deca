@@ -28,7 +28,7 @@ def test_goal_labels_match_state_source():
 
 
 def test_encode_goal_layout_frozen():
-    assert GOAL_VEC_DIM == 12  # grew 8 -> 12 in WS-EXPAND E1.3 (positional code)
+    assert GOAL_VEC_DIM == 16  # 8 -> 12 (E1.3 pose) -> 16 (E5.1 threat)
     # No goal -> all zeros (no conditioning).
     assert encode_goal(None, 0.5) == [0.0] * GOAL_VEC_DIM
     # A latched need -> one-hot at its index + deficit; M4 fields stay zero/off.
@@ -40,6 +40,29 @@ def test_encode_goal_layout_frozen():
     assert v[4:8] == [0.0, 0.0, 0.0, 0.0]  # bearing/mask off in M3
     assert v[TARGET_MASK_IDX] == 0.0
     assert v[8:12] == [0.0, 0.0, 0.0, 0.0]  # E1.3 pose slots off by default
+    assert v[12:16] == [0.0, 0.0, 0.0, 0.0]  # E5.1 threat slots off by default
+
+
+def test_e51_threat_slots_populate_and_scale():
+    # Full-strength threat dead ahead at half distance.
+    v = encode_goal(
+        "energy", 0.1, threat_cos=1.0, threat_sin=0.0, threat_prox=0.5, threat_scale=1.0
+    )
+    assert v[12] == pytest.approx(1.0) and v[13] == pytest.approx(0.0)
+    assert v[14] == pytest.approx(0.5)
+    assert v[15] == pytest.approx(1.0)  # threat mask on
+    # Urgency override (extinction-lite): scale 0 silences every threat slot —
+    # a starving agent re-tests rather than starving behind a stale belief.
+    v0 = encode_goal(
+        "energy", 0.9, threat_cos=1.0, threat_sin=0.0, threat_prox=0.5, threat_scale=0.0
+    )
+    assert v0[12:16] == [0.0, 0.0, 0.0, 0.0]
+    # Partial scale attenuates proportionally.
+    vh = encode_goal(
+        "energy", 0.4, threat_cos=1.0, threat_sin=0.0, threat_prox=0.5, threat_scale=0.5
+    )
+    assert vh[12] == pytest.approx(0.5) and vh[14] == pytest.approx(0.25)
+    assert vh[15] == pytest.approx(0.5)
 
 
 def test_e13_positional_slots_populate_when_supplied():

@@ -197,6 +197,37 @@ def viability_delta_to_signals(delta: float) -> tuple[float, float]:
     return 0.0, 0.0
 
 
+def motor_energy_cost(
+    motor_command,
+    *,
+    scale: float,
+    dt: float,
+    compression: float = 1.0,
+    mode: str = "l1",
+) -> tuple[float, float]:
+    """Energy spent on a motor-command SIGNAL. Returns (cost, activation).
+
+    ``activation`` = Sum_j |u_j| (l1, per-joint) or Sum_j u_j^2 (l2). ``cost`` =
+    activation x scale x dt x compression, so it is proportional to how hard the
+    joints are driven AND to real elapsed time (dt-scaled -> respects the
+    metabolic clock/compression and is independent of cycle rate). Pure and
+    side-effect free for testing."""
+    if not motor_command:
+        return 0.0, 0.0
+    try:
+        if str(mode).lower() == "l2":
+            activation = float(sum(float(x) * float(x) for x in motor_command))
+        else:
+            activation = float(sum(abs(float(x)) for x in motor_command))
+    except (TypeError, ValueError):
+        return 0.0, 0.0
+    cost = max(
+        0.0,
+        activation * max(0.0, float(scale)) * max(0.0, float(dt)) * max(0.0, float(compression)),
+    )
+    return cost, activation
+
+
 def ema_affect(prev: float, new: float, *, retain: float = 0.98) -> float:
     """Bounded EMA for a [0,1] affect scalar: retain*prev + (1-retain)*new, clamped.
 

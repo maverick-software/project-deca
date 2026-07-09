@@ -7,7 +7,11 @@
 param(
     [ValidateSet("on", "off")] [string]$Binding = "on",
     [int]$Port = 8767,
-    [string]$Scenario = "docs\binding_scenarios\binding_probe.json"
+    [string]$Scenario = "docs\binding_scenarios\binding_probe.json",
+    # 0.05 s/step + the compressed scenario defaults ~= 5 min per leg
+    # (owner decision 2026-07-07). step_est = t/rate keeps the verdict's
+    # step-window mapping consistent at any rate.
+    [double]$Rate = 0.05
 )
 
 $ErrorActionPreference = "Stop"
@@ -71,13 +75,14 @@ try {
     $aid = (Invoke-RestMethod -Method Post -Uri "$BaseUrl/agent" -TimeoutSec 180).agent_id
     Write-Host "agent: $aid  binding=$Binding  scenario: $Scenario"
     & $Py "scripts\binding_probe_run.py" --port $Port --agent-id $aid `
-        --scenario $Scenario --out "$RunDir\samples.jsonl" *>&1 |
+        --scenario $Scenario --rate $Rate --poll-s 0.25 --out "$RunDir\samples.jsonl" *>&1 |
         Tee-Object -FilePath "$RunDir\probe.log"
 
     $Expect = if ($Binding -eq "on") { "pass" } else { "fail" }
+    $CheckArgs = @("scripts\check_binding_probe.py", "$RunDir\samples.jsonl", $Scenario, "--expect", $Expect)
+    if ($Binding -eq "on") { $CheckArgs += "--flag-on" }
     Write-Host "`n=== binding probe verdict (expect $Expect leg) ===" -ForegroundColor Cyan
-    & $Py "scripts\check_binding_probe.py" "$RunDir\samples.jsonl" $Scenario --expect $Expect *>&1 |
-        Tee-Object -FilePath "$RunDir\verdict.log"
+    & $Py @CheckArgs *>&1 | Tee-Object -FilePath "$RunDir\verdict.log"
     if ($LASTEXITCODE -eq 0) {
         Write-Host "ABLATION LEG ($Binding): OK" -ForegroundColor Green
     } else {

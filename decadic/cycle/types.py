@@ -80,3 +80,10 @@ class CycleContext:
     # remembered-target bearing) folded into the motor policy via the stack's
     # zero-init goal ingress. None -> no goal conditioning this cycle (no-op).
     goal_vec: list[float] | None = None
+    # WS-EXPAND E7: when True the pipeline gates the emitted motor command to
+    # zero (body idles) while learning/consolidation continue — the rest
+    # state. Set by the runtime's RestController; default False (parity).
+    rest_active: bool = False
+    # WS-EXPAND E10.3: the dominant adaptive other's egocentric state (frozen
+    # 8-dim layout in decadic.state.other_agents). None / all-zero when solo.
+    other_vec: list[float] | None = None

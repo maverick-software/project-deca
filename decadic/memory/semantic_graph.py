@@ -57,7 +57,17 @@ FORBIDDEN_PROPERTY_TOKENS = (
     "ball",
     "bear",
 )
-SEMANTIC_CATEGORIES = ("entity", "event", "relationship", "correlation", "conclusion", "value")
+SEMANTIC_CATEGORIES = (
+    "entity",
+    "event",
+    "relationship",
+    "correlation",
+    "conclusion",
+    "value",
+    # WS-SYM 2.1: self-derived FSQ symbol codes bound to entities by
+    # co-occurrence. Integer codes only (firewall-safe); no injected labels.
+    "symbol",
+)
 FORBIDDEN_SEMANTIC_TOKENS = FORBIDDEN_PROPERTY_TOKENS + (
     "semantic_label",
     "oracle",
@@ -232,6 +242,22 @@ class LongTermGraph:
         self._ltm_pruned_nodes = 0
         self._ltm_pruned_edges = 0
         self._ltm_pruned_semantic_records = 0
+        # WS-SYM 3.2: recall telemetry (zero cognition change). Each time a
+        # focused entity is bound to a code, did it ALREADY have a prior code
+        # binding? A climbing hit-rate = recall works on live data (entities
+        # recur and are recognized from memory).
+        self._symbol_recall_queries = 0
+        self._symbol_recall_hits = 0
+        # WS-SYM 3.3: recall-conditioned feedback -- the code recalled for the
+        # focused entity (its quantized vector) handed to the trunk next cycle.
+        self._last_recalled_symbol_code: int | None = None
+        self._last_recalled_symbol_vec: list[float] | None = None
+        # WS-SYM 5.0: drift as a controlled quantity. Binding churn = rate an
+        # entity's TOP-evidence code flips. Sustained high churn (with grounding
+        # mature) is the empirical drift proxy that auto-freezes fsq_in.
+        self._entity_top_symbol: dict[str, int] = {}
+        self._symbol_binding_updates = 0
+        self._symbol_binding_flips = 0
         self._cached_belief_stats: dict[str, Any] = {
             "total_property_beliefs": 0,
             "unstable_property_count": 0,
@@ -969,12 +995,19 @@ class LongTermGraph:
         scene_relationships: list[dict[str, Any]] | None = None,
         cycle: int = 0,
         promoted_ids: list[str] | None = None,
+        symbol_code: int | None = None,
     ) -> dict[str, Any]:
-        """Record Framework-style semantic evidence without requiring promotion."""
+        """Record Framework-style semantic evidence without requiring promotion.
+
+        WS-SYM 2.2: if ``symbol_code`` is given, the cycle's self-derived FSQ
+        code is bound to the *attended* entities by co-occurrence (concept-cell
+        tag), accruing evidence exactly like the entity_predicts_event
+        correlation below. Integer code only -> firewall-safe."""
         promoted_ids = promoted_ids or []
         with self._lock:
             counts = {cat: 0 for cat in SEMANTIC_CATEGORIES}
             slot_ids: list[str] = []
+            focus_ids: list[str] = []
             for s in slots:
                 sid = str(getattr(s, "entity_id", ""))
                 if not sid:
@@ -1006,6 +1039,8 @@ class LongTermGraph:
                 )
                 counts["entity"] += 1
                 slot_ids.append(sid)
+                if bool(getattr(s, "attention_focused", False)):
+                    focus_ids.append(sid)
                 if float(getattr(s, "affective_weight", 0.0) or 0.0) != 0.0:
                     rel_id = f"relationship:self:affective:{sid}"
                     self._upsert_semantic(
@@ -1030,7 +1065,15 @@ class LongTermGraph:
                     intensity = max(0.0, min(1.0, float(ev.get("intensity", 0.0) or 0.0)))
                 except (TypeError, ValueError):
                     intensity = 0.0
-                eid = self._coin_semantic_id("evt")
+                # WS4C M2.3: key events by class (one aggregate record per
+                # event_class, evidence_count accumulates -- the same shape
+                # correlations already use). The legacy per-instance branch
+                # coined a FRESH id per event: ~9 CREATEs/cycle of unbounded,
+                # never-throttled rows (194k in 6 h; reports/ws4c_m1_verdict.md).
+                if C.ltm_event_keyed_enabled():
+                    eid = f"event:{event_class}"
+                else:
+                    eid = self._coin_semantic_id("evt")
                 self._upsert_semantic(
                     "event",
                     eid,
@@ -1112,6 +1155,75 @@ class LongTermGraph:
                     confidence=conf,
                 )
                 counts["relationship"] += 1
+            # WS-SYM 2.2: bind the cycle's FSQ code to the attended entity/
+            # entities by co-occurrence. Meaning lives in the BINDING (its
+            # accruing evidence_count), not the code's geometry -- so it is
+            # robust to fsq_in drift (see ws_symbol_integration_analysis.md).
+            # Joint-attention gated: bind to the focused entities, else the
+            # co-present set (capped) -- cross-situational aggregation does the
+            # disambiguation over many cycles.
+            if symbol_code is not None:
+                code = int(symbol_code)
+                targets = (focus_ids or slot_ids)[:3]
+                if targets:
+                    # WS-SYM 3.2: recall telemetry -- BEFORE writing this
+                    # cycle's binding, check whether each target already had a
+                    # code bound (prior-cycle state; this cycle's binding lands
+                    # after). Read-only; no cognition change.
+                    _rel = self._semantic["relationship"]
+                    for _sid in targets:
+                        self._symbol_recall_queries += 1
+                        _pfx = f"relationship:{_sid}:symbol:"
+                        if any(k.startswith(_pfx) for k in _rel):
+                            self._symbol_recall_hits += 1
+                    self._upsert_semantic(
+                        "symbol",
+                        f"symbol:{code}",
+                        {"code": code},
+                        cycle=cycle,
+                        evidence_weight=1.0,
+                        confidence=1.0,
+                    )
+                    counts["symbol"] += 1
+                    for sid in targets:
+                        self._upsert_semantic(
+                            "relationship",
+                            f"relationship:{sid}:symbol:{code}",
+                            {"src": sid, "dst": f"symbol:{code}", "kind": "entity_symbol", "code": code},
+                            cycle=cycle,
+                            evidence_weight=1.0,
+                            confidence=1.0,
+                        )
+                        counts["relationship"] += 1
+                    # WS-SYM 3.3 + 5.0: after this cycle's binding, recompute
+                    # the PRIMARY focused entity's top-evidence code (inline
+                    # scan under the held lock -- recall_entity_symbol would
+                    # re-acquire it). Stash its vector for recall-conditioned
+                    # feedback (3.3), and track top-code churn as the drift
+                    # proxy (5.0).
+                    _sid0 = targets[0]
+                    _pfx0 = f"relationship:{_sid0}:symbol:"
+                    _top_code, _top_ev = None, -1.0
+                    for _k, _r in _rel.items():
+                        if not _k.startswith(_pfx0):
+                            continue
+                        _c = (_r.get("payload") or {}).get("code")
+                        _ev = float(_r.get("evidence_count", 0.0) or 0.0)
+                        if _c is not None and _ev > _top_ev:
+                            _top_code, _top_ev = int(_c), _ev
+                    if _top_code is not None:
+                        self._symbol_binding_updates += 1
+                        _prev_top = self._entity_top_symbol.get(_sid0)
+                        if _prev_top is not None and _prev_top != _top_code:
+                            self._symbol_binding_flips += 1  # churn (drift proxy)
+                        self._entity_top_symbol[_sid0] = _top_code
+                        try:
+                            from decadic.nn.symbol import fsq_code_to_vector
+
+                            self._last_recalled_symbol_code = _top_code
+                            self._last_recalled_symbol_vec = fsq_code_to_vector(_top_code)
+                        except Exception:
+                            pass
             self._refresh_cached_belief_stats_locked()
             return {
                 "entities": counts["entity"],
@@ -1120,6 +1232,7 @@ class LongTermGraph:
                 "correlations": counts["correlation"],
                 "conclusions": counts["conclusion"],
                 "values": counts["value"],
+                "symbols": counts["symbol"],
             }
 
     def snapshot(self, limit: int = DEFAULT_SNAPSHOT_LIMIT) -> dict[str, Any]:
@@ -1232,6 +1345,50 @@ class LongTermGraph:
                 "last_ms": float(self._match_last_ms),
             }
 
+    def recall_entity_symbol(
+        self, entity_id: str, *, top_k: int = 3
+    ) -> list[tuple[int, float]]:
+        """WS-SYM 3.1: recall the symbol code(s) most strongly bound to an
+        entity, ranked by accumulated co-occurrence evidence. Pure read.
+
+        Returns ``[(code, evidence_count), ...]`` sorted desc (empty if the
+        entity has no symbol binding yet). This is hippocampal pattern
+        completion: the entity cue -> its bound concept-code. Meaning lives in
+        the binding's evidence, so this is robust to fsq_in drift.
+        """
+        sid = str(entity_id)
+        prefix = f"relationship:{sid}:symbol:"
+        with self._lock:
+            hits: list[tuple[int, float]] = []
+            for rid, rec in self._semantic["relationship"].items():
+                if not rid.startswith(prefix):
+                    continue
+                code = (rec.get("payload") or {}).get("code")
+                if code is None:
+                    continue
+                hits.append((int(code), float(rec.get("evidence_count", 0.0) or 0.0)))
+        hits.sort(key=lambda x: x[1], reverse=True)
+        return hits[: max(1, int(top_k))]
+
+    def entities_for_symbol(
+        self, code: int, *, top_k: int = 5
+    ) -> list[tuple[str, float]]:
+        """WS-SYM 3.1: reverse lookup -- the entities most strongly bound to a
+        symbol code, ranked by evidence. Pure read. Symmetric to
+        :meth:`recall_entity_symbol` (a code -> what it means)."""
+        suffix = f":symbol:{int(code)}"
+        with self._lock:
+            hits: list[tuple[str, float]] = []
+            for rid, rec in self._semantic["relationship"].items():
+                if not rid.startswith("relationship:") or not rid.endswith(suffix):
+                    continue
+                src = (rec.get("payload") or {}).get("src")
+                if src is None:
+                    continue
+                hits.append((str(src), float(rec.get("evidence_count", 0.0) or 0.0)))
+        hits.sort(key=lambda x: x[1], reverse=True)
+        return hits[: max(1, int(top_k))]
+
     def semantic_stats(self) -> dict[str, Any]:
         return {
             "entities": len(self._semantic["entity"]),
@@ -1240,6 +1397,7 @@ class LongTermGraph:
             "correlations": len(self._semantic["correlation"]),
             "conclusions": len(self._semantic["conclusion"]),
             "values": len(self._semantic["value"]),
+            "symbols": len(self._semantic["symbol"]),
         }
 
     def clear(self) -> None:
@@ -1297,6 +1455,56 @@ class LongTermGraph:
                     node_pruned += 1
                     if self._conn is not None:
                         self._conn.execute("DELETE FROM nodes WHERE id = ?", (str(node["id"]),))
+            # WS4C M2.1: edge retention + degree cap. Scene-class relations
+            # are refreshed while co-visible and abandoned when the scene
+            # moves on; without retirement they accumulate toward a clique
+            # (5,425 edges on 34 nodes in 6 h; reports/ws4c_m1_verdict.md).
+            # Two passes over prunable kinds (prefix-matched; default scene_*):
+            # (1) stale -- unconfirmed for ltm_edge_stale_cycles; (2) degree
+            # cap backstop -- an edge must be within the top-K (by weight,
+            # then recency) at BOTH endpoints to survive. Deletions mirror to
+            # storage (sqlite here; the kuzu subclass diffs and stages
+            # del_edge ops).
+            if C.ltm_edge_retention_enabled() and self._edges:
+                prefixes = C.ltm_edge_prune_prefixes()
+
+                def _prunable(kind: str) -> bool:
+                    return any(kind.startswith(p) for p in prefixes)
+
+                doomed: set[tuple[str, str, str]] = set()
+                stale_before_e = int(cycle) - C.ltm_edge_stale_cycles()
+                if stale_before_e > 0:
+                    doomed.update(
+                        k
+                        for k, e in self._edges.items()
+                        if _prunable(k[2])
+                        and int(e.get("last_cycle", 0) or 0) <= stale_before_e
+                    )
+                cap = C.ltm_edge_degree_cap()
+                by_node: dict[str, list[tuple[str, str, str]]] = {}
+                for k in self._edges:
+                    if not _prunable(k[2]) or k in doomed:
+                        continue
+                    by_node.setdefault(k[0], []).append(k)
+                    by_node.setdefault(k[1], []).append(k)
+                for keys in by_node.values():
+                    if len(keys) <= cap:
+                        continue
+                    keys.sort(
+                        key=lambda k: (
+                            float(self._edges[k].get("weight", 0.0) or 0.0),
+                            int(self._edges[k].get("last_cycle", 0) or 0),
+                        ),
+                        reverse=True,
+                    )
+                    doomed.update(keys[cap:])
+                for k in sorted(doomed)[: C.ltm_prune_batch()]:
+                    self._edges.pop(k, None)
+                    edge_pruned += 1
+                    if self._conn is not None:
+                        self._conn.execute(
+                            "DELETE FROM edges WHERE src = ? AND dst = ? AND kind = ?", k
+                        )
             total_semantic = sum(len(bucket) for bucket in self._semantic.values())
             if total_semantic > C.ltm_max_semantic_records():
                 candidates_sem: list[tuple[str, str, dict[str, Any]]] = []

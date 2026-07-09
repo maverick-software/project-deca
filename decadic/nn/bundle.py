@@ -102,6 +102,11 @@ class NeuralBundle:
         # interoceptive world model against the realized transition (homeostatic
         # drive reduction). Unused/None when that flag is off.
         self.prev_intero: torch.Tensor | None = None
+        # WS-EXPAND E3.1: previous cycle's controllable-proprio vector — the
+        # proprio half of the feedback-error-learning pair (prev command, prev
+        # proprio) supervised against this cycle's realized tracking error.
+        # Ephemeral like the other transition buffers.
+        self.prev_proprio: torch.Tensor | None = None
         # Self-state feedback spine (self-model program): the previous cycle's
         # detached self-report (A||C||E) fed back into the stack. Like the other
         # transition buffers it is ephemeral -- never checkpointed, rebuilt as None

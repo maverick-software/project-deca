@@ -36,11 +36,17 @@ import numpy as np
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    # Compressed defaults (owner decision 2026-07-07: ~5 min per ablation leg
+    # at the runner's 0.05 s/step send rate). 2 laps x 9 train phases + 12
+    # probe phases at 80+100 step blocks + 300 warmup ~= 5,700 steps ~= 285 s.
+    # Tradeoff accepted: ~4x fewer gradient events than the 21-min schedule;
+    # the phase-mean AUROC statistic (checker) is the power-appropriate
+    # readout at these sample counts.
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--laps", type=int, default=3)
-    ap.add_argument("--phase-steps", type=int, default=120)
-    ap.add_argument("--phase-gap", type=int, default=180)
-    ap.add_argument("--start", type=int, default=600)
+    ap.add_argument("--laps", type=int, default=2)
+    ap.add_argument("--phase-steps", type=int, default=80)
+    ap.add_argument("--phase-gap", type=int, default=100)
+    ap.add_argument("--start", type=int, default=300)
     ap.add_argument("--out", default="docs/binding_scenarios/binding_probe.json")
     args = ap.parse_args()
 
@@ -87,14 +93,33 @@ def main() -> int:
         schedule.append(ph)
         t += int(args.phase_steps) + int(args.phase_gap)
 
-    dmg = {"type": "collision", "intensity": 0.35, "every": 12}
+    # combat_hit, NOT collision (2026-07-06, ablation run A): collision damage
+    # is grace-discounted to ~nothing (pain never exceeded 0.016; no aversive
+    # relation was ever learned). combat_hit is the grace-EXEMPT "bear bite"
+    # (threat_damage in viability.py) that teaches at full strength.
+    #
+    # DOSAGE (2026-07-06, ablation run B): at intensity 0.7 every 8 steps the
+    # bites dealt 4.2 integrity ~15x per phase and the agent DIED at cycle
+    # 1268 (agent_death, viability 0.0) mid-training -- it learned to fear
+    # (avoid reached 0.38) and then its curriculum killed it. Sustainable
+    # dose: 3 bites per 120-step phase at 3.0 integrity each (~9 per threat
+    # phase, ~45 per lap) leaves survival headroom with passive healing in
+    # the 280-step gaps; intensity must stay >= 0.35 (fast-path threshold in
+    # classify_events) for the event to register at all. Safe phases carry a
+    # caregiver heal so integrity recovers between lessons -- the curriculum
+    # must hurt, not kill.
+    # Density rescaled for 80-step phases: 4 bites (k=0,25,50,75) x 3.0
+    # integrity = 12/phase; heals 4 x 20 on safe phases -- same survivable
+    # dose profile as the 120-step schedule, compressed.
+    dmg = {"type": "combat_hit", "intensity": 0.5, "every": 25}
+    heal = {"type": "heal", "intensity": 0.8, "every": 25}
     for _lap in range(max(1, args.laps)):
         # Interleave threat and safe training so neither is a temporal block.
         for i in range(max(len(train_threat), len(train_safe))):
             if i < len(train_threat):
                 _phase(train_threat[i], "train_threat", dmg)
             if i < len(train_safe):
-                _phase(train_safe[i], "train_safe")
+                _phase(train_safe[i], "train_safe", heal)
 
     probe_order = []
     probe_sets = (

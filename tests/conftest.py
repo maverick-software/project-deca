@@ -123,6 +123,42 @@ def _baseline_faculties(monkeypatch):
     # ramp opens) but pinned OFF in the suite; test_action_planner.py tests
     # the helper directly.
     monkeypatch.setenv("DECADIC_PLANNER", "0")
+    # WS-EXPAND E3: motor corrector + phase generator are prod-on (zero-init ->
+    # birth-identical) but pinned OFF in the suite; test_motor_corrector.py
+    # enables them explicitly.
+    monkeypatch.setenv("DECADIC_MOTOR_CORRECTOR", "0")
+    monkeypatch.setenv("DECADIC_CPG", "0")
+    # WS-EXPAND E4: cached-policy dual control is prod-on (trust 0 at birth ->
+    # byte-identical) but pinned OFF in the suite; test_cached_policy.py
+    # enables it explicitly.
+    monkeypatch.setenv("DECADIC_CACHED_POLICY", "0")
+    # WS-EXPAND E5-E10/E13: all prod-on (zero-init / identity-init / gated on
+    # evidence -> birth-identical or side-channel only) but pinned OFF in the
+    # suite for deterministic baselines; dedicated tests enable explicitly.
+    monkeypatch.setenv("DECADIC_AVERSIVE_PREDICTION", "0")
+    monkeypatch.setenv("DECADIC_ACTION_VETO", "0")
+    monkeypatch.setenv("DECADIC_INPUT_ROUTING", "0")
+    monkeypatch.setenv("DECADIC_REST_CYCLE", "0")
+    monkeypatch.setenv("DECADIC_INTEROCEPTIVE_HEAD", "0")
+    monkeypatch.setenv("DECADIC_VALENCE_REPLAY", "0")
+    monkeypatch.setenv("DECADIC_SYMBOLS", "0")
+    monkeypatch.setenv("DECADIC_OTHER_MODELING", "0")
+    monkeypatch.setenv("DECADIC_PHASE_CLOCK", "0")
+    # WS-IND: prod-on (zero-init / identity-init -> birth-identical), pinned
+    # OFF in the suite; test_ws_ind.py enables explicitly.
+    monkeypatch.setenv("DECADIC_ATTENTION_SCHEMA", "0")
+    monkeypatch.setenv("DECADIC_SLOT_RELIABILITY", "0")
+    monkeypatch.setenv("DECADIC_BELIEF_TEMPER", "0")
+    monkeypatch.setenv("DECADIC_WS_SEQ", "0")
+    monkeypatch.setenv("DECADIC_SYMBOL_SMOOTHNESS", "0")
+    # WS-DEPTH: prod-on (zero-init / birth-ramped -> parity), pinned OFF;
+    # test_ws_depth.py enables explicitly.
+    monkeypatch.setenv("DECADIC_METACOG_CALIBRATION", "0")
+    monkeypatch.setenv("DECADIC_PERCEPT_REFINE", "0")
+    monkeypatch.setenv("DECADIC_SELF_CANDIDATE", "0")
+    # WS-EXPAND E10.3/E10.4 wiring (other-vector ingress rides
+    # DECADIC_OTHER_MODELING, already pinned above).
+    monkeypatch.setenv("DECADIC_INVERSE_MODEL", "0")
 
 
 @pytest.fixture

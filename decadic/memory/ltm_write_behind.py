@@ -77,6 +77,7 @@ class _SlotSnapshot:
     relationship_links: list[str]
     scene_entity_id: str | None
     property_evidence: dict[str, Any]
+    attention_focused: bool = False  # WS-SYM 2.2: joint-attention gate for binding
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,7 @@ class LtmConsolidationJob:
     min_seen: int
     property_update: bool
     relationship_update: bool
+    symbol_code: int | None = None  # WS-SYM 2.2: FSQ code to bind this cycle
 
 
 def _snapshot_slot(s: Any) -> _SlotSnapshot:
@@ -118,6 +120,7 @@ def _snapshot_slot(s: Any) -> _SlotSnapshot:
             else None
         ),
         property_evidence=dict(getattr(s, "property_evidence", {}) or {}),
+        attention_focused=bool(getattr(s, "attention_focused", False)),
     )
 
 
@@ -150,6 +153,12 @@ class WriteBehindLongTermGraph(LongTermGraph):
         self._sync_fallbacks = 0
         self._semantic_jobs_skipped_by_interval = 0
         self._last_worker_ms = 0.0
+        # WS-FREEZE: write-behind heartbeat. _wb_in_job is True only while the
+        # worker holds the graph RLock for a consolidation job -- if the
+        # cognitive loop freezes while this stays True, that's hypothesis H1.
+        self._wb_in_job = False
+        self._wb_job_start_s: float | None = None
+        self._wb_hb_s = time.monotonic()
         if enabled:
             self.set_async(True)
 
@@ -247,6 +256,7 @@ class WriteBehindLongTermGraph(LongTermGraph):
         min_seen: int = 2,
         property_update: bool = True,
         relationship_update: bool = True,
+        symbol_code: int | None = None,
     ) -> dict[str, Any]:
         """Queue the full Stage-10 LTM job, including semantic evidence.
 
@@ -263,6 +273,7 @@ class WriteBehindLongTermGraph(LongTermGraph):
             min_seen=int(min_seen),
             property_update=bool(property_update),
             relationship_update=bool(relationship_update),
+            symbol_code=(int(symbol_code) if symbol_code is not None else None),
         )
         q = self._queue if self._async_enabled else None
         if q is None:
@@ -290,6 +301,8 @@ class WriteBehindLongTermGraph(LongTermGraph):
 
     def _apply_consolidation_job(self, job: LtmConsolidationJob) -> dict[str, Any]:
         started = time.perf_counter()
+        self._wb_job_start_s = time.monotonic()  # WS-FREEZE: RLock hold begins
+        self._wb_in_job = True
         with self.write_batch():
             ids = super().consolidate(
                 job.slots,
@@ -334,11 +347,14 @@ class WriteBehindLongTermGraph(LongTermGraph):
                     scene_relationships=job.scene_relationships,
                     cycle=job.cycle,
                     promoted_ids=list(ids),
+                    symbol_code=job.symbol_code,
                 )
             elif job.all_slots:
                 self._semantic_jobs_skipped_by_interval += 1
             retention = super().prune_retention(cycle=job.cycle)
             stats = super().belief_stats()
+        self._wb_in_job = False  # WS-FREEZE: RLock released
+        self._wb_hb_s = time.monotonic()
         self._jobs_completed += 1
         self._last_worker_ms = (time.perf_counter() - started) * 1000.0
         status = "promoted_entity" if ids else "recorded_provisional_evidence"
@@ -372,6 +388,7 @@ class WriteBehindLongTermGraph(LongTermGraph):
         scene_relationships: list[dict[str, Any]] | None = None,
         cycle: int = 0,
         promoted_ids: list[str] | None = None,
+        symbol_code: int | None = None,
     ) -> dict[str, Any]:
         """Record provisional semantic evidence from immutable slot snapshots.
 
@@ -387,6 +404,7 @@ class WriteBehindLongTermGraph(LongTermGraph):
             scene_relationships=scene_relationships,
             cycle=cycle,
             promoted_ids=promoted_ids,
+            symbol_code=symbol_code,
         )
 
     def _drain_loop(self, q: queue.Queue) -> None:
@@ -401,6 +419,8 @@ class WriteBehindLongTermGraph(LongTermGraph):
                     else:
                         started = time.perf_counter()
                         snaps, affect, cycle, min_seen, property_update, relationship_update = item
+                        self._wb_job_start_s = time.monotonic()  # WS-FREEZE
+                        self._wb_in_job = True
                         with self.write_batch():
                             super().consolidate(
                                 snaps,
@@ -411,9 +431,12 @@ class WriteBehindLongTermGraph(LongTermGraph):
                                 relationship_update=relationship_update,
                             )
                             super().prune_retention(cycle=cycle)
+                        self._wb_in_job = False  # WS-FREEZE
+                        self._wb_hb_s = time.monotonic()
                         self._jobs_completed += 1
                         self._last_worker_ms = (time.perf_counter() - started) * 1000.0
                 except Exception:  # pragma: no cover - persistence must not kill worker
+                    self._wb_in_job = False  # WS-FREEZE: never leak a held-flag on error
                     logger.exception("ltm write-behind consolidate failed")
             finally:
                 q.task_done()
@@ -455,6 +478,25 @@ class WriteBehindLongTermGraph(LongTermGraph):
             "ltm_match_cache_misses": int(match_stats.get("misses", 0)),
             "ltm_match_cache_enabled": bool(match_stats.get("enabled", False)),
             "ltm_write_batch_size_last": 1,
+            # WS-SYM 3.2: symbol recall telemetry (counters live on the base
+            # graph; record_semantic_evidence runs there via super()).
+            "symbol_recall_queries": int(getattr(self, "_symbol_recall_queries", 0)),
+            "symbol_recall_hits": int(getattr(self, "_symbol_recall_hits", 0)),
+            "symbol_recall_hit_rate": (
+                float(getattr(self, "_symbol_recall_hits", 0))
+                / float(getattr(self, "_symbol_recall_queries", 0))
+                if getattr(self, "_symbol_recall_queries", 0)
+                else 0.0
+            ),
+            # WS-SYM 5.0: drift proxy -- rate an entity's top-evidence code flips.
+            "symbol_binding_updates": int(getattr(self, "_symbol_binding_updates", 0)),
+            "symbol_binding_flips": int(getattr(self, "_symbol_binding_flips", 0)),
+            "symbol_binding_churn": (
+                float(getattr(self, "_symbol_binding_flips", 0))
+                / float(getattr(self, "_symbol_binding_updates", 0))
+                if getattr(self, "_symbol_binding_updates", 0)
+                else 0.0
+            ),
             **self.persistence_metrics(),
         }
 

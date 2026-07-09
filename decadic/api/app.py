@@ -709,6 +709,30 @@ def create_app() -> FastAPI:
             )
         return JSONResponse({"ready": True, **surface})
 
+    @application.post("/agent/{agent_id}/body/companion")
+    async def companion_control(agent_id: str, action: str = "spawn", mode: str = "scripted") -> JSONResponse:
+        """WS-DEPTH A1: spawn/despawn/re-mode the arena companion.
+
+        action: spawn | despawn | mode; mode: scripted | adaptive. The
+        companion is a kinematic, body-pose-perceivable OTHER (not a second
+        cognition) — the probe rig for E10.3–E10.5 and the D4.3/E12 unlock.
+        """
+        registry: AgentRegistry = application.state.registry
+        agent = registry.get(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Unknown agent")
+        if action == "spawn":
+            cmd = f"companion_spawn:{mode}" if mode in ("scripted", "adaptive") else "companion_spawn"
+        elif action == "despawn":
+            cmd = "companion_despawn"
+        elif action == "mode" and mode in ("scripted", "adaptive"):
+            cmd = f"companion_mode:{mode}"
+        else:
+            raise HTTPException(status_code=400, detail="action: spawn|despawn|mode; mode: scripted|adaptive")
+        if not agent.queue_body_command(cmd):
+            raise HTTPException(status_code=503, detail="Command queue full")
+        return JSONResponse({"agent_id": agent_id, "status": f"{cmd}_queued"})
+
     @application.post("/agent/{agent_id}/body/recenter")
     async def recenter_body(agent_id: str) -> JSONResponse:
         registry: AgentRegistry = application.state.registry

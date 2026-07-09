@@ -70,6 +70,11 @@ def run(ctx: CycleContext) -> StageTrace:
         "action": ctx.latents.get("action"),
         "compressed_trace_ids": [t.stage for t in traces],
     }
+    # WS-SYM 2.3: stamp the cycle's FSQ symbol code onto the episode (free-form
+    # summary, zero schema change) so a recalled episode carries its code.
+    _symbol_code = ctx.latents.get("symbol_code")
+    if _symbol_code is not None:
+        summary["symbol_code"] = int(_symbol_code)
     scene_ws = getattr(ctx.perceptual, "scene_workspace", None)
     focus = getattr(ctx.perceptual, "focus", None)
     if scene_ws is not None:
@@ -167,6 +172,7 @@ def run(ctx: CycleContext) -> StageTrace:
                         min_seen=ltm_consolidate_min_seen(),
                         property_update=property_update,
                         relationship_update=relationship_update,
+                        symbol_code=_symbol_code,  # WS-SYM 2.2
                     )
                     status = str(report.get("status", "queued_consolidation"))
                     ids = list(report.get("accepted_ids", []) or [])
@@ -204,6 +210,7 @@ def run(ctx: CycleContext) -> StageTrace:
                         scene_relationships=scene_relationships,
                         cycle=int(ctx.state_bus.cycle_index),
                         promoted_ids=list(ids),
+                        symbol_code=_symbol_code,  # WS-SYM 2.2
                     )
                     status = "promoted_entity" if ids else "recorded_provisional_evidence"
                     report = {

@@ -1,0 +1,97 @@
+[body] agent_id=0360e574-6e46-4f3a-800f-b051dc246e1a
+[body] elements=['obstacles', 'house', 'food', 'water', 'medical_kit'] props=['prop_box_red', 'prop_house', 'prop_food_s1', 'prop_food_s2', 'prop_food_s3', 'prop_food_s4', 'prop_water_w1', 'prop_water_w2', 'prop_water_w3', 'prop_medical_m1', 'prop_medical_m2']
+[body] actuator contract OK: nu=21
+[body] step=0 pos=(0.00,0.00,1.30) moving=False events=0
+[body] budget ms/obs: physics=0.3 vision=26.4 views=14.3 audio=0.0 send=11.6
+[body] step=50 pos=(-0.98,0.00,0.08) moving=False events=1
+[body] budget ms/obs: physics=8.1 vision=4.4 views=7.5 audio=0.0 send=98.7
+[body] step=100 pos=(-0.98,0.05,0.09) moving=False events=0
+[body] budget ms/obs: physics=7.9 vision=4.8 views=7.9 audio=0.0 send=123.7
+[body] step=150 pos=(-0.98,0.06,0.09) moving=False events=0
+[body] budget ms/obs: physics=8.2 vision=4.7 views=7.9 audio=0.0 send=151.3
+[body] step=200 pos=(-1.00,0.04,0.09) moving=False events=0
+[body] budget ms/obs: physics=9.4 vision=4.8 views=8.1 audio=0.0 send=136.4
+[body] step=250 pos=(-1.00,0.04,0.09) moving=False events=0
+[body] budget ms/obs: physics=9.8 vision=4.9 views=9.2 audio=0.0 send=147.5
+[body] step=300 pos=(-1.00,0.03,0.09) moving=False events=0
+[body] budget ms/obs: physics=10.1 vision=4.8 views=8.1 audio=0.0 send=129.5
+[body] step=350 pos=(-1.00,0.08,0.09) moving=False events=0
+[body] budget ms/obs: physics=10.6 vision=5.2 views=8.5 audio=0.0 send=175.6
+[body] step=400 pos=(-1.00,0.07,0.09) moving=False events=0
+[body] budget ms/obs: physics=9.6 vision=5.4 views=9.2 audio=0.0 send=125.8
+[body] step=450 pos=(-0.99,0.05,0.08) moving=False events=0
+[body] budget ms/obs: physics=8.6 vision=5.0 views=8.9 audio=0.0 send=123.6
+[body] step=500 pos=(-0.99,0.05,0.09) moving=False events=0
+[body] budget ms/obs: physics=8.7 vision=4.5 views=8.5 audio=0.0 send=130.0
+[body] step=550 pos=(-0.97,0.09,0.11) moving=False events=0
+[body] budget ms/obs: physics=9.9 vision=5.3 views=8.3 audio=0.0 send=161.4
+[body] step=600 pos=(-0.97,0.09,0.11) moving=False events=0
+[body] budget ms/obs: physics=10.4 vision=5.2 views=8.8 audio=0.0 send=115.2
+[body] step=650 pos=(-0.95,0.15,0.11) moving=False events=0
+[body] budget ms/obs: physics=11.0 vision=5.3 views=9.0 audio=0.0 send=99.5
+[body] step=700 pos=(-0.92,0.21,0.11) moving=False events=0
+[body] budget ms/obs: physics=12.0 vision=5.3 views=8.0 audio=0.0 send=187.2
+[body] step=750 pos=(-0.93,0.20,0.11) moving=False events=0
+[body] budget ms/obs: physics=10.0 vision=5.0 views=8.5 audio=0.0 send=122.3
+[body] step=800 pos=(-0.92,0.20,0.11) moving=False events=0
+[body] budget ms/obs: physics=10.2 vision=5.1 views=7.9 audio=0.0 send=108.9
+[body] step=850 pos=(-0.94,0.19,0.11) moving=False events=0
+[body] budget ms/obs: physics=10.3 vision=5.1 views=8.2 audio=0.0 send=145.8
+[body] step=900 pos=(-0.93,0.19,0.11) moving=False events=0
+[body] budget ms/obs: physics=10.3 vision=5.0 views=7.9 audio=0.0 send=141.0
+[body] step=950 pos=(-0.94,0.19,0.09) moving=False events=0
+[body] budget ms/obs: physics=10.7 vision=5.4 views=8.3 audio=0.0 send=127.7
+[body] step=1000 pos=(-0.93,0.20,0.09) moving=False events=0
+[body] budget ms/obs: physics=10.2 vision=5.3 views=8.7 audio=0.0 send=100.8
+[body] step=1050 pos=(-0.96,0.17,0.10) moving=False events=0
+[body] budget ms/obs: physics=10.8 vision=5.0 views=8.5 audio=0.0 send=171.9
+[body] step=1100 pos=(-0.99,0.20,0.10) moving=False events=0
+[body] budget ms/obs: physics=11.9 vision=5.2 views=8.1 audio=0.0 send=162.6
+[body] step=1150 pos=(-1.01,0.25,0.11) moving=False events=0
+[body] budget ms/obs: physics=14.2 vision=5.2 views=8.4 audio=0.0 send=151.9
+[body] step=1200 pos=(-1.07,0.33,0.11) moving=False events=0
+[body] budget ms/obs: physics=14.1 vision=5.5 views=9.0 audio=0.0 send=156.8
+[body] step=1250 pos=(-1.07,0.46,0.17) moving=True events=0
+[body] budget ms/obs: physics=14.1 vision=5.4 views=9.3 audio=0.0 send=141.4
+[body] step=1300 pos=(-1.10,0.48,0.12) moving=False events=0
+[body] budget ms/obs: physics=16.1 vision=5.7 views=10.0 audio=0.0 send=187.1
+[body] step=1350 pos=(-1.09,0.55,0.12) moving=False events=0
+[body] budget ms/obs: physics=12.0 vision=5.2 views=8.9 audio=0.0 send=144.2
+[body] step=1400 pos=(-1.01,0.54,0.12) moving=False events=0
+[body] budget ms/obs: physics=12.2 vision=5.1 views=8.9 audio=0.0 send=159.7
+[body] step=1450 pos=(-0.99,0.54,0.12) moving=False events=0
+[body] budget ms/obs: physics=10.1 vision=5.0 views=8.4 audio=0.0 send=107.0
+[body] step=1500 pos=(-1.02,0.51,0.12) moving=False events=0
+[body] budget ms/obs: physics=11.8 vision=5.4 views=9.7 audio=0.0 send=125.2
+[body] step=1550 pos=(-1.09,0.49,0.12) moving=False events=0
+[body] budget ms/obs: physics=12.1 vision=5.4 views=9.8 audio=0.0 send=193.9
+[body] step=1600 pos=(-1.08,0.47,0.11) moving=False events=0
+[body] budget ms/obs: physics=11.2 vision=5.2 views=9.5 audio=0.0 send=141.4
+[body] step=1650 pos=(-1.05,0.45,0.09) moving=False events=0
+[body] budget ms/obs: physics=13.1 vision=5.1 views=9.3 audio=0.0 send=148.1
+[body] step=1700 pos=(-1.02,0.44,0.10) moving=False events=0
+[body] budget ms/obs: physics=12.9 vision=5.1 views=9.2 audio=0.0 send=189.9
+[body] step=1750 pos=(-0.99,0.45,0.11) moving=False events=1
+[body] budget ms/obs: physics=12.7 vision=5.1 views=9.4 audio=0.0 send=128.6
+[body] step=1800 pos=(-0.98,0.48,0.12) moving=False events=0
+[body] budget ms/obs: physics=13.3 vision=5.2 views=9.6 audio=0.0 send=140.6
+[body] step=1850 pos=(-0.95,0.51,0.12) moving=False events=0
+[body] budget ms/obs: physics=12.0 vision=5.4 views=9.4 audio=0.0 send=186.4
+[body] step=1900 pos=(-0.95,0.50,0.12) moving=False events=0
+[body] budget ms/obs: physics=11.7 vision=5.4 views=9.6 audio=0.0 send=137.8
+[body] step=1950 pos=(-0.99,0.49,0.17) moving=False events=0
+[body] budget ms/obs: physics=11.2 vision=5.6 views=9.7 audio=0.0 send=119.9
+[body] step=2000 pos=(-1.01,0.47,0.18) moving=False events=0
+[body] budget ms/obs: physics=11.5 vision=5.3 views=9.7 audio=0.0 send=155.3
+[body] step=2050 pos=(-0.99,0.46,0.19) moving=False events=0
+[body] budget ms/obs: physics=11.2 vision=5.3 views=8.8 audio=0.0 send=200.1
+[body] step=2100 pos=(-1.13,0.45,0.22) moving=False events=0
+[body] budget ms/obs: physics=10.3 vision=4.9 views=9.0 audio=0.0 send=125.7
+[body] step=2150 pos=(-1.15,0.44,0.21) moving=False events=0
+[body] budget ms/obs: physics=12.1 vision=4.9 views=9.0 audio=0.0 send=127.2
+[body] step=2200 pos=(-1.14,0.45,0.21) moving=False events=0
+[body] budget ms/obs: physics=11.5 vision=4.8 views=9.0 audio=0.0 send=186.7
+[body] step=2250 pos=(-1.12,0.45,0.20) moving=False events=0
+[body] budget ms/obs: physics=11.4 vision=4.7 views=8.9 audio=0.0 send=136.5
+[body] step=2300 pos=(-1.17,0.39,0.19) moving=False events=0
+[body] budget ms/obs: physics=11.5 vision=4.2 views=9.0 audio=0.0 send=124.4

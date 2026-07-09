@@ -1,0 +1,16 @@
+WS-EXPAND live probe verdicts (bodydiag_kuzu_20260707_000057):
+
+PASS   E2 rate channels       lc_eta_scale=1.961699 lc_surprise=0
+PASS   E2 gamma clamp         lc_gamma=0.993215 moves=24 (band 0.99..0.997)
+PASS   E2 gate coupling       gate_modulation_bias=0.045393
+PASS   E1 map accrual         nodes=3 pose_updates=2485 stalls=0 reroutes=0 (reroutes only after evidenced blockage)
+PASS   E1.6 rollout planner   planner_bias_linf=0.125 (null until SF ramp opens + escalated cycle -- expected early)
+PASS   E3 corrector FEL       motor_corrector_loss=0.008609 (supervised tracking-error fit; watch it fall across runs)
+PASS   E4 dual control        cached_policy_w=0.7549 divergence=1.19667 (trust must be EARNED; 0 early is correct)
+PASS   E5 action veto         veto_attenuation=0.000425 (cap 0.5; ~0 without viability drops is correct)
+PASS   E7 rest cycle          rests_entered=1 aborted=0 load=1188 (>=1 expected at probe threshold)
+PASS   E13 phase telemetry    phase_slow=0.92388 phase_fast=0 (instrumentation only)
+PASS   E9 discrete codes      symbol_code=2073 utilization=0.214844
+PASS   E10 adaptivity gate    tracks=0 models_active=0 (MUST be 0 solo -- nonzero = gate broken)
+
+result: 12/12 PASS, 0 CHECK (details above)

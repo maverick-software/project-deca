@@ -619,6 +619,22 @@ class WorkingMemory:
         if not in_view:
             return
         target = max(in_view, key=lambda s: s.salience)
+        # WS-IND I4: metacognition-gated belief updates — evidence written onto
+        # a slot is TEMPERED by that slot's perceptual confidence (reliability
+        # of the percept the attribution lands on). gain = 1 - w*(1 - conf):
+        # never blocks a first observation, only slows learning from junk
+        # percepts; w=0 or flag off -> exact parity. The affective weight is
+        # left untempered (you still FEEL the event; you just hold the causal
+        # attribution more lightly).
+        _ev_gain = 1.0
+        try:
+            from decadic.config import belief_temper_enabled, belief_temper_weight
+
+            if belief_temper_enabled():
+                _conf = max(0.0, min(1.0, float(target.confidence)))
+                _ev_gain = 1.0 - belief_temper_weight() * (1.0 - _conf)
+        except Exception:
+            _ev_gain = 1.0
         for ev in events or []:
             if not isinstance(ev, dict):
                 continue
@@ -626,6 +642,8 @@ class WorkingMemory:
                 intensity = float(ev.get("intensity", 0.0))
             except (TypeError, ValueError):
                 intensity = 0.0
+            raw_intensity = intensity  # affect path uses the untempered value
+            intensity = intensity * _ev_gain  # evidence path uses the tempered one
             et = str(ev.get("type", "")).lower()
             sign = 0.0
             if et in ("collision", "damage", "environment_damage", "fall", "combat_hit"):
@@ -675,9 +693,9 @@ class WorkingMemory:
                 sign = 0.5
             if sign != 0.0:
                 target.affective_weight = max(
-                    -5.0, min(5.0, target.affective_weight + sign * intensity)
+                    -5.0, min(5.0, target.affective_weight + sign * raw_intensity)
                 )
-                target.audio_intensity = max(target.audio_intensity, max(0.0, min(1.0, intensity)))
+                target.audio_intensity = max(target.audio_intensity, max(0.0, min(1.0, raw_intensity)))
                 target.last_event = et or target.last_event
                 link = f"event:{_anonymous_event_class(et)}:{self.cycle}"
                 if link not in target.event_links:

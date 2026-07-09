@@ -11,7 +11,11 @@ param(
     # -Watch: open the native MuJoCo viewer + the web dashboard so the run
     # is observable. NB the dashboard's polling adds a small, known observer
     # cost (state snapshots); fine for soaks, avoid for tight A/B numbers.
-    [switch]$Watch
+    [switch]$Watch,
+    # -SoakRevive: long soak TEST mode -- revive the agent on death (to 80%
+    # resources) so the brain runs past a single ~100-min lifespan. Off by
+    # default; a normal run dies for real.
+    [switch]$SoakRevive
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +41,8 @@ $env:DECADIC_EPISODIC_ASYNC = "1"
 $env:DECADIC_LTM_ASYNC = "1"
 $env:DECADIC_PREFETCH_OVERLOAD_POLICY = "drop_oldest"
 $env:DECADIC_N_ACTUATORS = "21"
+# WS-SOAK: revive-on-death only when this run is a soak TEST (opt-in).
+if ($SoakRevive) { $env:DECADIC_SOAK_REVIVE = "1" } else { $env:DECADIC_SOAK_REVIVE = "0" }
 $env:DECADIC_LOG_DIR = $RunDir
 $env:DECADIC_GRAPH_BACKEND = $GraphBackend
 $env:DECADIC_BODY_COMMAND_STALE_S = "5"
@@ -105,6 +111,12 @@ try {
         -ForegroundColor Green
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         Start-Sleep -Seconds 10
+        # CPU% alongside cycle rate (2026-07-07: WS upgrades roughly doubled
+        # host CPU while holding cycle rate -- CPU is now a first-class metric).
+        $cpuPct = $null
+        try {
+            $cpuPct = [math]::Round((Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction SilentlyContinue).CounterSamples[0].CookedValue, 1)
+        } catch {}
         try {
             $agAll = (Invoke-RestMethod "$BaseUrl/agents" -TimeoutSec 5).agents
             # Run hygiene (2026-07-06): a second brain started mid-run (e.g. a
@@ -118,6 +130,7 @@ try {
                 $samples += [pscustomobject]@{
                     t_s = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
                     cycles = $ag.cycles_completed
+                    cpu = $cpuPct
                 }
                 $lastCycles = $ag.cycles_completed
                 $AgentId = $ag.agent_id
@@ -135,6 +148,27 @@ try {
                 $avgRate = "{0:N1}/s avg" -f ($ag.cycles_completed / [math]::Max(0.1, $tNow))
                 Write-Host ("[diag] {0} elapsed | {1} left ({2}%) | cycles={3} | {4}{5}" -f `
                     (& $fmt $tNow), (& $fmt $left), $pct, $ag.cycles_completed, $instRate, $avgRate)
+                # WS4C M4.3: live RED on commit lag + write pressure. The
+                # 2026-07-07 6h run hit commit_lag 3.8h SILENTLY; never again.
+                # Cheap: every 6th sample (~1/min), raw-body regex (nested
+                # JSON depth makes property access unreliable -- M4.2 lesson).
+                if (($samples.Count % 6) -eq 0) {
+                    try {
+                        $mr = (Invoke-WebRequest "$BaseUrl/agent/$($ag.agent_id)/metrics" -TimeoutSec 10 -UseBasicParsing).Content
+                        if ($mr -match '"commit_lag_ms"\s*:\s*([-0-9.eE]+)') {
+                            $clms = [double]$Matches[1]
+                            if ($clms -gt 60000) {
+                                Write-Host ("[diag] RED: commit_lag_ms={0:N0} (deep-process staleness > 60 s)" -f $clms) -ForegroundColor Red
+                            }
+                        }
+                        if ($mr -match '"graph_write_pressure"\s*:\s*([-0-9.eE]+)') {
+                            $wpv = [double]$Matches[1]
+                            if ($wpv -ge 1.0) {
+                                Write-Host ("[diag] RED: graph_write_pressure={0:N2} (arrival exceeds flusher drain capacity)" -f $wpv) -ForegroundColor Red
+                            }
+                        }
+                    } catch {}
+                }
             }
         } catch { Write-Host "[diag] sample failed: $($_.Exception.Message)" }
         if ($Body.HasExited) { Write-Host "[diag] body exited early!" -ForegroundColor Red; break }
@@ -180,6 +214,11 @@ if ($samples.Count -ge 2) {
     $rate = ($last.cycles - $first.cycles) / [math]::Max(1.0, ($last.t_s - $first.t_s))
     $sum += ("cycle rate (steady window): {0:N2} cycles/s  ({1} -> {2} cycles over {3}s)" -f `
         $rate, $first.cycles, $last.cycles, ($last.t_s - $first.t_s))
+    $cpuVals = $samples | Where-Object { $null -ne $_.cpu } | ForEach-Object { $_.cpu }
+    if ($cpuVals.Count -gt 0) {
+        $sum += ("host CPU: mean {0:N1}% max {1:N1}% (pre-WS baseline was 30-35%)" -f `
+            (($cpuVals | Measure-Object -Average).Average), (($cpuVals | Measure-Object -Maximum).Maximum))
+    }
     $sum += ($samples | ForEach-Object { "  t=$($_.t_s)s cycles=$($_.cycles)" })
 } else {
     $sum += "insufficient samples - see logs"
@@ -189,9 +228,48 @@ $budget = Select-String -Path "$RunDir\body.out.log" -Pattern "budget ms/obs" -E
 if ($budget) { $sum += "body budget (last 3):"; $sum += $budget }
 if (Test-Path "$RunDir\metrics.json") {
     $gm = Select-String -Path "$RunDir\metrics.json" `
-        -Pattern '"(graph_flush_ms|graph_flush_lock_ms|graph_flush_queue_depth|graph_flush_rows|graph_flush_stmts|graph_flush_error_batches|graph_writes_deferred|graph_coalesce_dedup_rows|graph_deferred_depth|sqlite_last_commit_ms|sqlite_commit_count|sqlite_batch_commit_count|kuzu_vector_index_rebuilds|ltm_match_ms|commit_lag_ms|lance_last_commit_ms|match_cache_hits|match_cache_misses|growth_events|awake_neurons|plasticity_pc_ema|growth_blocked_reason)[^,]*' |
-        ForEach-Object { $_.Matches.Value.Trim() } | Select-Object -First 28
+        -Pattern '"(graph_flush_ms|graph_flush_lock_ms|graph_flush_queue_depth|graph_flush_rows|graph_flush_stmts|graph_flush_error_batches|graph_writes_deferred|graph_coalesce_dedup_rows|graph_deferred_depth|graph_write_pressure|graph_arrival_rows_per_s|graph_drain_capacity_rows_per_s|graph_flusher_cpu_share|graph_writes_shed_total|graph_writes_skipped_unchanged|graph_writes_staged_[a-z_0-9]+|graph_writes_deferred_[a-z_0-9]+|graph_writes_skipped_[a-z_0-9]+|graph_deferred_depth_[a-z_0-9]+|ready_queue_depth|urgent_queue_depth|ready_capacity|ready_pop_calls|ready_coalesce_calls|ready_max_depth|overflow_depth|consolidation_depth|overflow_spilled|consolidation_dropped|consolidation_drained|attn_pressure|rest_pressure|rests_entered|rest_consolidated_percepts|soak_revives|motor_energy_cost|motor_l1|effort_energy_delta|net_energy_return|time_to_death_s|frames_folded|frames_deep_processed|coalesced_sessions|sqlite_last_commit_ms|sqlite_commit_count|sqlite_batch_commit_count|kuzu_vector_index_rebuilds|ltm_match_ms|commit_lag_ms|lance_last_commit_ms|match_cache_hits|match_cache_misses|growth_events|awake_neurons|plasticity_pc_ema|growth_blocked_reason|semantic_symbols|semantic_relationships|semantic_entities|ltm_property_beliefs|symbol_recall_queries|symbol_recall_hits|symbol_recall_hit_rate|symbol_binding_updates|symbol_binding_flips|symbol_binding_churn|symbol_feedback_source|symbol_fsq_frozen)[^,]*' |
+        ForEach-Object { $_.Matches.Value.Trim() } | Select-Object -First 90
     if ($gm) { $sum += "store telemetry:"; $sum += ($gm | ForEach-Object { "  $_" }) }
+}
+# WS4C M4.1/M4.3: probe verdict rows (end-of-run state; the live loop above
+# flags mid-run REDs). Raw-body regex, never property access (M4.2 lesson).
+if (Test-Path "$RunDir\metrics.json") {
+    $rawm = Get-Content "$RunDir\metrics.json" -Raw
+    if ($rawm -match '"graph_write_pressure"\s*:\s*([-0-9.eE]+)') {
+        $wp = [double]$Matches[1]
+        $wpv = if ($wp -lt 1.0) { "PASS" } else { "RED" }
+        $sum += ("verdict graph_write_pressure: {0}  ({1:N3}; arrival/drain -- sustained >= 1.0 means the flusher mathematically cannot keep up)" -f $wpv, $wp)
+    }
+    if ($rawm -match '"commit_lag_ms"\s*:\s*([-0-9.eE]+)') {
+        $cl = [double]$Matches[1]
+        $clv = if ($cl -le 60000) { "PASS" } else { "RED" }
+        $sum += ("verdict commit_lag_ms: {0}  ({1:N0} ms; deep-process staleness -- RED > 60000; hit 13.7M silently on 2026-07-07)" -f $clv, $cl)
+    }
+    # WS-ATTN: tier pressure verdict. Sustained >= 2.0 (T1 full + T2 filling)
+    # means deliberation can't keep up and rest should be discharging it.
+    if ($rawm -match '"attn_pressure"\s*:\s*([-0-9.eE]+)') {
+        $ap = [double]$Matches[1]
+        $apv = if ($ap -lt 2.0) { "PASS" } else { "WATCH" }
+        $sum += ("verdict attn_pressure: {0}  ({1:N3}; tier backpressure 0..~3 -- WATCH >= 2.0 should trigger rest)" -f $apv, $ap)
+    }
+    # WS-ENERGY calibration report: from the observed motor activity (motor_l1)
+    # and the fixed scale, compute how long energy takes to empty at THIS
+    # activity, and the scale that would hit the ~7-day target. Motor-only,
+    # compression=1. Lets the scale be tuned from one soak without hand-math.
+    if ($rawm -match '"motor_l1"\s*:\s*([-0-9.eE]+)') {
+        $ml1 = [double]$Matches[1]
+        $mscale = if ($env:DECADIC_MOTOR_ENERGY_SCALE) { [double]$env:DECADIC_MOTOR_ENERGY_SCALE } else { 1e-5 }
+        $comp = if ($env:DECADIC_METABOLIC_COMPRESSION) { [double]$env:DECADIC_METABOLIC_COMPRESSION } else { 1.0 }
+        if ($ml1 -gt 0 -and $mscale -gt 0) {
+            $perSec = $ml1 * $mscale * $comp          # energy/sec at this activity
+            $emptyDays = 100.0 / $perSec / 86400.0     # sim-days to empty energy
+            $suggest = $mscale * $emptyDays / 7.0      # scale to hit ~7 days
+            $tag = if ($emptyDays -ge 5.0 -and $emptyDays -le 10.0) { "OK" } else { "TUNE" }
+            $sum += ("energy calibration [{0}]: motor_l1={1:N2} scale={2:E2} comp={3} -> energy empties in ~{4:N1} sim-days at this activity (target 7). Suggested scale={5:E2}" -f `
+                $tag, $ml1, $mscale, $comp, $emptyDays, $suggest)
+        }
+    }
 }
 # Memory-accumulation trend: is per-cycle recall/match latency creeping up as
 # the store grows? First vs last few samples make a monotonic climb obvious.
@@ -207,6 +285,23 @@ if ($memLines.Count -ge 2) {
     $sum += ($memLines | Select-Object -First 2 | ForEach-Object { "  $_" })
     $sum += "  ..."
     $sum += ($memLines | Select-Object -Last 2 | ForEach-Object { "  $_" })
+}
+# WS-ATTN Phase 0: ready-queue trajectory. If ready_depth CLIMBS across these
+# samples the cap leaks DURING the run (real bug); if it stays ~capacity here
+# but the teardown dump shows a huge ready_max/ready_queue_depth, the backlog
+# is a teardown artifact. Watch pop_calls (should track cycle) vs coalesce_calls.
+$probeLines = @()
+foreach ($log in @("$RunDir\decadic_server.jsonl", "$RunDir\server.err.log")) {
+    if (Test-Path $log) {
+        $probeLines += Select-String -Path $log -Pattern "stage_pipeline_probe" -ErrorAction SilentlyContinue |
+            ForEach-Object { ($_.Line -replace '.*stage_pipeline_probe ', '' -replace '".*', '') }
+    }
+}
+if ($probeLines.Count -ge 2) {
+    $sum += "ready-queue trajectory (first 3 vs last 3 -- ready_depth climbing = cap leaks live):"
+    $sum += ($probeLines | Select-Object -First 3 | ForEach-Object { "  $_" })
+    $sum += "  ..."
+    $sum += ($probeLines | Select-Object -Last 3 | ForEach-Object { "  $_" })
 }
 # WS-FORAGE: successor value = incentive salience. It must climb off ~0 for the
 # agent to ever pursue a resource; a flat ~0 means it hasn't yet lived enough
@@ -235,6 +330,35 @@ if ($gateLog) {
             $sum += ("  {0,-22} {1,7}  ({2}%)" -f $k, $reasons[$k], [math]::Round(100.0 * $reasons[$k] / $total, 1))
         }
     }
+}
+# WS-FREEZE: surface any freeze-watchdog reports (silent-hang diagnosis). The
+# faulthandler stack dumps land in server.err.log alongside these lines.
+$freezeLines = @()
+foreach ($log in @("$RunDir\server.err.log", "$RunDir\decadic_server.jsonl")) {
+    if (Test-Path $log) {
+        $freezeLines += Select-String -Path $log -Pattern "FREEZE_REPORT|kuzu flusher (DIED|thread DIED)" -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.Line.Trim() }
+    }
+}
+if ($freezeLines.Count -gt 0) {
+    $sum += "FREEZE WATCHDOG (silent-hang diagnosis -- see server.err.log for stack dumps):"
+    $sum += ($freezeLines | Select-Object -First 6 | ForEach-Object { "  $_" })
+} else {
+    $sum += "freeze watchdog: no stalls detected"
+}
+# WS-SOAK: deaths + revives across the run (a long soak test should show the
+# agent living multiple lifespans instead of dying once at ~100 min).
+$deaths = 0; $revives = 0
+foreach ($log in @("$RunDir\server.err.log", "$RunDir\decadic_server.jsonl")) {
+    if (Test-Path $log) {
+        $deaths += (Select-String -Path $log -Pattern "agent_death" -ErrorAction SilentlyContinue).Count
+        $revives += (Select-String -Path $log -Pattern "soak_revive " -ErrorAction SilentlyContinue).Count
+    }
+}
+if ($SoakRevive) {
+    $sum += ("soak lifespan: deaths=$deaths soak_revives=$revives (revive-on-death ON; agent should keep running)")
+} elseif ($deaths -gt 0) {
+    $sum += ("MORTALITY: agent DIED $deaths time(s) (viability=0) -- the cognitive loop idles when dead; run -SoakRevive for long soak tests")
 }
 $bodyTail = Get-Content "$RunDir\body.err.log" -Tail 5 -ErrorAction SilentlyContinue
 if ($bodyTail) { $sum += "body stderr tail:"; $sum += $bodyTail }

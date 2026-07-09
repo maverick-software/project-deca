@@ -79,7 +79,7 @@ import shutil
 import tempfile
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -97,6 +97,21 @@ from decadic.memory.semantic_graph import (
 logger = logging.getLogger(__name__)
 
 _DB_FILE = "graph.kuzu"
+
+
+def _metric_label(label: str) -> str:
+    """Sanitize a per-kind telemetry label into a flat metric-key suffix
+    (WS4C M1.1): ``edge.scene_near`` -> ``edge_scene_near``."""
+    return re.sub(r"[^0-9A-Za-z_]+", "_", label)
+
+
+def _op_kind_label(kind: str, params: dict) -> str:
+    """Telemetry label for a staged/deferred op: edges break down by their
+    relation kind (the plan's suspect is scene_*-class refresh); everything
+    else is just the op kind."""
+    if kind == "edge":
+        return f"edge.{params.get('kind', '?')}"
+    return kind
 _SEP = "\x1f"
 _VECTOR_INDEX = "app_idx"
 # Extra candidates fetched from the vector index so the exact-cosine re-rank
@@ -159,6 +174,12 @@ _Q_SEM_CREATE = (
 )
 _Q_NODE_DEL = "MATCH (e:Entity) WHERE e.id = $id DETACH DELETE e"
 _Q_SEM_DEL = "MATCH (s:SemanticRecord) WHERE s.pk = $pk DELETE s"
+# WS4C M2.1: edge retirement (retention pass / degree cap). Before this,
+# NO delete path for RELATES rows existed -- edges only ever accumulated.
+_Q_EDGE_DEL = (
+    "MATCH (a:Entity)-[r:RELATES]->(b:Entity) "
+    "WHERE a.id = $src AND b.id = $dst AND r.kind = $kind DELETE r"
+)
 
 
 # Unwind alias MUST NOT collide with any variable used in the templates:
@@ -288,11 +309,82 @@ def _write_min_cycles() -> int:
         return 25
 
 
+def _flush_merge_max() -> int:
+    """WS4C M3.1: how many queued batches the flusher may pop and MERGE into
+    one transaction per wake. The 6 h run showed backlog manifests as flush
+    COST (321 ms/batch) rather than queue depth, and the coalesce-dedup path
+    fired zero times because it only engaged at the queue cap; merging at
+    every multi-batch wake makes drain rate scale with backlog. 1 restores
+    the one-batch-per-wake behavior."""
+    try:
+        return max(1, int(os.environ.get("DECADIC_KUZU_FLUSH_MERGE_MAX", "4")))
+    except (TypeError, ValueError):
+        return 4
+
+
+def _shed_pressure() -> float:
+    """WS4C M3.2 backpressure escape: when graph_write_pressure exceeds this
+    while the queue sits at its cap, the merged batch sheds its lowest-value
+    statements (edge SETs first, belief SETs second; creates, deletes, nodes
+    and semantic records are NEVER shed -- a shed refresh is restored by the
+    next refresh-horizon write). 0 disables shedding."""
+    try:
+        return max(0.0, float(os.environ.get("DECADIC_KUZU_SHED_PRESSURE", "1.5")))
+    except (TypeError, ValueError):
+        return 1.5
+
+
+def _skip_unchanged_enabled() -> bool:
+    """WS4C M2.2 (refresh != rewrite): an upsert whose payload equals the last
+    STAGED payload for its key -- ignoring volatile bookkeeping fields (count /
+    seen_count / evidence_count / last_cycle) -- is dropped entirely: neither
+    staged nor parked. Confirming an existing row is not writing it."""
+    return os.environ.get("DECADIC_KUZU_SKIP_UNCHANGED", "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _refresh_max_cycles() -> int:
+    """Staleness ceiling for the unchanged-skip: even an unchanged row is
+    re-staged once its last durable staging is this many cycles old, so
+    last_cycle/count in kuzu never fossilize (restore-time retention judges
+    edges by last_cycle)."""
+    try:
+        return max(1, int(os.environ.get("DECADIC_KUZU_REFRESH_MAX_CYCLES", "1000")))
+    except (TypeError, ValueError):
+        return 1000
+
+
+# Fields excluded from the M2.2 payload signature: they change on every
+# confirmation touch without carrying new state worth an extra write.
+_VOLATILE_FIELDS: dict[str, tuple[str, ...]] = {
+    "node": ("seen_count", "last_cycle"),
+    "edge": ("count", "last_cycle"),
+    "belief": ("evidence_count", "last_cycle"),
+    "sem": ("evidence_count", "last_cycle"),
+}
+
+
+def _payload_sig(kind: str, params: dict) -> int:
+    """Order-stable hash of the non-volatile payload fields."""
+    vol = _VOLATILE_FIELDS.get(kind, ())
+    return hash(
+        json.dumps(
+            {k: v for k, v in params.items() if k not in vol},
+            sort_keys=True,
+            default=str,
+        )
+    )
+
+
 def _op_key(kind: str, p: dict) -> tuple:
     """Stable identity key for a persistence op (upsert or delete alike)."""
     if kind in ("node", "del_node"):
         return ("node", p["id"])
-    if kind == "edge":
+    if kind in ("edge", "del_edge"):
         return ("edge", p["src"], p["dst"], p["kind"])
     if kind == "belief":
         return ("belief", p["pk"])
@@ -457,6 +549,11 @@ class KuzuLongTermGraph(LongTermGraph):
         self._batches_enqueued = 0
         self._batches_done = 0
         self._flush_error_batches = 0
+        # WS-FREEZE: flusher liveness heartbeat. _fl_alive goes False if the
+        # thread ever exits (hypothesis H2: death in unguarded merge/shed);
+        # _fl_last_batch_s stalls if it's stuck inside a batch (H4).
+        self._fl_alive = False
+        self._fl_last_batch_s: float | None = None
         self._graph_flush_ms = 0.0  # off-lock execution time of the last batch
         self._graph_flush_lock_ms = 0.0  # resolve time under self._lock (~0 target)
         self._graph_flush_rows = 0  # single-row statements in the last batch (pre-grouping)
@@ -479,6 +576,30 @@ class KuzuLongTermGraph(LongTermGraph):
         self._kz_key_last_write: dict[tuple, int] = {}
         self._writes_deferred = 0  # ops absorbed by the throttle (telemetry)
         self._coalesce_dedup_rows = 0  # rows eliminated by keyed merge (telemetry)
+        # WS4C M1.1: per-kind write telemetry -- answers WHAT feeds the
+        # flusher (node / edge-by-relation-kind / belief / sem / del_*).
+        # staged = entered the pending window; deferred = absorbed by the
+        # throttle. Labels via _op_kind_label; exported flat in
+        # persistence_metrics (graph_writes_staged_<label> etc.).
+        self._writes_staged_by_kind: Counter[str] = Counter()
+        self._writes_deferred_by_kind: Counter[str] = Counter()
+        # WS4C M2.2: last-staged payload signature per key (volatile fields
+        # excluded) + skip telemetry. Cleared/popped in lockstep with
+        # _kz_key_last_write everywhere.
+        self._kz_key_last_sig: dict[tuple, int] = {}
+        self._writes_skipped_unchanged = 0
+        self._writes_skipped_by_kind: Counter[str] = Counter()
+        # WS4C M3: write-pressure telemetry. arrival = rows enqueued per
+        # wall-second (EMA); capacity = rows the flusher executes per BUSY
+        # second (EMA). pressure = arrival / capacity = the busy fraction the
+        # flusher NEEDS to keep up; sustained > 1.0 means the backlog can only
+        # grow (the 6 h death-spiral signature, visible this time).
+        self._arrival_rows_ema = 0.0  # rows/s, EMA
+        self._arrival_last_s: float | None = None
+        self._drain_capacity_ema = 0.0  # rows/s while executing, EMA
+        self._flusher_cpu_ms = 0.0  # cumulative thread CPU in _execute_batch
+        self._flusher_wall_ms = 0.0  # cumulative wall time in _execute_batch
+        self._writes_shed_total = 0  # M3.2 backpressure escape (never nodes)
         if self._root is not None:
             with self._lock:
                 self._open_locked()
@@ -683,17 +804,34 @@ class KuzuLongTermGraph(LongTermGraph):
         cycle counter that moved BACKWARD (reset / restored life) also passes
         rather than deferring against a stale horizon. Deferred payloads are
         promoted exactly at drain barriers (_drain_locked)."""
+        cycle = int(params.get("last_cycle", 0) or 0)
+        sig = _payload_sig(kind, params) if _skip_unchanged_enabled() else None
+        if sig is not None and sig == self._kz_key_last_sig.get(key):
+            # WS4C M2.2: identical durable state modulo volatile bookkeeping.
+            # Drop the attempt entirely (no stage, no park) unless the last
+            # staging is old enough that last_cycle in kuzu would fossilize.
+            last = self._kz_key_last_write.get(key)
+            if last is not None and 0 <= cycle - last < _refresh_max_cycles():
+                # A parked intermediate is obsolete: the newest payload equals
+                # what is already durably staged, so nothing remains to write.
+                self._deferred.pop(key, None)
+                self._writes_skipped_unchanged += 1
+                self._writes_skipped_by_kind[_op_kind_label(kind, params)] += 1
+                return False
         n = _write_min_cycles()
         if n > 0:
-            cycle = int(params.get("last_cycle", 0) or 0)
             last = self._kz_key_last_write.get(key)
             if last is not None and 0 <= cycle - last < n:
                 self._deferred[key] = (kind, params)
                 self._writes_deferred += 1
+                self._writes_deferred_by_kind[_op_kind_label(kind, params)] += 1
                 return False
-            self._kz_key_last_write[key] = cycle
+        self._kz_key_last_write[key] = cycle
         self._deferred.pop(key, None)
         self._pending[key] = (kind, params)
+        if sig is not None:
+            self._kz_key_last_sig[key] = sig
+        self._writes_staged_by_kind[_op_kind_label(kind, params)] += 1
         return True
 
     def _commit_locked(self, *, batch: bool = False) -> None:
@@ -757,6 +895,18 @@ class KuzuLongTermGraph(LongTermGraph):
         stmts = self._resolve_ops_locked(ops)
         if not stmts:
             return
+        # WS4C M3.1: arrival-rate EMA (rows per wall-second). Updated under
+        # self._lock; read in persistence_metrics under the same lock.
+        now = time.perf_counter()
+        if self._arrival_last_s is not None:
+            dt = max(1e-6, now - self._arrival_last_s)
+            inst = len(stmts) / dt
+            self._arrival_rows_ema = (
+                inst
+                if self._arrival_rows_ema <= 0.0
+                else 0.8 * self._arrival_rows_ema + 0.2 * inst
+            )
+        self._arrival_last_s = now
         if _offlock_flush_enabled():
             with self._flush_mu:
                 if len(self._flush_queue) >= _flush_queue_cap():
@@ -822,6 +972,9 @@ class KuzuLongTermGraph(LongTermGraph):
             elif kind == "del_sem":
                 stmts.append((_Q_SEM_DEL, p))
                 self._kuzu_semantic_pks.discard(p["pk"])
+            elif kind == "del_edge":
+                stmts.append((_Q_EDGE_DEL, p))
+                self._kuzu_edge_keys.discard((p["src"], p["dst"], p["kind"]))
         return stmts
 
     # -- execution side (flusher thread or inline; NEVER takes self._lock) ----
@@ -837,25 +990,96 @@ class KuzuLongTermGraph(LongTermGraph):
         )
         self._flush_thread = t
         t.start()
+        self._fl_alive = True  # WS-FREEZE
 
     def _flusher_loop(self) -> None:
+        self._fl_alive = True  # WS-FREEZE
         while True:
             with self._flush_cv:
                 while not self._flush_queue and not self._flush_stop:
                     self._flush_cv.wait(timeout=0.5)
                 if self._flush_stop and not self._flush_queue:
+                    self._fl_alive = False  # WS-FREEZE: normal stop
+                    logger.info("kuzu flusher stopped (normal)")
                     return
-                batch = self._flush_queue.popleft() if self._flush_queue else None
-            if batch is None:
+                # WS4C M3.1: pop up to _flush_merge_max() batches per wake and
+                # MERGE them into one transaction -- drain rate now scales
+                # with backlog (one fsync amortized over the merged rows), and
+                # the keyed dedup fires on every multi-batch wake instead of
+                # only at the queue cap (it fired ZERO times in the 6 h run).
+                at_cap = len(self._flush_queue) >= _flush_queue_cap()
+                popped: list[tuple[list, list]] = []
+                for _ in range(_flush_merge_max()):
+                    if not self._flush_queue:
+                        break
+                    popped.append(self._flush_queue.popleft())
+            if not popped:
                 continue
-            stmts, ops = batch
+            stmts, ops = popped[0]
+            merged_n = 0
+            # WS-FREEZE H2: merge/shed were UNGUARDED -- an exception here kills
+            # the flusher thread silently. Detect + log + re-raise (preserve
+            # today's die-on-error behavior; the guard is a separate decision).
+            try:
+                for s2, o2 in popped[1:]:
+                    stmts, ops, merged = _merge_batches(stmts, ops, s2, o2)
+                    merged_n += merged
+                if merged_n:
+                    self._coalesce_dedup_rows += merged_n
+                if at_cap:
+                    stmts, ops = self._maybe_shed(stmts, ops)
+            except Exception:
+                self._fl_alive = False
+                logger.exception("kuzu flusher DIED in merge/shed (WS-FREEZE H2)")
+                raise
             try:
                 self._execute_batch(stmts, ops)
             except Exception:  # pragma: no cover - flusher must never die
                 logger.exception("kuzu flusher: batch execution crashed")
+            self._fl_last_batch_s = time.monotonic()  # WS-FREEZE heartbeat
             with self._flush_cv:
-                self._batches_done += 1
+                self._batches_done += len(popped)
                 self._flush_cv.notify_all()
+
+    def _write_pressure(self) -> float:
+        """arrival rows/s over drain capacity rows/s (the busy fraction the
+        flusher needs to keep up; sustained > 1.0 = backlog can only grow)."""
+        cap = self._drain_capacity_ema
+        if cap <= 0.0:
+            return 0.0
+        return self._arrival_rows_ema / cap
+
+    def _maybe_shed(
+        self, stmts: list[tuple[str, dict | None]], ops: list[tuple[str, dict]]
+    ) -> tuple[list[tuple[str, dict | None]], list[tuple[str, dict]]]:
+        """WS4C M3.2 backpressure escape (queue at cap AND pressure over the
+        ceiling): shed edge SET refreshes first, belief SETs only past twice
+        the ceiling. CREATEs, deletes, nodes and semantic records are never
+        shed; a shed refresh re-lands at the next refresh-horizon write."""
+        thresh = _shed_pressure()
+        if thresh <= 0.0:
+            return stmts, ops
+        pressure = self._write_pressure()
+        if pressure <= thresh:
+            return stmts, ops
+        shed_beliefs = pressure > 2.0 * thresh
+        keep_s: list[tuple[str, dict | None]] = []
+        keep_o: list[tuple[str, dict]] = []
+        shed = 0
+        for (q, p), op in zip(stmts, ops):
+            if q == _Q_EDGE_SET or (shed_beliefs and q == _Q_BELIEF_SET):
+                shed += 1
+                continue
+            keep_s.append((q, p))
+            keep_o.append(op)
+        if shed:
+            self._writes_shed_total += shed
+            logger.warning(
+                "kuzu backpressure: shed %d refresh statements (pressure %.2f)",
+                shed,
+                pressure,
+            )
+        return keep_s, keep_o
 
     def _acquire_write_channel(self) -> tuple[Any, Any]:
         """(connection, lock) for batch execution.
@@ -882,10 +1106,26 @@ class KuzuLongTermGraph(LongTermGraph):
                 return self._kz_write_conn, self._kz_write_lock
         return self._kz_conn, self._kz_io_lock
 
+    def _note_drain(self, rows: int, started: float, cpu0: float) -> None:
+        """WS4C M3: drain-capacity EMA (rows per busy second) + flusher CPU
+        share accounting. Exec-side fields, touched only on the executing
+        thread (flusher or inline caller)."""
+        wall_s = max(1e-6, time.perf_counter() - started)
+        self._flusher_wall_ms += wall_s * 1000.0
+        self._flusher_cpu_ms += max(0.0, time.thread_time() - cpu0) * 1000.0
+        if rows > 0:
+            inst = rows / wall_s
+            self._drain_capacity_ema = (
+                inst
+                if self._drain_capacity_ema <= 0.0
+                else 0.8 * self._drain_capacity_ema + 0.2 * inst
+            )
+
     def _execute_batch(
         self, stmts: list[tuple[str, dict | None]], ops: list[tuple[str, dict]]
     ) -> None:
         started = time.perf_counter()
+        cpu0 = time.thread_time()
         # M3.4: run-coalesced multi-row statements. Grouping happens off-lock
         # too (pure list walk); the failure path replays from OPS, which is
         # statement-shape agnostic, so grouping never weakens durability.
@@ -906,6 +1146,7 @@ class KuzuLongTermGraph(LongTermGraph):
                     conn.execute(q, p) if p is not None else conn.execute(q)
                 conn.execute("COMMIT;")
                 self._graph_flush_ms = (time.perf_counter() - started) * 1000.0
+                self._note_drain(len(stmts), started, cpu0)
                 return
             except Exception:
                 self._flush_error_batches += 1
@@ -920,6 +1161,7 @@ class KuzuLongTermGraph(LongTermGraph):
                 except Exception:  # pragma: no cover - durability only
                     logger.exception("kuzu replay op failed (%s)", kind)
         self._graph_flush_ms = (time.perf_counter() - started) * 1000.0
+        self._note_drain(len(stmts), started, cpu0)
 
     def _replay_op(self, conn: Any, kind: str, p: dict) -> None:
         """Set-agnostic single-op replay: probe existence, then write.
@@ -951,6 +1193,8 @@ class KuzuLongTermGraph(LongTermGraph):
             conn.execute(_Q_NODE_DEL, p)
         elif kind == "del_sem":
             conn.execute(_Q_SEM_DEL, p)
+        elif kind == "del_edge":
+            conn.execute(_Q_EDGE_DEL, p)
 
     def _drain_locked(self, timeout: float | None = None) -> bool:
         """Flush pending and block until every enqueued batch has executed.
@@ -967,11 +1211,17 @@ class KuzuLongTermGraph(LongTermGraph):
         # parked upsert (and delete staging purges deferred anyway; this guard
         # is belt-and-braces).
         if self._deferred:
+            refresh_sig = _skip_unchanged_enabled()
             for k, v in self._deferred.items():
                 cur = self._pending.get(k)
                 if cur is not None and cur[0].startswith("del_"):
                     continue
                 self._pending[k] = v
+                if refresh_sig:
+                    # M2.2: the promoted payload becomes the durably-staged
+                    # state; keep the signature in lockstep so a later equal
+                    # attempt skips correctly.
+                    self._kz_key_last_sig[k] = _payload_sig(v[0], v[1])
             self._deferred.clear()
         if self._pending:
             started = time.perf_counter()
@@ -1350,6 +1600,7 @@ class KuzuLongTermGraph(LongTermGraph):
             self._pending.clear()
             self._deferred.clear()  # write governance: nothing stale may land post-wipe
             self._kz_key_last_write.clear()
+            self._kz_key_last_sig.clear()
             self._drain_locked()  # WS4B: no queued batch may land post-wipe
             if self._kz_conn is not None:
                 with self._kz_io_lock:
@@ -1373,6 +1624,7 @@ class KuzuLongTermGraph(LongTermGraph):
     def prune_retention(self, *, cycle: int = 0) -> dict[str, int]:
         with self._lock:
             nodes_before = set(self._nodes)
+            edges_before = set(self._edges)  # WS4C M2.1: diff for del_edge mirror
             sem_before = {cat: set(bucket) for cat, bucket in self._semantic.items()}
             out = super().prune_retention(cycle=cycle)
             # The base prune mutates memory only (its sqlite DELETEs are behind
@@ -1381,19 +1633,37 @@ class KuzuLongTermGraph(LongTermGraph):
             for nid in nodes_before - set(self._nodes):
                 key = ("node", nid)
                 self._pending[key] = ("del_node", {"id": nid})
+                self._writes_staged_by_kind["del_node"] += 1
                 # Write governance: a parked upsert must not resurrect a pruned
                 # row at the next drain; forgetting the key lets a future
                 # re-create pass the gate as new.
                 self._deferred.pop(key, None)
                 self._kz_key_last_write.pop(key, None)
+                self._kz_key_last_sig.pop(key, None)
+            # WS4C M2.1: mirror retired edges (the base prune mutates memory
+            # only). Same forget-the-key discipline as nodes: a parked upsert
+            # must not resurrect a retired edge, and a later re-observation
+            # must pass the gate as a fresh CREATE.
+            for src, dst, ekind in edges_before - set(self._edges):
+                key = ("edge", src, dst, ekind)
+                self._pending[key] = (
+                    "del_edge",
+                    {"src": src, "dst": dst, "kind": ekind},
+                )
+                self._writes_staged_by_kind["del_edge"] += 1
+                self._deferred.pop(key, None)
+                self._kz_key_last_write.pop(key, None)
+                self._kz_key_last_sig.pop(key, None)
             for cat, before in sem_before.items():
                 for rid in before - set(self._semantic[cat]):
                     pk = f"{cat}{_SEP}{rid}"
                     key = ("sem", pk)
                     self._pending[key] = ("del_sem", {"pk": pk})
+                    self._writes_staged_by_kind["del_sem"] += 1
                     self._deferred.pop(key, None)
                     self._kz_key_last_write.pop(key, None)
-            if out.get("nodes") or out.get("semantic_records"):
+                    self._kz_key_last_sig.pop(key, None)
+            if out.get("nodes") or out.get("edges") or out.get("semantic_records"):
                 self._commit_locked()
             return out
 
@@ -1428,6 +1698,7 @@ class KuzuLongTermGraph(LongTermGraph):
             self._pending.clear()  # pending writes describe pre-restore state
             self._deferred.clear()  # ditto for throttled payloads
             self._kz_key_last_write.clear()
+            self._kz_key_last_sig.clear()
             # WS4B: drop queued pre-restore batches and stop the flusher
             # before the directory swap (Windows file-lock discipline).
             with self._flush_mu:
@@ -1466,7 +1737,24 @@ class KuzuLongTermGraph(LongTermGraph):
                 pass
             with self._flush_mu:
                 queue_depth = len(self._flush_queue)
+            # WS4C M1.1: per-kind breakdown, exported as FLAT keys (the
+            # runtime merges this dict wholesale into agent metrics; trend
+            # pollers regex scalar values). Deferred depth is recomputed from
+            # the live map -- it is a gauge, not a counter.
+            per_kind: dict[str, Any] = {}
+            for lbl, c in self._writes_staged_by_kind.items():
+                per_kind[f"graph_writes_staged_{_metric_label(lbl)}"] = int(c)
+            for lbl, c in self._writes_deferred_by_kind.items():
+                per_kind[f"graph_writes_deferred_{_metric_label(lbl)}"] = int(c)
+            for lbl, c in self._writes_skipped_by_kind.items():
+                per_kind[f"graph_writes_skipped_{_metric_label(lbl)}"] = int(c)
+            depth_by_kind: Counter[str] = Counter(
+                _op_kind_label(kind, p) for kind, p in self._deferred.values()
+            )
+            for lbl, c in depth_by_kind.items():
+                per_kind[f"graph_deferred_depth_{_metric_label(lbl)}"] = int(c)
             return {
+                **per_kind,
                 "backend": "kuzu",
                 # WS4B off-lock flusher telemetry (PRD G5):
                 "graph_flush_ms": float(self._graph_flush_ms),
@@ -1480,6 +1768,21 @@ class KuzuLongTermGraph(LongTermGraph):
                 "graph_writes_deferred": int(self._writes_deferred),
                 "graph_coalesce_dedup_rows": int(self._coalesce_dedup_rows),
                 "graph_deferred_depth": len(self._deferred),
+                # WS4C M2.2: attempts dropped because the durable state already
+                # matches (refresh != rewrite).
+                "graph_writes_skipped_unchanged": int(self._writes_skipped_unchanged),
+                # WS4C M3: write-pressure telemetry. pressure = arrival rows/s
+                # over drain-capacity rows/s; sustained > 1.0 = the flusher
+                # mathematically cannot keep up (probe verdict: RED).
+                "graph_write_pressure": float(self._write_pressure()),
+                "graph_arrival_rows_per_s": float(self._arrival_rows_ema),
+                "graph_drain_capacity_rows_per_s": float(self._drain_capacity_ema),
+                "graph_flusher_cpu_share": float(
+                    self._flusher_cpu_ms / self._flusher_wall_ms
+                    if self._flusher_wall_ms > 0.0
+                    else 0.0
+                ),
+                "graph_writes_shed_total": int(self._writes_shed_total),
                 "graph_dedicated_write_conn": bool(self._kz_write_conn is not None),
                 "sqlite_commit_count": int(self._sqlite_commit_count),
                 "sqlite_batch_commit_count": int(self._sqlite_batch_commit_count),

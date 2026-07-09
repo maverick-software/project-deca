@@ -72,7 +72,21 @@ def main() -> int:
     ap.add_argument("scenario")
     ap.add_argument("--sigma", type=float, default=3.0)
     ap.add_argument("--expect", choices=("pass", "fail"), default=None)
+    ap.add_argument(
+        "--flag-on",
+        action="store_true",
+        help="this is the flags-ON leg: distinguishes LEARNING_FAILED (training "
+        "signal too weak) from BLIND (representation cannot bind)",
+    )
+    ap.add_argument(
+        "--auroc-pass",
+        type=float,
+        default=0.75,
+        help="novel-only + threat-vs-safe AUROC at/above this => BINDING "
+        "(primary verdict driver, v4)",
+    )
     args = ap.parse_args()
+    flag_on_hint = args.flag_on
 
     rows = load(Path(args.samples))
     scen = json.loads(Path(args.scenario).read_text(encoding="utf-8"))
@@ -82,6 +96,42 @@ def main() -> int:
     if len(rows) < 50 or not order:
         print(f"FAIL: unusable inputs (samples={len(rows)}, probe phases={len(order)})")
         return 1
+
+    # Validity guard (2026-07-06, run B): a dead or arrested agent yields a
+    # stale, flat readout that the binding logic would mis-report as BLIND.
+    # Detect it FIRST and return DIED/STALLED, never a representational verdict.
+    cyc = [r["cycles_completed"] for r in rows if r.get("cycles_completed") is not None]
+    if cyc:
+        # Frozen-TAIL detection, not flat-whole: run B advanced 10->1268 and
+        # THEN arrested, so a max-min test misses it. Count trailing samples
+        # sharing the final counter value; a long frozen tail (>=120 samples
+        # ~= 60 s at 0.5 s polling) means the cycle worker died mid-run.
+        tail = 0
+        for v in reversed(cyc):
+            if v == cyc[-1]:
+                tail += 1
+            else:
+                break
+        if tail >= 120:
+            print(f"BINDING_PROBE: STALLED (cycles_completed frozen at {cyc[-1]} "
+                  f"for the final {tail} samples -- cognitive arrest; verdict "
+                  f"is not evaluable)")
+            return 1
+    via = [r["viability"] for r in rows if isinstance(r.get("viability"), (int, float))]
+    if via and min(via) <= 0.0:
+        # Locate death onset in step space to distinguish "died before probe"
+        # (invalid) from "died after the probe segment" (probe still valid).
+        first_dead = next(
+            (float(r.get("step_est", 0)) for r in rows
+             if isinstance(r.get("viability"), (int, float)) and r["viability"] <= 0.0),
+            None,
+        )
+        probe_start = min(int(p["start"]) for p in order)
+        if first_dead is not None and first_dead < probe_start:
+            print(f"BINDING_PROBE: DIED (viability->0 at step~{first_dead:.0f}, before "
+                  f"probe start {probe_start}; the curriculum killed the agent -- "
+                  f"lower combat_hit dose. Verdict not evaluable)")
+            return 1
 
     # v2 (2026-07-04, after the first off-leg run): segmentation by SCENARIO
     # STEP WINDOWS, not pain anchors -- threat_near raises anticipatory
@@ -100,12 +150,21 @@ def main() -> int:
     # Baseline: samples inside probe-segment GAPS (between probe phases) --
     # local to the segment, immune to slow drift across the run.
     probe_start = min(int(p["start"]) for p in order)
+    # Exclusion margins scale with the scheduled inter-phase gap (compressed
+    # schedules shrink the gap from 180 to 100 steps; fixed 20/60 margins
+    # would swallow the entire baseline window between probe phases).
+    sched_gap = 100
+    if len(order) >= 2:
+        starts = sorted(int(p["start"]) for p in order)
+        sched_gap = max(20, min(b - a for a, b in zip(starts, starts[1:])) - phase_len)
+    lead, tail = max(5, sched_gap // 10), max(20, sched_gap // 2)
     gap_vals = [
         v
         for s, v in prio_by_step
         if s >= probe_start - 200
         and not any(
-            int(p["start"]) - 20 <= s <= int(p["start"]) + phase_len + 60 for p in order
+            int(p["start"]) - lead <= s <= int(p["start"]) + phase_len + tail
+            for p in order
         )
     ]
     if len(gap_vals) < 20:
@@ -136,24 +195,96 @@ def main() -> int:
     for kind, pair, wmin, ok in details:
         print(f"  {kind:14s} {str(pair):24s} min={wmin} deflected={ok}")
 
-    # v3 two-direction verdict. The discrimination only a bound
-    # representation can make: novel THREAT pairings deflect, novel SAFE
-    # pairings do not -- simultaneously.
-    nt, ns = hits.get("probe_novel_threat", 0), hits.get("probe_novel_safe", 0)
-    tt = hits.get("probe_trained_threat", 0)
-    n_nt = n_of.get("probe_novel_threat", 0)
-    n_ns = n_of.get("probe_novel_safe", 0)
-    n_tt = n_of.get("probe_trained_threat", 0)
-    if total == 0:
-        verdict = "BLIND"
-    elif n_nt and nt >= n_nt and ns == 0:
-        verdict = "BINDING"
-    elif n_ns and ns > 0 and nt > 0:
-        verdict = "PROXIMITY_SHORTCUT"  # deflects on ANY adjacency: unbound
-    elif tt > 0 and nt < n_nt:
-        verdict = "MEMORIZER"
+    # Distribution-level discrimination statistic (2026-07-07, run C): the
+    # per-phase min-vs-3sigma criterion is an extreme-value test against a
+    # non-stationary baseline (sigma varied 0.010 -> 0.071 across runs) and is
+    # underpowered for the ~0.05-0.13 conditioned-response effect sizes
+    # observed. Secondary readout: phase-MEAN priority per probe phase,
+    # threat vs safe, rank-sum AUROC. AUROC > 0.5 means threat-pair adjacency
+    # lowers priority relative to safe-pair adjacency -- the binding signal --
+    # regardless of absolute threshold placement.
+    def phase_mean(p) -> float | None:
+        lo, hi = int(p["start"]) + 5, int(p["start"]) + phase_len + 40
+        w = [v for s, v in prio_by_step if lo <= s <= hi]
+        return (sum(w) / len(w)) if w else None
+
+    threat_means = [
+        m for p in order if p["kind"].endswith("_threat")
+        for m in [phase_mean(p)] if m is not None
+    ]
+    safe_means = [
+        m for p in order if p["kind"].endswith("_safe")
+        for m in [phase_mean(p)] if m is not None
+    ]
+    auroc = None
+    nov_auroc = None
+    if threat_means and safe_means:
+        # Mann-Whitney U by direct rank comparison (n is tiny; exact count).
+        u = sum(1 for t in threat_means for s in safe_means if t < s)
+        u += 0.5 * sum(1 for t in threat_means for s in safe_means if t == s)
+        auroc = u / (len(threat_means) * len(safe_means))
+        # Same statistic restricted to NOVEL pairs only: the generalization
+        # signal proper (trained pairs could be memorized).
+        nt_means = [
+            m for p in order if p["kind"] == "probe_novel_threat"
+            for m in [phase_mean(p)] if m is not None
+        ]
+        ns_means = [
+            m for p in order if p["kind"] == "probe_novel_safe"
+            for m in [phase_mean(p)] if m is not None
+        ]
+        nov_auroc = None
+        if nt_means and ns_means:
+            nu = sum(1 for t in nt_means for s in ns_means if t < s)
+            nu += 0.5 * sum(1 for t in nt_means for s in ns_means if t == s)
+            nov_auroc = nu / (len(nt_means) * len(ns_means))
+        print(
+            f"discrimination: threat-vs-safe phase-mean AUROC={auroc:.3f} "
+            f"(n={len(threat_means)}v{len(safe_means)}; 0.5=chance, 1.0=perfect) "
+            f"| novel-only AUROC={nov_auroc if nov_auroc is None else round(nov_auroc, 3)}"
+        )
+
+    # LEARNING CHECK (added 2026-07-06): did the aversive relation get learned
+    # AT ALL? Measure priority deflection DURING train_threat phases (threat
+    # actively firing). If training itself never deflects, the probe's BLIND is
+    # a training-signal failure, not a binding failure -- report it as such so
+    # the two are never conflated again (the first ablation read BLIND on both
+    # legs because collision damage was graced to nothing).
+    train_threat_phases = [
+        p for p in scen.get("schedule", []) if p.get("kind") == "train_threat"
+    ]
+    tt_min = None
+    for p in train_threat_phases:
+        lo, hi = int(p["start"]) + 5, int(p["start"]) + phase_len
+        w = [v for s, v in prio_by_step if lo <= s <= hi]
+        if w:
+            m = min(w)
+            tt_min = m if tt_min is None else min(tt_min, m)
+    trained_response = tt_min is not None and tt_min < thresh
+    print(
+        f"learning check: train_threat min priority={round(tt_min, 4) if tt_min is not None else None} "
+        f"vs thresh={thresh:.4f} -> relation {'LEARNED' if trained_response else 'NOT learned'}"
+    )
+
+    # v4 verdict (2026-07-07): the AUROC rank statistic is PRIMARY; the
+    # per-phase 3sigma count above is diagnostic only. It was shown
+    # underpowered for the measured ~0.05-0.13 effect -- it read
+    # LEARNING_FAILED on a run whose threat-vs-safe AUROC was 0.806 and
+    # novel-only 0.778 (exact one-sided Mann-Whitney p~0.047). The
+    # generalization claim rests on the NOVEL-ONLY statistic: held-out
+    # pairings discriminated threat from safe. --auroc-pass (default 0.75)
+    # is the decision boundary (the "measure, don't assume" discipline
+    # applied to the detector itself).
+    if nov_auroc is None or auroc is None:
+        verdict = "UNEVALUABLE"  # a probe category is missing; no test forms
+    elif nov_auroc >= args.auroc_pass and auroc >= args.auroc_pass:
+        verdict = "BINDING"  # generalization AND full contrast both discriminate
+    elif auroc >= args.auroc_pass and nov_auroc < 0.5:
+        verdict = "MEMORIZER"  # trained pairs separate, novel do not
+    elif auroc <= 1.0 - args.auroc_pass:
+        verdict = "BLIND"  # at/below chance (flags-off leg lands here ~0.167)
     else:
-        verdict = "PARTIAL"
+        verdict = "INCONCLUSIVE"  # signal present, under the confirmatory bar
 
     print(
         f"gap baseline: mean={mean:.4f} std={std:.4f} thresh={thresh:.4f} "

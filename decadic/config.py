@@ -1078,13 +1078,25 @@ EFFORT_PRED_DIM = EFFORT_VECTOR_DIM  # body-map effort/work/strain/fatigue/pain 
 DEFAULT_AI_EFFORT_FWD_WEIGHT = 0.5
 DEFAULT_AI_EFFORT_COST_WEIGHT = 0.02
 DEFAULT_EFFORT_DRAIN_ENABLED = True
-DEFAULT_EFFORT_ENERGY_SCALE = 0.01
-DEFAULT_WORK_ENERGY_SCALE = 0.02
+# System A (body-reported effort energy drain) RETIRED 2026-07-08: it was
+# per-observation (frame-count, not time) and ~100x too aggressive (killed the
+# agent in ~100 min). Replaced by the motor-signal cost below. Scales default 0;
+# getters retained for A/B revert.
+DEFAULT_EFFORT_ENERGY_SCALE = 0.0
+DEFAULT_WORK_ENERGY_SCALE = 0.0
 DEFAULT_FATIGUE_RECOVERY_S = 8.0
 DEFAULT_FATIGUE_PAIN_GAIN = 0.35
 DEFAULT_STRAIN_PAIN_GAIN = 0.25
 DEFAULT_EFFORT_MAX_ENERGY_DRAIN_PER_OBS = 0.08
 DEFAULT_EFFORT_DRAIN_GRACE_MODE = "dojo_or_braced"
+# Motor-signal energy cost: energy is spent on the SIGNALS the brain sends to
+# its joints (Sum_j |u_emit_j|), integrated over real time (dt-scaled, respects
+# compression, cycle-rate-independent). Each actuated joint costs energy, so the
+# agent can associate its own motor output with getting hungry. Scale is a
+# starting point; calibrate so typical activity empties energy in ~7 days.
+DEFAULT_MOTOR_ENERGY_ENABLED = True
+DEFAULT_MOTOR_ENERGY_SCALE = 1e-5  # energy per (unit-Sum|u| x second); calibrate
+DEFAULT_MOTOR_ENERGY_MODE = "l1"   # "l1" = Sum|u| (per-joint); "l2" = Sum u^2
 
 
 def drive_comfort_setpoint() -> float:
@@ -1179,6 +1191,19 @@ def effort_energy_scale() -> float:
 
 def work_energy_scale() -> float:
     return max(0.0, float(os.environ.get("DECADIC_WORK_ENERGY_SCALE", str(DEFAULT_WORK_ENERGY_SCALE))))
+
+
+def motor_energy_enabled() -> bool:
+    return _env_bool("DECADIC_MOTOR_ENERGY_ENABLED", DEFAULT_MOTOR_ENERGY_ENABLED)
+
+
+def motor_energy_scale() -> float:
+    return max(0.0, float(os.environ.get("DECADIC_MOTOR_ENERGY_SCALE", str(DEFAULT_MOTOR_ENERGY_SCALE))))
+
+
+def motor_energy_mode() -> str:
+    m = str(os.environ.get("DECADIC_MOTOR_ENERGY_MODE", DEFAULT_MOTOR_ENERGY_MODE)).strip().lower()
+    return m if m in ("l1", "l2") else "l1"
 
 
 def fatigue_recovery_s() -> float:
@@ -1600,6 +1625,16 @@ DEFAULT_LTM_MAX_NODES = 50_000
 DEFAULT_LTM_MAX_SEMANTIC_RECORDS = 200_000
 DEFAULT_LTM_PRUNE_STALE_CYCLES = 50_000
 DEFAULT_LTM_PRUNE_BATCH = 2_000
+# WS4C M2 relational hygiene (2026-07-07). Evidence: reports/ws4c_m1_verdict.md.
+# -- 194k anonymous event records and 5.4k never-retired edges in a 34-entity
+# world after 6 h. Events keyed by class collapse the dominant write factory;
+# edge retention + degree cap bound the relation set below the flusher
+# crossover by design.
+DEFAULT_LTM_EVENT_KEYED = True
+DEFAULT_LTM_EDGE_RETENTION_ENABLED = True
+DEFAULT_LTM_EDGE_STALE_CYCLES = 2_000
+DEFAULT_LTM_EDGE_DEGREE_CAP = 16
+DEFAULT_LTM_EDGE_PRUNE_PREFIXES = "scene_"
 
 
 def ltm_graph_enabled() -> bool:
@@ -1673,6 +1708,36 @@ def ltm_prune_stale_cycles() -> int:
 
 def ltm_prune_batch() -> int:
     return max(1, int(os.environ.get("DECADIC_LTM_PRUNE_BATCH", str(DEFAULT_LTM_PRUNE_BATCH))))
+
+
+def ltm_event_keyed_enabled() -> bool:
+    """WS4C M2.3: semantic event records keyed by event_class (one aggregate
+    record per class, evidence accumulates) instead of a fresh anonymous id
+    per instance (unbounded row factory; see reports/ws4c_m1_verdict.md)."""
+    return _env_bool("DECADIC_LTM_EVENT_KEYED", DEFAULT_LTM_EVENT_KEYED)
+
+
+def ltm_edge_retention_enabled() -> bool:
+    """WS4C M2.1: retire stale prunable-kind edges and cap per-node degree."""
+    return _env_bool("DECADIC_LTM_EDGE_RETENTION_ENABLED", DEFAULT_LTM_EDGE_RETENTION_ENABLED)
+
+
+def ltm_edge_stale_cycles() -> int:
+    """Edges of prunable kinds unconfirmed for this many cycles are retired."""
+    return max(1, int(os.environ.get("DECADIC_LTM_EDGE_STALE_CYCLES", str(DEFAULT_LTM_EDGE_STALE_CYCLES))))
+
+
+def ltm_edge_degree_cap() -> int:
+    """Backstop: keep at most this many prunable-kind edges per node
+    (by weight, then recency); bounds a 34-node scene at ~550 edges."""
+    return max(1, int(os.environ.get("DECADIC_LTM_EDGE_DEGREE_CAP", str(DEFAULT_LTM_EDGE_DEGREE_CAP))))
+
+
+def ltm_edge_prune_prefixes() -> tuple[str, ...]:
+    """Edge kinds subject to retention/degree cap (comma-separated prefixes).
+    Default: scene_* only -- co_occurrence and custom kinds are exempt."""
+    raw = os.environ.get("DECADIC_LTM_EDGE_PRUNE_PREFIXES", DEFAULT_LTM_EDGE_PRUNE_PREFIXES)
+    return tuple(p.strip() for p in str(raw).split(",") if p.strip())
 
 
 def slots_k() -> int:
@@ -2318,6 +2383,526 @@ def planner_bias_gain() -> float:
 
 def planner_bias_max() -> float:
     return _lc_float("DECADIC_PLANNER_BIAS_MAX", DEFAULT_PLANNER_BIAS_MAX, 0.0, 1.0)
+
+
+# WS-EXPAND E3: fine-motor error correction + per-actuator phase timing.
+# E3.1 corrector: zero-init head adding a bounded correction to the PD targets,
+# trained by feedback-error learning (realized per-joint tracking error as a
+# supervised target — never a reward). E3.2 phase generator: earned rhythm —
+# a zero-init head opens per-actuator oscillation amplitude/frequency where
+# periodic drive pays. E3.3: the gate's threat fast-path bypasses the phase
+# contribution (aperiodic recovery routes raw). All zero-init -> birth-
+# identical; default ON; tests pin OFF.
+DEFAULT_MOTOR_CORRECTOR = True
+DEFAULT_MOTOR_CORRECTOR_GAIN = 0.3  # scale of the tanh-bounded correction
+DEFAULT_MOTOR_CORRECTOR_FEL_K = 0.5  # tracking-error -> correction-target gain
+DEFAULT_MOTOR_CORRECTOR_LOSS_WEIGHT = 0.5  # FEL supervision weight in the loss
+DEFAULT_CPG = True
+DEFAULT_CPG_AMP = 0.3  # max phase contribution per actuator (pre-tanh c)
+DEFAULT_CPG_BASE_STEP = 0.35  # rad/cycle (~1.4 Hz at ~4 cyc/s); modulated ±50%
+
+
+def motor_corrector_enabled() -> bool:
+    return _env_bool("DECADIC_MOTOR_CORRECTOR", DEFAULT_MOTOR_CORRECTOR)
+
+
+def motor_corrector_gain() -> float:
+    return _lc_float("DECADIC_MOTOR_CORRECTOR_GAIN", DEFAULT_MOTOR_CORRECTOR_GAIN, 0.0, 1.0)
+
+
+def motor_corrector_fel_k() -> float:
+    return _lc_float("DECADIC_MOTOR_CORRECTOR_FEL_K", DEFAULT_MOTOR_CORRECTOR_FEL_K, 0.0, 5.0)
+
+
+def motor_corrector_loss_weight() -> float:
+    return _lc_float(
+        "DECADIC_MOTOR_CORRECTOR_LOSS_WEIGHT", DEFAULT_MOTOR_CORRECTOR_LOSS_WEIGHT, 0.0
+    )
+
+
+def cpg_enabled() -> bool:
+    return _env_bool("DECADIC_CPG", DEFAULT_CPG)
+
+
+def cpg_amp() -> float:
+    return _lc_float("DECADIC_CPG_AMP", DEFAULT_CPG_AMP, 0.0, 1.0)
+
+
+def cpg_base_step() -> float:
+    return _lc_float("DECADIC_CPG_BASE_STEP", DEFAULT_CPG_BASE_STEP, 0.0, 3.14)
+
+
+# WS-EXPAND E4: cached (habit) vs deliberate dual control. Escalated cycles
+# bank (input, action) teacher pairs; a small cached head distills them
+# continually; skip cycles blend toward the cached action by a TRUST weight
+# earned from distillation quality (0 at birth -> byte-identical; trust decays
+# the moment the habit stops matching the teacher). Default ON; tests pin OFF.
+DEFAULT_CACHED_POLICY = True
+DEFAULT_CACHED_BUF = 512  # teacher-pair ring capacity
+DEFAULT_CACHED_DISTILL_BATCH = 32  # most-recent pairs per distillation step
+DEFAULT_CACHED_DISTILL_MIN = 64  # pairs banked before distillation starts
+DEFAULT_CACHED_DISTILL_WEIGHT = 1.0  # distillation term weight in the loss
+DEFAULT_CACHED_DISTILL_EMA_ALPHA = 0.05  # distill-loss EMA smoothing
+DEFAULT_CACHED_TRUST_THRESHOLD = 0.01  # EMA below this starts earning trust
+DEFAULT_CACHED_MAX_W = 1.0  # full habit drive at EMA 0 (skip cycles only)
+
+
+def cached_policy_enabled() -> bool:
+    return _env_bool("DECADIC_CACHED_POLICY", DEFAULT_CACHED_POLICY)
+
+
+def cached_buf() -> int:
+    return max(8, int(_lc_float("DECADIC_CACHED_BUF", DEFAULT_CACHED_BUF, 8)))
+
+
+def cached_distill_batch() -> int:
+    return max(1, int(_lc_float("DECADIC_CACHED_DISTILL_BATCH", DEFAULT_CACHED_DISTILL_BATCH, 1)))
+
+
+def cached_distill_min() -> int:
+    return max(1, int(_lc_float("DECADIC_CACHED_DISTILL_MIN", DEFAULT_CACHED_DISTILL_MIN, 1)))
+
+
+def cached_distill_weight() -> float:
+    return _lc_float("DECADIC_CACHED_DISTILL_WEIGHT", DEFAULT_CACHED_DISTILL_WEIGHT, 0.0)
+
+
+def cached_distill_ema_alpha() -> float:
+    return _lc_float("DECADIC_CACHED_DISTILL_EMA_ALPHA", DEFAULT_CACHED_DISTILL_EMA_ALPHA, 0.001, 1.0)
+
+
+def cached_trust_threshold() -> float:
+    return _lc_float("DECADIC_CACHED_TRUST_THRESHOLD", DEFAULT_CACHED_TRUST_THRESHOLD, 1e-6)
+
+
+def cached_max_w() -> float:
+    return _lc_float("DECADIC_CACHED_MAX_W", DEFAULT_CACHED_MAX_W, 0.0, 1.0)
+
+
+# WS-EXPAND E5: aversive prediction (threat bearing channels on the goal
+# vector; avoidance LEARNED through the ingress) + action veto (minimal
+# uncertainty-weighted attenuation, never a hard zero). AVOID_URGENCY_K is the
+# extinction-lite guardrail: threat channels scale by (1 - K*deficit), so a
+# critically deprived agent re-tests a remembered threat instead of starving
+# behind a stale belief.
+DEFAULT_AVERSIVE_PREDICTION = True
+DEFAULT_AVOID_URGENCY_K = 2.0
+DEFAULT_ACTION_VETO = True
+DEFAULT_VETO_MAX_ATTENUATION = 0.5  # never suppresses more than half (no hard zero)
+DEFAULT_VETO_K = 10.0  # realized viability-drop -> supervision-target gain
+DEFAULT_VETO_LOSS_WEIGHT = 0.5
+
+
+def aversive_prediction_enabled() -> bool:
+    return _env_bool("DECADIC_AVERSIVE_PREDICTION", DEFAULT_AVERSIVE_PREDICTION)
+
+
+def avoid_urgency_k() -> float:
+    return _lc_float("DECADIC_AVOID_URGENCY_K", DEFAULT_AVOID_URGENCY_K, 0.0)
+
+
+def action_veto_enabled() -> bool:
+    return _env_bool("DECADIC_ACTION_VETO", DEFAULT_ACTION_VETO)
+
+
+def veto_max_attenuation() -> float:
+    return _lc_float("DECADIC_VETO_MAX_ATTENUATION", DEFAULT_VETO_MAX_ATTENUATION, 0.0, 0.9)
+
+
+def veto_k() -> float:
+    return _lc_float("DECADIC_VETO_K", DEFAULT_VETO_K, 0.0)
+
+
+def veto_loss_weight() -> float:
+    return _lc_float("DECADIC_VETO_LOSS_WEIGHT", DEFAULT_VETO_LOSS_WEIGHT, 0.0)
+
+
+# WS-EXPAND E6: per-slot input routing gate (identity at init; learned
+# suppression floored so nothing is ever fully silenced; reopened by the E2.3
+# surprise channel so gating can't blind the agent to newly-relevant percepts).
+DEFAULT_INPUT_ROUTING = True
+DEFAULT_SLOT_GATE_FLOOR = 0.1
+
+
+def input_routing_enabled() -> bool:
+    return _env_bool("DECADIC_INPUT_ROUTING", DEFAULT_INPUT_ROUTING)
+
+
+def slot_gate_floor() -> float:
+    return _lc_float("DECADIC_SLOT_GATE_FLOOR", DEFAULT_SLOT_GATE_FLOOR, 0.0, 1.0)
+
+
+# WS-EXPAND E7: scheduled rest. Conservative defaults: first rest only after
+# thousands of active cycles, bounded by wake time (value-drift guard), ~30 s
+# of body idle per rest, aborted instantly by any threat.
+DEFAULT_REST_CYCLE = True
+DEFAULT_REST_LOAD_THRESHOLD = 4000.0
+DEFAULT_REST_MIN_WAKE_CYCLES = 2000
+DEFAULT_REST_CYCLES = 120
+DEFAULT_REST_PC_LOAD_SCALE = 0.5
+# WS-ATTN 6.2: rest triggers when tier backpressure (attn_pressure, ~0..3)
+# stays at/above this. 0 disables the pressure trigger (load-only legacy).
+DEFAULT_REST_PRESSURE_THRESHOLD = 2.0
+# WS-SOAK: long soak TESTS revive the agent on death (to observe brain function
+# past a single ~100-min lifespan) instead of leaving it dead. OFF by default --
+# a normal run still dies for real; only the soak-test harness turns this on.
+DEFAULT_SOAK_REVIVE = False
+DEFAULT_SOAK_REVIVE_FRACTION = 0.8  # restore homeostasis to 80% of range
+
+
+def rest_cycle_enabled() -> bool:
+    return _env_bool("DECADIC_REST_CYCLE", DEFAULT_REST_CYCLE)
+
+
+def rest_load_threshold() -> float:
+    return _lc_float("DECADIC_REST_LOAD_THRESHOLD", DEFAULT_REST_LOAD_THRESHOLD, 10.0)
+
+
+def rest_min_wake_cycles() -> int:
+    return max(10, int(_lc_float("DECADIC_REST_MIN_WAKE_CYCLES", DEFAULT_REST_MIN_WAKE_CYCLES, 10)))
+
+
+def rest_cycles() -> int:
+    return max(1, int(_lc_float("DECADIC_REST_CYCLES", DEFAULT_REST_CYCLES, 1)))
+
+
+def rest_pc_load_scale() -> float:
+    return _lc_float("DECADIC_REST_PC_LOAD_SCALE", DEFAULT_REST_PC_LOAD_SCALE, 0.0)
+
+
+def rest_pressure_threshold() -> float:
+    return _lc_float("DECADIC_REST_PRESSURE_THRESHOLD", DEFAULT_REST_PRESSURE_THRESHOLD, 0.0)
+
+
+def soak_revive_enabled() -> bool:
+    """WS-SOAK: revive-on-death for long soak TESTS only (default off)."""
+    return _env_bool("DECADIC_SOAK_REVIVE", DEFAULT_SOAK_REVIVE)
+
+
+def soak_revive_fraction() -> float:
+    return min(1.0, max(0.05, _lc_float("DECADIC_SOAK_REVIVE_FRACTION", DEFAULT_SOAK_REVIVE_FRACTION, 0.05)))
+
+
+# WS-EXPAND E8.1 (TEST-FIRST): interoceptive embedding conditioning affect.
+DEFAULT_INTEROCEPTIVE_HEAD = True
+
+
+def interoceptive_head_enabled() -> bool:
+    return _env_bool("DECADIC_INTEROCEPTIVE_HEAD", DEFAULT_INTEROCEPTIVE_HEAD)
+
+
+# WS-EXPAND E8.2 (TEST-FIRST): valence-BLENDED replay salience — a bounded
+# multiplier (1 .. 1+beta), never a replacement of the existing salience
+# (blend-don't-replace was the evidence verdict).
+DEFAULT_VALENCE_REPLAY = True
+DEFAULT_VALENCE_REPLAY_BETA = 0.5
+
+
+def valence_replay_enabled() -> bool:
+    return _env_bool("DECADIC_VALENCE_REPLAY", DEFAULT_VALENCE_REPLAY)
+
+
+def valence_replay_beta() -> float:
+    return _lc_float("DECADIC_VALENCE_REPLAY_BETA", DEFAULT_VALENCE_REPLAY_BETA, 0.0, 4.0)
+
+
+# WS-EXPAND E9: FSQ discrete abstraction bottleneck (side-channel; gradients
+# never reach the shared trunk -> behavior byte-identical).
+DEFAULT_SYMBOLS = True
+DEFAULT_SYMBOL_LOSS_WEIGHT = 0.1
+# WS-SYM 4.0: symbol feedback into the trunk. ON by default -- the discrete
+# code the mind emits conditions its next deliberation (zero-init ingress, so
+# birth-identical and learned). Meaning lives in the grounded binding, so it is
+# drift-robust (docs/ws_symbol_integration_analysis.md).
+DEFAULT_SYMBOL_FEEDBACK = True
+
+
+def symbols_enabled() -> bool:
+    return _env_bool("DECADIC_SYMBOLS", DEFAULT_SYMBOLS)
+
+
+def symbols_feedback_enabled() -> bool:
+    return _env_bool("DECADIC_SYMBOL_FEEDBACK", DEFAULT_SYMBOL_FEEDBACK)
+
+
+# WS-SYM 3.3: recall-conditioned feedback -- prefer the code RECALLED for the
+# focused entity over the agent's own previous code. ON by default.
+def symbols_recall_feedback_enabled() -> bool:
+    return _env_bool("DECADIC_SYMBOL_RECALL_FEEDBACK", True)
+
+
+# WS-SYM 5.0: drift closed-loop. Sustained top-code churn (with grounding
+# mature) freezes fsq_in (stops training the projection) so meanings stop
+# wandering. ON by default; meaning is carried by the grounded binding.
+def symbol_drift_freeze_enabled() -> bool:
+    return _env_bool("DECADIC_SYMBOL_DRIFT_FREEZE", True)
+
+
+def symbol_churn_threshold() -> float:
+    # flip-rate above this (once mature) = drift -> freeze fsq_in.
+    try:
+        return max(0.0, float(os.environ.get("DECADIC_SYMBOL_CHURN_THRESHOLD", "0.20")))
+    except (TypeError, ValueError):
+        return 0.20
+
+
+def symbol_freeze_min_updates() -> int:
+    # grounding-maturity gate: no freeze until this many binding updates, so a
+    # young agent (everything churns) is never frozen prematurely.
+    try:
+        return max(1, int(os.environ.get("DECADIC_SYMBOL_FREEZE_MIN_UPDATES", "500")))
+    except (TypeError, ValueError):
+        return 500
+
+
+def symbol_loss_weight() -> float:
+    return _lc_float("DECADIC_SYMBOL_LOSS_WEIGHT", DEFAULT_SYMBOL_LOSS_WEIGHT, 0.0)
+
+
+# WS-EXPAND E10: other-agent modeling behind the adaptivity gate (models spawn
+# only for entities whose movement defeats a ballistic prior; solo scenes carry
+# zero models).
+DEFAULT_OTHER_MODELING = True
+DEFAULT_OTHER_ERR_THRESHOLD = 0.05  # meters of ballistic-prior error (EMA)
+DEFAULT_OTHER_WARMUP_OBS = 32
+DEFAULT_OTHER_EMA_ALPHA = 0.1
+DEFAULT_OTHER_MAX_TRACKS = 32
+
+
+def other_modeling_enabled() -> bool:
+    return _env_bool("DECADIC_OTHER_MODELING", DEFAULT_OTHER_MODELING)
+
+
+def other_err_threshold() -> float:
+    return _lc_float("DECADIC_OTHER_ERR_THRESHOLD", DEFAULT_OTHER_ERR_THRESHOLD, 1e-4)
+
+
+def other_warmup_obs() -> int:
+    return max(2, int(_lc_float("DECADIC_OTHER_WARMUP_OBS", DEFAULT_OTHER_WARMUP_OBS, 2)))
+
+
+def other_ema_alpha() -> float:
+    return _lc_float("DECADIC_OTHER_EMA_ALPHA", DEFAULT_OTHER_EMA_ALPHA, 0.001, 1.0)
+
+
+def other_max_tracks() -> int:
+    return max(1, int(_lc_float("DECADIC_OTHER_MAX_TRACKS", DEFAULT_OTHER_MAX_TRACKS, 1)))
+
+
+# WS-EXPAND E13: phase clock — INSTRUMENTATION ONLY (no behavioral coupling;
+# the evidence review found no task benefit for phase-scheduled control).
+DEFAULT_PHASE_CLOCK = True
+DEFAULT_PHASE_SLOW_PERIOD = 64
+DEFAULT_PHASE_FAST_PERIOD = 8
+
+
+def phase_clock_enabled() -> bool:
+    return _env_bool("DECADIC_PHASE_CLOCK", DEFAULT_PHASE_CLOCK)
+
+
+def phase_slow_period() -> int:
+    return max(2, int(_lc_float("DECADIC_PHASE_SLOW_PERIOD", DEFAULT_PHASE_SLOW_PERIOD, 2)))
+
+
+def phase_fast_period() -> int:
+    return max(2, int(_lc_float("DECADIC_PHASE_FAST_PERIOD", DEFAULT_PHASE_FAST_PERIOD, 2)))
+
+
+# WS-IND I1: attention schema — predictive model of the system's own attention
+# (gate outcome + ignition), trained on realized outcomes; prediction feeds
+# back (zero-init ingress) and contributes a BOUNDED anticipatory gate bias
+# sharing the E2 modulation cap. Default ON (zero-init -> birth-identical).
+DEFAULT_ATTENTION_SCHEMA = True
+DEFAULT_SCHEMA_LOSS_WEIGHT = 0.25
+DEFAULT_SCHEMA_BIAS_GAIN = 0.05  # threshold drop at p(escalate)=1.0
+DEFAULT_SCHEMA_BIAS_CAP = 0.05  # schema's own share; setter re-clamps the total
+
+
+def attention_schema_enabled() -> bool:
+    return _env_bool("DECADIC_ATTENTION_SCHEMA", DEFAULT_ATTENTION_SCHEMA)
+
+
+def schema_loss_weight() -> float:
+    return _lc_float("DECADIC_SCHEMA_LOSS_WEIGHT", DEFAULT_SCHEMA_LOSS_WEIGHT, 0.0)
+
+
+def schema_bias_gain() -> float:
+    return _lc_float("DECADIC_SCHEMA_BIAS_GAIN", DEFAULT_SCHEMA_BIAS_GAIN, 0.0, 0.15)
+
+
+def schema_bias_cap() -> float:
+    return _lc_float("DECADIC_SCHEMA_BIAS_CAP", DEFAULT_SCHEMA_BIAS_CAP, 0.0, 0.15)
+
+
+# WS-IND I3: per-slot reality monitoring — relative reliability from per-slot
+# noise EMAs, composed into the E6 routing gate (relevance x reliability).
+DEFAULT_SLOT_RELIABILITY = True
+DEFAULT_SLOT_REL_FAST_ALPHA = 0.3
+DEFAULT_SLOT_REL_NOISE_ALPHA = 0.1
+DEFAULT_SLOT_REL_FLOOR = 0.25
+DEFAULT_SLOT_REL_WARMUP = 16
+
+
+def slot_reliability_enabled() -> bool:
+    return _env_bool("DECADIC_SLOT_RELIABILITY", DEFAULT_SLOT_RELIABILITY)
+
+
+def slot_rel_fast_alpha() -> float:
+    return _lc_float("DECADIC_SLOT_REL_FAST_ALPHA", DEFAULT_SLOT_REL_FAST_ALPHA, 0.01, 1.0)
+
+
+def slot_rel_noise_alpha() -> float:
+    return _lc_float("DECADIC_SLOT_REL_NOISE_ALPHA", DEFAULT_SLOT_REL_NOISE_ALPHA, 0.01, 1.0)
+
+
+def slot_rel_floor() -> float:
+    return _lc_float("DECADIC_SLOT_REL_FLOOR", DEFAULT_SLOT_REL_FLOOR, 0.0, 1.0)
+
+
+def slot_rel_warmup() -> int:
+    return max(1, int(_lc_float("DECADIC_SLOT_REL_WARMUP", DEFAULT_SLOT_REL_WARMUP, 1)))
+
+
+# WS-IND I4: belief-update tempering — event-evidence writes onto WM slots are
+# scaled by the source slot's perceptual confidence (never blocks a first
+# observation; tempers, doesn't veto). weight 0 -> exact parity.
+DEFAULT_BELIEF_TEMPER = True
+DEFAULT_BELIEF_TEMPER_WEIGHT = 0.5  # evidence gain = 1 - w*(1 - confidence)
+
+
+def belief_temper_enabled() -> bool:
+    return _env_bool("DECADIC_BELIEF_TEMPER", DEFAULT_BELIEF_TEMPER)
+
+
+def belief_temper_weight() -> float:
+    return _lc_float("DECADIC_BELIEF_TEMPER_WEIGHT", DEFAULT_BELIEF_TEMPER_WEIGHT, 0.0, 1.0)
+
+
+# WS-IND I2: sequential deliberation — on escalated cycles a no-grad DRAFT
+# forward runs (recurrent state restored afterward, so the state advances
+# exactly once per cycle) and its conclusion re-enters the final forward via a
+# zero-init ingress. Compute cost is bounded by the Type-2 refractory. Keep
+# only if the detour A/B says round 2 beats one-shot (plan I2.2).
+DEFAULT_WS_SEQ = True
+
+
+def ws_seq_enabled() -> bool:
+    return _env_bool("DECADIC_WS_SEQ", DEFAULT_WS_SEQ)
+
+
+# WS-IND I5: quality-space smoothness — a light temporal local-isometry loss
+# on the FSQ projection (nearby latents -> nearby codes); trains fsq_in on the
+# side (trunk stays detached, E9's parity guarantee unchanged).
+DEFAULT_SYMBOL_SMOOTHNESS = True
+DEFAULT_SYMBOL_SMOOTH_WEIGHT = 0.05
+
+
+def symbol_smoothness_enabled() -> bool:
+    return _env_bool("DECADIC_SYMBOL_SMOOTHNESS", DEFAULT_SYMBOL_SMOOTHNESS)
+
+
+def symbol_smooth_weight() -> float:
+    return _lc_float("DECADIC_SYMBOL_SMOOTH_WEIGHT", DEFAULT_SYMBOL_SMOOTH_WEIGHT, 0.0)
+
+
+# WS-DEPTH D1: metacognitive calibration — predict own next prediction-error
+# and P(drive improves | action), scored against realized outcomes (outcome as
+# target). Zero-init heads -> birth-identical; calibration telemetry is the
+# measurement instrument for behavioral self-awareness probes.
+DEFAULT_METACOG_CALIBRATION = True
+DEFAULT_METACOG_CAL_LOSS_WEIGHT = 0.25
+
+
+def metacog_calibration_enabled() -> bool:
+    return _env_bool("DECADIC_METACOG_CALIBRATION", DEFAULT_METACOG_CALIBRATION)
+
+
+def metacog_cal_loss_weight() -> float:
+    return _lc_float("DECADIC_METACOG_CAL_LOSS_WEIGHT", DEFAULT_METACOG_CAL_LOSS_WEIGHT, 0.0)
+
+
+# WS-DEPTH P1 (stage A): recurrent percept refinement — a zero-init residual
+# cell iterates on the fused percept before stage 1, trained by next-percept
+# prediction (a percept-level forward model). Percept-key invariance is the
+# standing guardrail: byte-identical at init, drift only under the ramp.
+DEFAULT_PERCEPT_REFINE = True
+DEFAULT_PERCEPT_REFINE_ITERS = 2
+DEFAULT_PERCEPT_REFINE_LOSS_WEIGHT = 0.25
+
+
+def percept_refine_enabled() -> bool:
+    return _env_bool("DECADIC_PERCEPT_REFINE", DEFAULT_PERCEPT_REFINE)
+
+
+def percept_refine_iters() -> int:
+    return max(1, int(_lc_float("DECADIC_PERCEPT_REFINE_ITERS", DEFAULT_PERCEPT_REFINE_ITERS, 1, 4)))
+
+
+def percept_refine_loss_weight() -> float:
+    return _lc_float("DECADIC_PERCEPT_REFINE_LOSS_WEIGHT", DEFAULT_PERCEPT_REFINE_LOSS_WEIGHT, 0.0)
+
+
+# WS-DEPTH P2 (partial): top-down perception governance — an OPT-IN cap on
+# how much of the percept may be carried top-down, + the topdown_frac
+# telemetry dial. Default 1.0 = INACTIVE: full top-down (gate -> 0) is the
+# deliberately-built occlusion capability (perception reconstructed from the
+# persistent mental image when the senses go dark — suite-pinned in
+# test_persistent_mental_image), and the evidence concern is CHRONIC
+# decoupling, which the telemetry watches and a soak can cap via env. The
+# temporal generative head lands with WS-PERCEIVE proper.
+DEFAULT_PERCEPT_TOPDOWN_CAP = 1.0  # 1.0 = no clamp (parity); <1.0 = governor
+
+
+def percept_topdown_cap() -> float:
+    return _lc_float("DECADIC_PERCEPT_TOPDOWN_CAP", DEFAULT_PERCEPT_TOPDOWN_CAP, 0.1, 1.0)
+
+
+# WS-DEPTH D2: unified self-model as a workspace ignition CANDIDATE. Content
+# is a deterministic packing of SELF_VEC (pure); salience = gain x
+# interoceptive urgency x a birth ramp (0 at cycle 0 -> the self never wins at
+# birth: parity). Deprivation should turn attention inward.
+DEFAULT_SELF_CANDIDATE = True
+DEFAULT_SELF_CANDIDATE_GAIN = 0.5
+DEFAULT_SELF_CANDIDATE_RAMP_CYCLES = 2000
+
+
+def self_candidate_enabled() -> bool:
+    return _env_bool("DECADIC_SELF_CANDIDATE", DEFAULT_SELF_CANDIDATE)
+
+
+def self_candidate_gain() -> float:
+    return _lc_float("DECADIC_SELF_CANDIDATE_GAIN", DEFAULT_SELF_CANDIDATE_GAIN, 0.0)
+
+
+def self_candidate_ramp_cycles() -> int:
+    return max(1, int(_lc_float("DECADIC_SELF_CANDIDATE_RAMP_CYCLES", DEFAULT_SELF_CANDIDATE_RAMP_CYCLES, 1)))
+
+
+# WS-DEPTH D3: sequential deliberation rounds (generalizes WS-IND I2's
+# draft/commit). k-1 no-grad draft rounds, each feeding the accumulated draft
+# back; the learned query chooser is define-only (logged, not controlling)
+# until the detour A/B earns it.
+DEFAULT_WS_SEQ_ROUNDS = 2
+
+
+def ws_seq_rounds() -> int:
+    return max(2, min(3, int(_lc_float("DECADIC_WS_SEQ_ROUNDS", DEFAULT_WS_SEQ_ROUNDS, 2, 3))))
+
+
+# WS-EXPAND E10.4 (prerequisite): inverse dynamics — infer the action behind a
+# proprio transition, trained supervised on the agent's OWN lived triples (the
+# FEL buffers). The labeling model imitation-from-observation requires; the
+# demonstrator-labeling step waits on percepts carrying the other's body pose.
+DEFAULT_INVERSE_MODEL = True
+DEFAULT_INVERSE_MODEL_LOSS_WEIGHT = 0.25
+
+
+def inverse_model_enabled() -> bool:
+    return _env_bool("DECADIC_INVERSE_MODEL", DEFAULT_INVERSE_MODEL)
+
+
+def inverse_model_loss_weight() -> float:
+    return _lc_float("DECADIC_INVERSE_MODEL_LOSS_WEIGHT", DEFAULT_INVERSE_MODEL_LOSS_WEIGHT, 0.0)
 
 
 def sf_gamma() -> float:

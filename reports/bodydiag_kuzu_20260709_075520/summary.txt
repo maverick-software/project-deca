@@ -1,0 +1,164 @@
+body diag: graph_backend=kuzu seconds=600 stamp=20260709_075520
+cycle rate (steady window): 3.90 cycles/s  (54 -> 2350 cycles over 588.7s)
+host CPU: mean 83.8% max 95.9% (pre-WS baseline was 30-35%)
+  t=13.1s cycles=54
+  t=24.3s cycles=106
+  t=36.1s cycles=159
+  t=48.2s cycles=201
+  t=59.9s cycles=250
+  t=72.4s cycles=294
+  t=84s cycles=340
+  t=96.4s cycles=384
+  t=107.8s cycles=436
+  t=120.3s cycles=488
+  t=131.7s cycles=529
+  t=143.8s cycles=569
+  t=156.7s cycles=623
+  t=167.8s cycles=675
+  t=179.4s cycles=715
+  t=192.2s cycles=767
+  t=203.8s cycles=819
+  t=216.8s cycles=865
+  t=228.6s cycles=910
+  t=240.4s cycles=962
+  t=251.7s cycles=1010
+  t=263.3s cycles=1050
+  t=276.1s cycles=1096
+  t=287.6s cycles=1146
+  t=300.2s cycles=1196
+  t=312.2s cycles=1234
+  t=324.7s cycles=1282
+  t=336.6s cycles=1332
+  t=347.8s cycles=1376
+  t=359.3s cycles=1413
+  t=370.7s cycles=1459
+  t=382.6s cycles=1507
+  t=394.8s cycles=1552
+  t=407.4s cycles=1594
+  t=418.8s cycles=1643
+  t=431.4s cycles=1696
+  t=443.1s cycles=1737
+  t=454.3s cycles=1781
+  t=467.1s cycles=1831
+  t=479.5s cycles=1885
+  t=492.6s cycles=1925
+  t=504.6s cycles=1978
+  t=515.8s cycles=2029
+  t=527.6s cycles=2072
+  t=540.3s cycles=2116
+  t=551.8s cycles=2164
+  t=564.5s cycles=2213
+  t=577.6s cycles=2256
+  t=590.4s cycles=2305
+  t=601.8s cycles=2350
+body budget (last 3):
+[body] budget ms/obs: physics=13.1 vision=4.6 views=8.0 audio=0.0 send=119.1
+[body] budget ms/obs: physics=12.3 vision=4.8 views=8.1 audio=0.0 send=203.1
+[body] budget ms/obs: physics=11.8 vision=4.8 views=8.2 audio=0.0 send=139.9
+store telemetry:
+  "frames_folded":  2322
+  "frames_deep_processed":  2322
+  "coalesced_sessions":  9
+  "ready_queue_depth":  0
+  "commit_lag_ms":  29.834599990863353
+  "effort_energy_delta":  0.0
+  "net_energy_return":  0.0
+  "ltm_property_beliefs":  320
+  "ltm_match_ms":  0.16230001347139478
+  "sqlite_commit_count":  68
+  "sqlite_batch_commit_count":  68
+  "sqlite_last_commit_ms":  10.569100035354495
+  "time_to_death_s":  170418.6
+  "plasticity_pc_ema":  0.808769191908588
+  "awake_neurons":  1216
+  "growth_events":  0
+  "urgent_queue_depth":  0
+  "ready_capacity":  10
+  "ready_pop_calls":  6848
+  "ready_coalesce_calls":  6
+  "ready_max_depth":  13
+  "overflow_depth":  0
+  "consolidation_depth":  0
+  "overflow_spilled":  0
+  "consolidation_dropped":  0
+  "consolidation_drained":  0
+  "attn_pressure":  0.0
+  "semantic_entities":  20
+  "semantic_relationships":  1778
+  "semantic_symbols":  341
+  "symbol_recall_queries":  6438
+  "symbol_recall_hits":  6428
+  "symbol_recall_hit_rate":  0.9984467225846536
+  "graph_flush_ms":  196.4344999869354
+  "graph_flush_lock_ms":  0.2662999904714525
+  "graph_flush_queue_depth":  0
+  "graph_flush_rows":  372
+  "graph_flush_stmts":  80
+  "graph_flush_error_batches":  0
+  "graph_writes_deferred":  465052
+  "graph_coalesce_dedup_rows":  0
+  "graph_deferred_depth":  362
+  "graph_writes_skipped_unchanged":  628835
+  "graph_write_pressure":  0.02073715922177577
+  "graph_arrival_rows_per_s":  38.14798136042692
+  "graph_drain_capacity_rows_per_s":  1839.595334753871
+  "graph_flusher_cpu_share":  0.6424370805803025
+  "graph_writes_shed_total":  0
+  "kuzu_vector_index_rebuilds":  0
+  "rests_entered":  0
+  "rest_pressure":  0.0
+  "motor_l1":  16.8979
+  "motor_energy_cost":  0.000038
+  "graph_writes_staged_node":  1135
+  "graph_writes_staged_belief":  19301
+  "graph_writes_staged_edge_co_occurrence":  326
+  "graph_writes_staged_edge_scene_near":  1851
+  "graph_writes_staged_edge_scene_above":  2959
+  "graph_writes_staged_edge_scene_co_visible":  2856
+  "graph_writes_staged_edge_scene_right_of":  4299
+  "graph_writes_staged_edge_scene_left_of":  2995
+  "graph_writes_staged_sem":  4700
+  "graph_writes_staged_del_edge":  17614
+  "graph_writes_deferred_node":  21610
+  "graph_writes_deferred_belief":  371087
+  "graph_writes_deferred_sem":  70746
+  "graph_writes_skipped_edge_co_occurrence":  142188
+  "graph_deferred_depth_node":  14
+  "graph_deferred_depth_belief":  302
+  "graph_deferred_depth_sem":  34
+  "graph_writes_skipped_edge_scene_co_visible":  14556
+  "graph_writes_skipped_edge_scene_right_of":  6989
+  "graph_writes_skipped_edge_scene_near":  4277
+  "graph_writes_skipped_edge_scene_left_of":  6763
+  "graph_writes_skipped_sem":  392293
+  "graph_writes_staged_edge_scene_below":  2540
+  "graph_writes_skipped_edge_scene_above":  11062
+  "graph_writes_skipped_edge_scene_below":  5051
+  "graph_writes_deferred_edge_scene_below":  216
+  "graph_deferred_depth_edge_scene_below":  4
+  "graph_writes_skipped_belief":  42823
+  "graph_writes_skipped_node":  2833
+  "graph_writes_deferred_edge_scene_right_of":  193
+  "graph_writes_deferred_edge_scene_left_of":  169
+verdict graph_write_pressure: PASS  (0.021; arrival/drain -- sustained >= 1.0 means the flusher mathematically cannot keep up)
+verdict commit_lag_ms: PASS  (30 ms; deep-process staleness -- RED > 60000; hit 13.7M silently on 2026-07-07)
+verdict attn_pressure: PASS  (0.000; tier backpressure 0..~3 -- WATCH >= 2.0 should trigger rest)
+energy calibration [OK]: motor_l1=16.90 scale=1.00E-005 comp=1 -> energy empties in ~6.8 sim-days at this activity (target 7). Suggested scale=9.78E-006
+memory accumulation (first 2 vs last 2 samples -- watch recall_ms/ltm_match_ms/ltm_nodes):
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=200 wall_ms=322.7 recall_ms=0.000 ltm_match_ms=0.063 ltm_nodes=13 ltm_edges=159 ltm_beliefs=218 ltm_db_bytes=4096 episodic_db_bytes=0"}
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=400 wall_ms=201.9 recall_ms=0.000 ltm_match_ms=0.070 ltm_nodes=15 ltm_edges=202 ltm_beliefs=256 ltm_db_bytes=4096 episodic_db_bytes=228003"}
+  ...
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=2000 wall_ms=205.8 recall_ms=0.000 ltm_match_ms=0.046 ltm_nodes=16 ltm_edges=220 ltm_beliefs=316 ltm_db_bytes=4096 episodic_db_bytes=1655547"}
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=2200 wall_ms=200.9 recall_ms=0.000 ltm_match_ms=0.082 ltm_nodes=16 ltm_edges=222 ltm_beliefs=320 ltm_db_bytes=4096 episodic_db_bytes=1888332"}
+ready-queue trajectory (first 3 vs last 3 -- ready_depth climbing = cap leaks live):
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=200 ready_depth=0 ready_max=9 urgent=0 pop_calls=543 coalesce_calls=0 capacity=10 commit_lag_ms=1 select=priority
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=400 ready_depth=5 ready_max=9 urgent=0 pop_calls=1150 coalesce_calls=0 capacity=10 commit_lag_ms=1 select=priority
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=600 ready_depth=4 ready_max=9 urgent=0 pop_calls=1712 coalesce_calls=0 capacity=10 commit_lag_ms=1 select=priority
+  ...
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=1800 ready_depth=1 ready_max=13 urgent=0 pop_calls=5200 coalesce_calls=5 capacity=10 commit_lag_ms=1 select=priority
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=2000 ready_depth=1 ready_max=13 urgent=0 pop_calls=5793 coalesce_calls=6 capacity=10 commit_lag_ms=1 select=priority
+  agent_id=8b68cba3-6ed0-4559-80e6-fe52f24b15f8 cycle=2200 ready_depth=5 ready_max=13 urgent=0 pop_calls=6398 coalesce_calls=6 capacity=10 commit_lag_ms=1 select=priority
+successor value (must climb off ~0 to forage):
+  "raw":  1.683377,
+  "weighted":  1.827167
+freeze watchdog: no stalls detected

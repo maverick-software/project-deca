@@ -107,6 +107,54 @@ def _landmark_position(graph: Any, entity_id: str) -> "list[float] | None":
         return None
 
 
+_THREAT_KEYS: tuple[str, ...] = ("predicts_pain", "predicts_integrity_loss")
+
+
+def resolve_threat_target(
+    graph: Any,
+    *,
+    min_confidence: float = 0.2,
+) -> "tuple[str, list[float], float] | None":
+    """WS-EXPAND E5.1: the strongest remembered threat with a known position.
+
+    Scans the ``predicts_pain`` / ``predicts_integrity_loss`` property beliefs
+    (the association store the aversive channel rides — same rail as relief)
+    and returns ``(entity_id, [x, y, z], strength)`` for the highest
+    confidence*mean entity, or ``None``. Strength is the belief score in
+    [0, 1], so a fading threat memory produces a fading avoidance signal.
+    Defensive like ``resolve_goal_target``: any failure -> None.
+    """
+    if graph is None:
+        return None
+    try:
+        beliefs = getattr(graph, "_beliefs", None)
+        nodes = getattr(graph, "_nodes", None)
+        if not beliefs or not nodes:
+            return None
+        # Strongest threat WITH a usable position: a position-less belief must
+        # not mask a locatable one (caught by test_resolve_threat_target).
+        best_id, best_score, best_pos = None, 0.0, None
+        for (node_id, prop_key), b in list(beliefs.items()):
+            if prop_key not in _THREAT_KEYS:
+                continue
+            conf = float(b.get("confidence", 0.0) or 0.0)
+            mean = float(b.get("mean", 0.0) or 0.0)
+            score = conf * max(0.0, mean)
+            if conf < min_confidence or score <= best_score:
+                continue
+            node = nodes.get(node_id)
+            pos = node.get("position") if node else None
+            if not pos or len(pos) < 2:
+                continue  # unlocatable threat: skip, keep scanning
+            best_id, best_score, best_pos = node_id, score, pos
+        if best_id is None or best_pos is None:
+            return None
+        z = float(best_pos[2]) if len(best_pos) > 2 else 0.0
+        return best_id, [float(best_pos[0]), float(best_pos[1]), z], min(1.0, best_score)
+    except Exception:
+        return None
+
+
 def egocentric_bearing(
     self_pos: "list[float]",
     self_yaw: float,

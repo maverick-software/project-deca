@@ -120,6 +120,7 @@ from decadic.state.viability import (
     apply_pain_pleasure_to_B,
     classify_events,
     ema_affect,
+    motor_energy_cost,
     passive_metabolism,
     viability_delta_to_signals,
 )
@@ -273,6 +274,14 @@ class AgentRuntime:
         self.control_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=64)
         self.running = True
         self.paused = False
+        # WS-FREEZE: cognitive-loop heartbeat (monotonic) + phase marker, read
+        # by the freeze watchdog. Plain assignments (GIL-atomic); no locks.
+        self._hb_cycle_s = time.monotonic()
+        self._hb_phase = "init"
+        self._hb_cycle_index = 0
+        self._freeze_watchdog: Any = None
+        # WS-ENERGY: monotonic clock for the dt-scaled motor-signal energy cost.
+        self._last_motor_energy_s: float | None = None
         # Mortality lifecycle: "alive" -> "dead" (viability<=0) -> "alive" (revive/reset).
         self.status = "alive"
         self.died_at_cycle: int | None = None
@@ -714,6 +723,7 @@ class AgentRuntime:
         if self._stage_pipeline_enabled():
             self.stage_pipeline.start()
         self._ensure_perception_workers()
+        self._ensure_freeze_watchdog()
         interval = float(os.environ.get("DECADIC_CONSOLIDATION_STUB_INTERVAL_S", "10"))
         # The real dual-network consolidator starts whenever the feature is on
         # (regardless of the stub interval); otherwise the no-op heartbeat runs only
@@ -745,6 +755,70 @@ class AgentRuntime:
                 self._landscape_runner(),
                 name=f"decadic-landscape-{self.agent_id}",
             )
+
+    def _watchdog_probe(self) -> dict[str, Any]:
+        """Read-only heartbeat snapshot for the freeze watchdog. Never locks;
+        every field is a guarded attribute read so it can't raise."""
+        g = self.ltm_graph
+        wb: dict[str, Any] = {}
+        fl: dict[str, Any] = {}
+        if g is not None:
+            q = getattr(g, "_queue", None)
+            enq = getattr(g, "_batches_enqueued", None)
+            done = getattr(g, "_batches_done", None)
+            wb = {
+                "in_job": bool(getattr(g, "_wb_in_job", False)),
+                "job_start_s": getattr(g, "_wb_job_start_s", None),
+                "jobs_completed": getattr(g, "_jobs_completed", None),
+                "last_worker_ms": getattr(g, "_last_worker_ms", None),
+                "queue_size": (q.qsize() if q is not None else None),
+            }
+            fl = {
+                "alive": bool(getattr(g, "_fl_alive", False)),
+                "last_batch_s": getattr(g, "_fl_last_batch_s", None),
+                "backlog": (
+                    int(enq) - int(done)
+                    if (enq is not None and done is not None)
+                    else None
+                ),
+            }
+        return {
+            "now": time.monotonic(),
+            "cognition": {
+                "hb_cycle_s": getattr(self, "_hb_cycle_s", None),
+                "phase": getattr(self, "_hb_phase", "?"),
+                "cycle_index": getattr(self, "_hb_cycle_index", None),
+                "status": getattr(self, "status", "?"),  # "dead" == expected idle
+            },
+            "write_behind": wb,
+            "flusher": fl,
+        }
+
+    def _ensure_freeze_watchdog(self) -> None:
+        """Start the silent-hang watchdog once (idempotent). Fully defensive --
+        a watchdog failure must never touch the cognitive path."""
+        try:
+            from decadic.agents.freeze_watchdog import FreezeWatchdog, watchdog_enabled
+
+            if not watchdog_enabled():
+                return
+            wd = getattr(self, "_freeze_watchdog", None)
+            if wd is not None:
+                return
+            wd = FreezeWatchdog(self._watchdog_probe, agent_id=str(self.agent_id))
+            wd.start()
+            self._freeze_watchdog = wd
+        except Exception:  # pragma: no cover - watchdog is best-effort
+            logger.debug("freeze watchdog start skipped", exc_info=True)
+
+    def _stop_freeze_watchdog(self) -> None:
+        wd = getattr(self, "_freeze_watchdog", None)
+        if wd is not None:
+            try:
+                wd.stop()
+            except Exception:  # pragma: no cover
+                pass
+            self._freeze_watchdog = None
 
     async def suspend_cycle_worker(self) -> bool:
         """Temporarily stop the cycle task for reset/restore barriers."""
@@ -1046,11 +1120,33 @@ class AgentRuntime:
                     self._perception_last_commit_s = now
                     self.metrics["commit_lag_ms"] = (now - enqueued_s) * 1000.0
                 if self._serial_prefetch_enabled():
+                    # WS-ATTN 2.1: hand the fold-time perception diagnostics
+                    # (motion/looming/flow) to salience scoring. No-op unless
+                    # DECADIC_SALIENCE_RICH is on.
+                    organ_diag = (
+                        prepared.get("organ_diag") if isinstance(prepared, dict) else None
+                    )
                     await self.stage_pipeline.mark_folded(
                         self._perception_next_commit - 1,
                         elapsed_s=time.perf_counter() - fold_started,
+                        organ_diag=organ_diag,
                     )
         self._refresh_perception_pipeline_metrics()
+
+    def _consolidate_rest_percepts(self, sessions: list) -> None:
+        """WS-ATTN 5.2/5.3: account for un-deliberated percepts consolidated
+        during rest. Draining them bounds the tiers (the durable guarantee);
+        the intensive episodic replay pass is the on-rig tuning step (mirrors
+        the E7.3 staging in consolidation/rest.py). Retroactive re-rating hook:
+        recent realized reward lifts the consolidated antecedents' weight."""
+        n = len(sessions)
+        if not n:
+            return
+        boost = 1.0 + max(0.0, float(self.metrics.get("last_reward", 0.0) or 0.0))
+        self.metrics["rest_consolidated_percepts"] = (
+            int(self.metrics.get("rest_consolidated_percepts", 0) or 0) + n
+        )
+        self.metrics["rest_consolidation_boost"] = float(boost)
 
     def _commit_perception_observation_locked(self, obs: dict[str, Any]) -> None:
         """Commit anonymous perceptual object files from one frame, under lock."""
@@ -1200,6 +1296,20 @@ class AgentRuntime:
         self.metrics["decode_on_consume_ms"] = float(m.get("decode_on_consume_ms") or 0.0)
         self.metrics["consume_wait_ms"] = float(m.get("consume_wait_ms") or 0.0)
         self.metrics["ready_queue_depth"] = int(m.get("ready_queue_depth", 0))
+        # WS-ATTN Phase 0: cap-leak diagnostics onto the metrics allowlist.
+        self.metrics["urgent_queue_depth"] = int(m.get("urgent_queue_depth", 0))
+        self.metrics["last_select_reason"] = str(m.get("last_select_reason", ""))
+        self.metrics["ready_capacity"] = int(m.get("ready_capacity", 0))
+        self.metrics["ready_pop_calls"] = int(m.get("ready_pop_calls", 0))
+        self.metrics["ready_coalesce_calls"] = int(m.get("ready_coalesce_calls", 0))
+        self.metrics["ready_max_depth"] = int(m.get("ready_max_depth", 0))
+        # WS-ATTN tiers 2/3 + pressure onto the metrics allowlist.
+        self.metrics["overflow_depth"] = int(m.get("overflow_depth", 0))
+        self.metrics["consolidation_depth"] = int(m.get("consolidation_depth", 0))
+        self.metrics["overflow_spilled"] = int(m.get("overflow_spilled", 0))
+        self.metrics["consolidation_dropped"] = int(m.get("consolidation_dropped", 0))
+        self.metrics["consolidation_drained"] = int(m.get("consolidation_drained", 0))
+        self.metrics["attn_pressure"] = float(m.get("attn_pressure", 0.0) or 0.0)
         self.metrics["ready_coalesce_policy"] = str(m.get("ready_coalesce_policy", self.ready_coalesce_policy))
         self.metrics["prefetch_backpressure_events"] = int(m.get("prefetch_backpressure_events", 0))
         self.metrics["prefetch_backpressure_ms"] = float(m.get("prefetch_backpressure_ms") or 0.0)
@@ -1269,6 +1379,16 @@ class AgentRuntime:
                 self.metrics["ltm_avg_property_confidence"] = float(
                     stats.get("avg_property_confidence", 0.0)
                 )
+                # WS-SYM: surface per-category semantic counts (semantic_symbols,
+                # semantic_entities, ...) so symbol accrual is a live verdict,
+                # not a manual db query. cached_belief_stats already computes
+                # them; they were being dropped here.
+                for _k, _v in stats.items():
+                    if isinstance(_k, str) and _k.startswith("semantic_"):
+                        try:
+                            self.metrics[_k] = int(_v)
+                        except (TypeError, ValueError):
+                            self.metrics[_k] = _v
         except Exception:
             pass
         try:
@@ -1341,6 +1461,26 @@ class AgentRuntime:
             int(m.get("ltm_property_beliefs", 0) or 0),
             int(m.get("ltm_db_bytes", 0) or 0),
             int(m.get("episodic_db_bytes", 0) or 0),
+        )
+        # WS-ATTN Phase 0: live ready-queue trajectory. If ready_depth climbs
+        # across these samples, the cap leaks DURING the run (real coalesce
+        # bug). If it stays ~capacity here but the teardown dump shows ~10k,
+        # the backlog is a teardown artifact. pop_calls should track cycles;
+        # coalesce_calls near-zero with a high ready_max is the smoking gun.
+        logger.info(
+            "stage_pipeline_probe agent_id=%s cycle=%d ready_depth=%d ready_max=%d "
+            "urgent=%d pop_calls=%d coalesce_calls=%d capacity=%d "
+            "commit_lag_ms=%.0f select=%s",
+            self.agent_id,
+            cyc,
+            int(m.get("ready_queue_depth", 0) or 0),
+            int(m.get("ready_max_depth", 0) or 0),
+            int(m.get("urgent_queue_depth", 0) or 0),
+            int(m.get("ready_pop_calls", 0) or 0),
+            int(m.get("ready_coalesce_calls", 0) or 0),
+            int(m.get("ready_capacity", 0) or 0),
+            float(m.get("commit_lag_ms", 0.0) or 0.0),
+            str(m.get("last_select_reason", "")),
         )
 
     def _maybe_schedule_memory_context_refresh(self, query: Any, cycle: int) -> None:
@@ -2248,6 +2388,74 @@ class AgentRuntime:
         except Exception:
             logger.exception("tombstone_prune_failed agent_id=%s", self.agent_id)
 
+    def _apply_motor_energy_cost(self, diag: dict[str, Any]) -> float:
+        """WS-ENERGY: spend energy on the motor SIGNAL the brain emits this cycle.
+
+        ``diag`` is the neural cycle's diagnostics dict, which carries
+        ``motor_command`` (the emitted u_emit vector). cost = f(u_emit) x scale x
+        dt_real x compression, where f = Sum_j |u_j| (l1, per-joint) or Sum u_j^2
+        (l2). dt-scaled off a monotonic clock so it respects the metabolic clock +
+        compression and is INDEPENDENT of cycle rate. Rest zeroes u_emit -> zero
+        cost. Returns the energy spent so the caller records it on the transition
+        (learning association)."""
+        if not C.motor_energy_enabled() or self.viability_mode != "metabolic":
+            return 0.0
+        now = time.monotonic()
+        last = self._last_motor_energy_s
+        self._last_motor_energy_s = now
+        if self.status != "alive" or last is None:
+            return 0.0  # first cycle / post-revive: establish the clock, no charge
+        dt = min(1.0, max(0.0, now - last))  # cap: never bill a pause as movement
+        mc = diag.get("motor_command") if isinstance(diag, dict) else None
+        if dt <= 0.0 or not isinstance(mc, (list, tuple)) or not mc:
+            return 0.0
+        cost, activation = motor_energy_cost(
+            mc,
+            scale=C.motor_energy_scale(),
+            dt=dt,
+            compression=C.metabolic_compression(),
+            mode=C.motor_energy_mode(),
+        )
+        self.metrics["motor_l1"] = round(activation, 4)
+        if cost <= 0.0:
+            self.metrics["motor_energy_cost"] = 0.0
+            return 0.0
+        self.homeostasis.apply_reservoir_deltas(energy=-cost)
+        # Moving hurts a little (interoceptive pain from the energy delta) --
+        # carries the association System A's effort-cost pain used to provide.
+        pain, _pleasure = viability_delta_to_signals(-cost)
+        if pain > 0.0:
+            self.state_bus.pain_scalar = ema_affect(
+                self.state_bus.pain_scalar, pain, retain=0.98
+            )
+        self.viability.value = self.homeostasis.viability
+        self.metrics["motor_energy_cost"] = round(cost, 6)
+        return cost
+
+    def _soak_revive(self) -> None:
+        """WS-SOAK: on-death auto-revive for long soak TESTS. Restores
+        homeostasis to ``soak_revive_fraction`` of range (default 80%) using the
+        same tested revive path, and counts the revives so the test can report
+        how many lifespans it ran. Weights/memory/curriculum are untouched --
+        only the body pose + world resources reset (a fresh life, same brain)."""
+        h = self.homeostasis
+        frac = C.soak_revive_fraction()
+        target = float(h.min_value + frac * (h.max_value - h.min_value))
+        n = int(self.metrics.get("soak_revives", 0) or 0) + 1
+        try:
+            self.revive(restore_to=target)
+        except Exception:  # revive must never kill the loop
+            logger.exception("soak revive failed")
+            return
+        self.metrics["soak_revives"] = n
+        logger.info(
+            "soak_revive agent_id=%s revive=%d restored_to=%.0f%% viability=%.4f",
+            self.agent_id,
+            n,
+            frac * 100.0,
+            self.viability.value,
+        )
+
     def revive(self, restore_to: float | None = None) -> None:
         """Admin resurrection: same weights/state, viability restored, cycling resumes."""
         if self.status != "dead":
@@ -2263,6 +2471,7 @@ class AgentRuntime:
         self.stress = 0.0
         self._threat_stress = 0.0
         self._last_metab_monotonic = time.monotonic()
+        self._last_motor_energy_s = None  # WS-ENERGY: fresh clock after revive
         self._refresh_homeostasis_metrics()
         # A new life: re-pose the body upright (preserving earned ROM) and scatter
         # resources to fresh positions so the agent cannot camp a known location.
@@ -2367,6 +2576,7 @@ class AgentRuntime:
 
     async def stop(self) -> None:
         self.running = False
+        self._stop_freeze_watchdog()  # WS-FREEZE: read-only daemon; safe anytime
         if self._consolidation_task is not None:
             self._consolidation_task.cancel()
             try:
@@ -2567,9 +2777,51 @@ class AgentRuntime:
             # Successor-features value telemetry (Layer-2 incentive salience).
             "sf_value",
             "sf_value_weight",
+            # WS-EXPAND: the /metrics copy is allowlist-based (diagnostics
+            # alone don't surface — same lesson as WS5-M5), so every new
+            # pipeline-side channel must be listed here to be probe-visible.
+            "lc_eta_scale",
+            "lc_surprise",
+            "lc_gamma",
+            "lc_gamma_moves",
+            "lc_noise",
+            "lc_trend",
+            "motor_corrector_loss",
+            "cached_policy_w",
+            "cached_divergence",
+            "veto_attenuation",
+            "symbol_utilization",
+            "planner_bias_linf",
+            "phase_slow",
+            "phase_fast",
+            # WS-IND channels (same allowlist rule).
+            "schema_accuracy",
+            "schema_base_accuracy",
+            "schema_bias",
+            "ws_seq_rounds",
+            "ws_seq_divergence",
+            "symbol_smoothness",
+            "slot_noise_mean",
+            # WS-DEPTH channels.
+            "metacog_calibration",
+            "metacog_err_mae",
+            "percept_fwd_loss",
+            "topdown_frac",
+            "self_ignition_rate",
+            "inverse_model_loss",
+            "other_presence",
         ):
             if diagnostics.get(key) is not None:
                 self.metrics[key] = float(diagnostics[key])
+        if diagnostics.get("symbol_code") is not None:
+            self.metrics["symbol_code"] = int(diagnostics["symbol_code"])
+        # WS-SYM 3.3/5.0 telemetry.
+        if diagnostics.get("symbol_feedback_source") is not None:
+            self.metrics["symbol_feedback_source"] = str(diagnostics["symbol_feedback_source"])
+        if diagnostics.get("symbol_fsq_frozen") is not None:
+            self.metrics["symbol_fsq_frozen"] = bool(diagnostics["symbol_fsq_frozen"])
+        if diagnostics.get("symbol_binding_churn") is not None:
+            self.metrics["symbol_binding_churn"] = float(diagnostics["symbol_binding_churn"])
         if isinstance(diagnostics.get("motor_command"), list):
             self.metrics["motor_command"] = [float(x) for x in diagnostics["motor_command"]]
         self._refresh_hardware_metrics()
@@ -2804,6 +3056,41 @@ class AgentRuntime:
                         pose_yaw = pose[2]
                 except Exception:
                     pos_nx = pos_ny = pose_yaw = None
+            # WS-EXPAND E5.1: bearing to the strongest remembered threat, scaled
+            # by belief strength AND the urgency override (a critically deprived
+            # agent re-tests rather than starving behind a stale pain belief).
+            t_cos = t_sin = t_prox = None
+            t_scale = 1.0
+            if C.aversive_prediction_enabled():
+                try:
+                    from decadic.state.spatial_recall import resolve_threat_target
+
+                    th = resolve_threat_target(self.ltm_graph)
+                    if th is not None:
+                        _th_id, th_pos, th_strength = th
+                        obs_t = (
+                            self._last_observation
+                            if isinstance(self._last_observation, dict)
+                            else {}
+                        )
+                        prop_t = obs_t.get("proprioception", {})
+                        spos_t = prop_t.get("position")
+                        ori_t = prop_t.get("orientation")
+                        if spos_t and ori_t and len(ori_t) >= 3 and len(spos_t) >= 2:
+                            from decadic.state.spatial_recall import egocentric_bearing
+
+                            c_t, s_t, d_t = egocentric_bearing(
+                                spos_t,
+                                float(ori_t[2]),
+                                th_pos,
+                                max_dist=C.goal_bearing_max_dist(),
+                            )
+                            t_cos, t_sin, t_prox = c_t, s_t, 1.0 - d_t
+                            t_scale = th_strength * max(
+                                0.0, 1.0 - C.avoid_urgency_k() * deficits[idx]
+                            )
+                except Exception:
+                    t_cos = t_sin = t_prox = None
             return encode_goal(
                 goal_id,
                 deficits[idx],
@@ -2813,6 +3100,34 @@ class AgentRuntime:
                 pos_nx=pos_nx,
                 pos_ny=pos_ny,
                 yaw=pose_yaw,
+                threat_cos=t_cos,
+                threat_sin=t_sin,
+                threat_prox=t_prox,
+                threat_scale=t_scale,
+            )
+        except Exception:
+            return None
+
+    def _other_vec(self) -> "list[float] | None":
+        """WS-EXPAND E10.3: the dominant adaptive other's egocentric state for
+        the policy ingress. None/all-zero when solo or anything is missing —
+        the adaptivity gate keeps this channel inert exactly when it should be."""
+        if not C.other_modeling_enabled():
+            return None
+        try:
+            from decadic.state.other_agents import encode_other_vec
+
+            obs = self._last_observation if isinstance(self._last_observation, dict) else {}
+            prop = obs.get("proprioception", {})
+            spos = prop.get("position")
+            ori = prop.get("orientation")
+            if not spos or not ori or len(ori) < 3 or len(spos) < 2:
+                return None
+            return encode_other_vec(
+                getattr(self, "_other_agents", None),
+                spos,
+                float(ori[2]),
+                max_dist=C.goal_bearing_max_dist(),
             )
         except Exception:
             return None
@@ -2888,6 +3203,79 @@ class AgentRuntime:
                 obs = self._last_observation if isinstance(self._last_observation, dict) else {}
                 self._cognitive_map.update_pose(obs.get("proprioception"))
                 self.metrics.update(self._cognitive_map.telemetry())
+            except Exception:
+                pass
+        # WS-EXPAND E7: rest scheduling. Load accrues with active cycles +
+        # prediction error; rest idles the body (ctx.rest_active gates the
+        # motor emission in the pipeline); any threat event aborts instantly.
+        if C.rest_cycle_enabled():
+            try:
+                rc = getattr(self, "_rest_controller", None)
+                if rc is None:
+                    from decadic.consolidation.rest import RestController
+
+                    rc = RestController()
+                    self._rest_controller = rc
+                obs_r = (
+                    self._last_observation
+                    if isinstance(self._last_observation, dict)
+                    else {}
+                )
+                evs = obs_r.get("events")
+                threat_now = any(
+                    isinstance(e, dict)
+                    and str(e.get("type", "")).lower()
+                    in ("collision", "damage", "attack", "bite", "fall_impact")
+                    for e in (evs or [])
+                )
+                # WS-ATTN 6.2: feed tier backpressure so rest fires when the
+                # salience hierarchy fills, not only on accrued load.
+                attn_pressure = 0.0
+                sp = getattr(self, "stage_pipeline", None)
+                if sp is not None and hasattr(sp, "pressure"):
+                    try:
+                        attn_pressure = float(sp.pressure())
+                    except Exception:
+                        attn_pressure = 0.0
+                rc.note_cycle(
+                    cycle=int(self.state_bus.cycle_index),
+                    pc_loss=float(self.metrics.get("pc_loss", 0.0) or 0.0),
+                    threat=threat_now,
+                    pressure=attn_pressure,
+                )
+                self.metrics.update(rc.telemetry())
+                # WS-ATTN 5.2: while resting, drain the un-deliberated backlog
+                # (T3 consolidation queue) so the tiers stay bounded across long
+                # runs -- consolidation on the right timescale (sleep), the
+                # "nothing lost" guarantee. Best-effort; never breaks the cycle.
+                if rc.in_rest and sp is not None and hasattr(sp, "drain_consolidation"):
+                    try:
+                        drained = sp.drain_consolidation(
+                            int(os.environ.get("DECADIC_REST_CONSOLIDATE_BATCH", "64"))
+                        )
+                        if drained:
+                            self._consolidate_rest_percepts(drained)
+                    except Exception:
+                        logger.debug("rest consolidation drain failed", exc_info=True)
+            except Exception:
+                pass
+        # WS-EXPAND E10: other-agent registry behind the adaptivity gate.
+        # Solo scenes / scripted props never spawn models (the gate IS the
+        # design); telemetry proves the zero-overhead claim on every run.
+        if C.other_modeling_enabled():
+            try:
+                reg = getattr(self, "_other_agents", None)
+                if reg is None:
+                    from decadic.state.other_agents import OtherAgentRegistry
+
+                    reg = OtherAgentRegistry()
+                    self._other_agents = reg
+                ws = getattr(self.perceptual, "scene_workspace", None)
+                ents = (
+                    list(getattr(ws, "entities", {}).values()) if ws is not None else None
+                )
+                reg.ingest(ents)
+                self.metrics.update(reg.telemetry())
             except Exception:
                 pass
         gs = self.goal_state
@@ -2971,6 +3359,16 @@ class AgentRuntime:
                 self.metrics["cycle_idle_ms"] = idle_s * 1000.0
             # A dead mind is frozen; only an admin revive/reset reanimates it.
             if self.paused or self.status == "dead":
+                # WS-SOAK: long soak TESTS revive on death (to 80% resources) so
+                # the brain can be observed past a single lifespan. Gated off by
+                # default -- a normal run still dies for real.
+                if (
+                    self.status == "dead"
+                    and not self.paused
+                    and C.soak_revive_enabled()
+                ):
+                    self._soak_revive()
+                    continue
                 await asyncio.sleep(self.cycle_interval_s)
                 self._cycle_deadline_s = time.perf_counter() + self.cycle_interval_s
                 continue
@@ -3029,14 +3427,31 @@ class AgentRuntime:
                     cached_memory_context=self._cached_memory_context_for_cycle(),
                     memory_recall_on_critical_path=not C.memory_context_async_enabled(),
                     goal_vec=self._current_goal_vec(),
+                    other_vec=self._other_vec(),
+                    rest_active=bool(
+                        C.rest_cycle_enabled()
+                        and getattr(self, "_rest_controller", None) is not None
+                        and self._rest_controller.in_rest
+                    ),
                 )
+                self._hb_phase = "neural"  # WS-FREEZE: stall here == H1/H3/H4
                 if self.neural is not None:
                     msg = run_neural_cycle(ctx, self.neural)
                 else:
                     msg = run_stub_cycle(ctx)
+                self._hb_phase = "post_neural"
                 diagnostics = msg.pop("_diagnostics", {})
                 cognitive = msg.pop("_cognitive", None)
                 transition = msg.pop("_transition", None)
+                # WS-ENERGY: spend energy on the motor signal sent this cycle and
+                # record it on the transition, so replay/credit-assignment learns
+                # to associate moving (this action) with getting hungry. Runs
+                # before _check_death (below) so a fatal drain kills same-cycle.
+                # NB motor_command lives in `diagnostics` (already popped above),
+                # NOT in `msg`.
+                motor_cost = self._apply_motor_energy_cost(diagnostics)
+                if isinstance(transition, dict):
+                    transition["effort_cost"] = float(motor_cost)
                 # Dual-network consolidation: feed the realized transition to the
                 # replay buffer (no-op unless the feature is enabled).
                 tr = None
@@ -3121,6 +3536,11 @@ class AgentRuntime:
             elapsed = time.perf_counter() - self._started_perf
             self.metrics["cycles_completed"] = int(self.state_bus.cycle_index)
             self.metrics["last_cycle_wall_ms"] = wall_ms
+            # WS-FREEZE: a completed cycle -- refresh the heartbeat. If this
+            # stops advancing, the watchdog fires.
+            self._hb_cycle_s = time.monotonic()
+            self._hb_phase = "idle"
+            self._hb_cycle_index = int(self.state_bus.cycle_index)
             if elapsed > 1e-6:
                 self.metrics["approx_cycles_per_sec"] = self.state_bus.cycle_index / elapsed
             self._apply_cycle_diagnostics(diagnostics)
@@ -3393,17 +3813,25 @@ class AgentRuntime:
                         self.homeostasis.viability,
                     )
             if metabolic:
-                self.viability.value = self.homeostasis.viability
-            if metabolic and effort_cost > 0.0:
-                self.homeostasis.apply_reservoir_deltas(energy=-effort_cost)
+                # System A (body-effort energy drain) is deprecated -- effort
+                # energy scales default to 0, so effort_cost is ~0 and the
+                # motor-signal cost in the cognitive cycle replaces it. The
+                # debit is kept only for A/B if the scales are re-enabled.
+                if effort_cost > 0.0:
+                    self.homeostasis.apply_reservoir_deltas(energy=-effort_cost)
+                # Interoceptive pain: body fatigue/strain (System B) fire
+                # INDEPENDENTLY of effort energy -- decoupled from the old
+                # effort_cost>0 gate so retiring System A never mutes them. The
+                # effort-energy delta only contributes when nonzero.
                 pain, pleasure = viability_delta_to_signals(-effort_cost)
                 localized = min(1.0, pain + fatigue_pain + strain_pain)
-                self.state_bus.emotion_physio = apply_pain_pleasure_to_B(
-                    self.state_bus.emotion_physio, localized, pleasure
-                )
-                self.state_bus.pain_scalar = ema_affect(
-                    self.state_bus.pain_scalar, localized, retain=0.95
-                )
+                if localized > 0.0 or pleasure > 0.0:
+                    self.state_bus.emotion_physio = apply_pain_pleasure_to_B(
+                        self.state_bus.emotion_physio, localized, pleasure
+                    )
+                    self.state_bus.pain_scalar = ema_affect(
+                        self.state_bus.pain_scalar, localized, retain=0.95
+                    )
                 self.viability.value = self.homeostasis.viability
             self.metrics["effort_energy_delta"] = round(-effort_cost if metabolic else 0.0, 6)
             self.metrics["fatigue_pain"] = round(float(fatigue_pain), 6)

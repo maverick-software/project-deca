@@ -688,6 +688,10 @@ def test_ws4b_m34_multirow_edges_create_and_set(tmp_path, monkeypatch):
     monkeypatch.setenv("DECADIC_KUZU_OFFLOCK_FLUSH", "1")
     monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")  # manual flush timing
     monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")
+    # WS4C M2.2 would rightly skip the weight-capped re-bump (unchanged
+    # non-volatile payload); this test's PURPOSE is exercising the edge-SET
+    # UNWIND shape, so pin the skip off.
+    monkeypatch.setenv("DECADIC_KUZU_SKIP_UNCHANGED", "0")
     apps = _rand_apps(6, seed=66)
     g = _kuzu_graph(tmp_path, "multirow_edges_kuzu")
     ids = [g.upsert_node(apps[i], kind="npc", cycle=i) for i in range(6)]
@@ -759,6 +763,9 @@ def test_ws4b_write_governance_throttles_and_drain_is_exact(tmp_path, monkeypatc
     monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")  # manual flush timing
     monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")
     monkeypatch.setenv("DECADIC_KUZU_WRITE_MIN_CYCLES", "25")
+    # Pin the throttle in isolation: WS4C M2.2 (skip-unchanged) has its own
+    # tests in test_ws4c_graph_hygiene.py and would absorb converged touches.
+    monkeypatch.setenv("DECADIC_KUZU_SKIP_UNCHANGED", "0")
     apps = _rand_apps(1, seed=70)
     g = _kuzu_graph(tmp_path, "wg_kuzu")
     nid = g.upsert_node(apps[0], kind="npc", cycle=0)
@@ -786,6 +793,7 @@ def test_ws4b_write_governance_disabled_is_parity(tmp_path, monkeypatch):
     monkeypatch.setenv("DECADIC_KUZU_FLUSH_OPS", "999")
     monkeypatch.setenv("DECADIC_KUZU_FLUSH_S", "999")
     monkeypatch.setenv("DECADIC_KUZU_WRITE_MIN_CYCLES", "0")
+    monkeypatch.setenv("DECADIC_KUZU_SKIP_UNCHANGED", "0")  # ungoverned parity
     apps = _rand_apps(1, seed=71)
     g = _kuzu_graph(tmp_path, "wg_off_kuzu")
     nid = g.upsert_node(apps[0], kind="npc", cycle=0)

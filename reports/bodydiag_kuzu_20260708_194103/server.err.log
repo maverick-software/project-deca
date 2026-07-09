@@ -1,0 +1,6 @@
+INFO:     Started server process [58484]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
+{"time": "2026-07-09T02:41:10.635046+00:00", "level": "INFO", "logger": "decadic.nn.bundle", "message": "neural compute device=cuda gpu=NVIDIA GeForce RTX 3080 vram_free_gb=8.9 vram_total_gb=10.0 bf16=True"}
+{"time": "2026-07-09T02:41:42.612172+00:00", "level": "INFO", "logger": "decadic.nn.frozen_encoders", "message": "loading frozen CLIP + Whisper (first run may download weights)"}

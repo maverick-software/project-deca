@@ -1,0 +1,9 @@
+WS-DEPTH long-life trends (68 snapshots over 6 h):
+CHECK  schema accuracy          0 -> 0  (should climb past base rate)
+CHECK  metacog calibration      0 -> 0  (ECE: lower = better)
+CHECK  metacog error MAE        0 -> 0  (self-assessment sharpens)
+CHECK  corrector FEL            0 -> 0  (tracking gap learned)
+CHECK  percept fwd loss         0 -> 0  (refinement earning keep)
+CHECK  symbol utilization       0 -> 0  (code space filling)
+INFO   trust w 0 -> 0 | divergence 0 -> 0 (judge together: rising trust with falling divergence is healthy)
+INFO   self-ignition rate 0 -> 0 | topdown_frac 0 -> 0

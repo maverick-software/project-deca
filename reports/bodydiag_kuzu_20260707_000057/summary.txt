@@ -1,0 +1,90 @@
+body diag: graph_backend=kuzu seconds=600 stamp=20260707_000057
+cycle rate (steady window): 4.18 cycles/s  (23 -> 2501 cycles over 593.3s)
+  t=10.2s cycles=23
+  t=20.9s cycles=71
+  t=31.7s cycles=119
+  t=43.7s cycles=170
+  t=55.1s cycles=215
+  t=65.2s cycles=261
+  t=76.2s cycles=313
+  t=86.6s cycles=358
+  t=96.6s cycles=394
+  t=107.6s cycles=444
+  t=118.6s cycles=492
+  t=130.1s cycles=546
+  t=141.6s cycles=585
+  t=152s cycles=633
+  t=163.1s cycles=685
+  t=174.2s cycles=736
+  t=184.3s cycles=774
+  t=194.4s cycles=820
+  t=204.9s cycles=872
+  t=214.9s cycles=918
+  t=225.2s cycles=957
+  t=235.6s cycles=1004
+  t=246.5s cycles=1054
+  t=256.9s cycles=1102
+  t=268.2s cycles=1141
+  t=278.8s cycles=1186
+  t=290.1s cycles=1239
+  t=301.6s cycles=1289
+  t=312.4s cycles=1331
+  t=322.7s cycles=1377
+  t=332.8s cycles=1422
+  t=344.5s cycles=1471
+  t=355.6s cycles=1514
+  t=367.4s cycles=1558
+  t=378s cycles=1608
+  t=388.3s cycles=1654
+  t=400.6s cycles=1693
+  t=411.7s cycles=1738
+  t=422.1s cycles=1783
+  t=433.7s cycles=1826
+  t=445.9s cycles=1863
+  t=457.6s cycles=1908
+  t=467.9s cycles=1955
+  t=480s cycles=2001
+  t=492.4s cycles=2040
+  t=502.5s cycles=2083
+  t=514.3s cycles=2132
+  t=525.6s cycles=2184
+  t=537.5s cycles=2225
+  t=547.8s cycles=2270
+  t=558.2s cycles=2314
+  t=570.1s cycles=2363
+  t=581.5s cycles=2407
+  t=591.9s cycles=2453
+  t=603.5s cycles=2501
+body budget (last 3):
+[body] budget ms/obs: physics=10.2 vision=5.2 views=8.0 audio=0.0 send=154.8
+[body] budget ms/obs: physics=10.3 vision=5.2 views=8.2 audio=0.0 send=117.0
+[body] budget ms/obs: physics=9.9 vision=5.4 views=8.1 audio=0.0 send=116.9
+store telemetry:
+  "commit_lag_ms":  0.8536000386811793
+  "ltm_match_ms":  0.1488000270910561
+  "sqlite_commit_count":  115
+  "sqlite_batch_commit_count":  115
+  "sqlite_last_commit_ms":  15.670299995690584
+  "plasticity_pc_ema":  0.8777672378356794
+  "awake_neurons":  1216
+  "growth_events":  0
+  "graph_flush_ms":  257.1227999869734
+  "graph_flush_lock_ms":  0.3307000151835382
+  "graph_flush_queue_depth":  0
+  "graph_flush_rows":  527
+  "graph_flush_stmts":  67
+  "graph_flush_error_batches":  0
+  "graph_writes_deferred":  947136
+  "graph_coalesce_dedup_rows":  0
+  "graph_deferred_depth":  2497
+  "kuzu_vector_index_rebuilds":  0
+  "awake_neurons":  1216
+memory accumulation (first 2 vs last 2 samples -- watch recall_ms/ltm_match_ms/ltm_nodes):
+  agent_id=9e40c902-1523-483f-978d-89085af067d3 cycle=200 wall_ms=239.5 recall_ms=0.000 ltm_match_ms=0.058 ltm_nodes=13 ltm_edges=243 ltm_beliefs=215 ltm_db_bytes=4096 episodic_db_bytes=0"}
+  agent_id=9e40c902-1523-483f-978d-89085af067d3 cycle=400 wall_ms=174.5 recall_ms=0.000 ltm_match_ms=0.148 ltm_nodes=14 ltm_edges=298 ltm_beliefs=232 ltm_db_bytes=4096 episodic_db_bytes=230947"}
+  ...
+  agent_id=9e40c902-1523-483f-978d-89085af067d3 cycle=2200 wall_ms=233.0 recall_ms=0.000 ltm_match_ms=0.116 ltm_nodes=20 ltm_edges=1211 ltm_beliefs=380 ltm_db_bytes=13873152 episodic_db_bytes=1872719"}
+  agent_id=9e40c902-1523-483f-978d-89085af067d3 cycle=2400 wall_ms=236.4 recall_ms=0.000 ltm_match_ms=0.066 ltm_nodes=20 ltm_edges=1338 ltm_beliefs=383 ltm_db_bytes=13873152 episodic_db_bytes=2110464"}
+successor value (must climb off ~0 to forage):
+  "raw":  0.994124,
+  "weighted":  1.087933

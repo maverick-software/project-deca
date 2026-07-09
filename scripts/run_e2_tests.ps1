@@ -7,7 +7,7 @@ Set-Location $Root
 New-Item -ItemType Directory -Force -Path reports | Out-Null
 
 Write-Host "=== Phase 1: WS-EXPAND unit tests (E2 + E1) ==="
-& $Py -m pytest tests/test_learning_control.py tests/test_cognitive_map.py tests/test_goal_conditioning.py tests/test_action_planner.py -q 2>&1 | Tee-Object -FilePath "reports\e2_tests_new.txt"
+& $Py -m pytest tests/test_learning_control.py tests/test_cognitive_map.py tests/test_goal_conditioning.py tests/test_action_planner.py tests/test_motor_corrector.py tests/test_cached_policy.py tests/test_ws_expand_tail.py tests/test_ws_ind.py tests/test_ws_depth.py tests/test_companion.py -q 2>&1 | Tee-Object -FilePath "reports\e2_tests_new.txt"
 
 Write-Host ""
 Write-Host "=== Phase 2: full suite (flag-off parity) ==="

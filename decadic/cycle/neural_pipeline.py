@@ -289,6 +289,7 @@ def _run_plasticity_guardian(
                 bundle.prev_state = None
                 bundle.prev_motor = None
                 bundle.prev_intero = None
+                bundle.prev_proprio = None
                 bundle.prev_scene_features = None
                 bundle.prev_scene_entity_ids = []
         return froze, reason
@@ -724,6 +725,17 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         intero=intero_t,
     )
     z0 = z0_eff
+    # WS-DEPTH P1: recurrent refinement of the fused percept (zero-init
+    # residual, iterated) — algorithmic recurrence at the earliest lived
+    # stage. Byte-identical at birth (invariance guardrail); trained by the
+    # percept-level forward model below. The raw percept is buffered as the
+    # training pair's input for next cycle.
+    if C.percept_refine_enabled() and getattr(bundle.stack, "has_percept_refine", False):
+        try:
+            z0 = bundle.stack.refine_percept(z0, C.percept_refine_iters())
+            bundle.prev_z0_raw = z0_eff.detach().clone()
+        except Exception:
+            z0 = z0_eff
     # Self-state feedback spine: condition this cycle on the previous cycle's
     # detached self-report. None on the first cycle / when the faculty is off
     # (then the stack ignores it) -> full parity with the no-spine baseline.
@@ -804,12 +816,19 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             observation_events=obs_events,
             type2_search=type2,
         )
-        # WS-EXPAND E2.2/E2.3: the learning controller's surprise/volatility
-        # channels (computed at the END of the previous cycle) lower this
-        # cycle's escalation bar. Neutral channels -> bias 0.0 -> byte-parity.
+        # WS-EXPAND E2.2/E2.3 + WS-IND I1.3: the learning controller's
+        # surprise/volatility channels AND the attention schema's anticipatory
+        # bias (both computed at the END of the previous cycle) lower this
+        # cycle's escalation bar. They COMPOSE under the one shared cap (the
+        # setter re-clamps). Neutral channels -> bias 0.0 -> byte-parity.
+        _bias_total = 0.0
         lc_prev = getattr(bundle, "_learning_controller", None)
         if lc_prev is not None and C.learn_control_multi_enabled():
-            attn_gate.set_modulation_bias(lc_prev.gate_threshold_bias())
+            _bias_total += lc_prev.gate_threshold_bias()
+        if C.attention_schema_enabled():
+            _bias_total += float(getattr(bundle, "_schema_bias", 0.0) or 0.0)
+        if (lc_prev is not None and C.learn_control_multi_enabled()) or C.attention_schema_enabled():
+            attn_gate.set_modulation_bias(_bias_total)
         gate_decision = attn_gate.decide(gate_inputs)
         # Telemetry-only rolling max: short first-exposure spikes must survive
         # the eval sampler's stride (surfaces as gate_i_novelty_peak).
@@ -900,24 +919,255 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             except Exception:
                 goal_vec_t = None
 
+    # WS-EXPAND E10.3: the other-vector — the policy's view of the dominant
+    # ADAPTIVE other (presence, bearings to it and to its predicted next
+    # position, prior-defeat strength). All-zero when solo (the adaptivity
+    # gate's zero-overhead guarantee carries into the policy input); folded
+    # through the stack's zero-init other_ingress -> birth-identical.
+    other_vec_t = None
+    if C.other_modeling_enabled():
+        _ov = getattr(ctx, "other_vec", None)
+        if _ov is not None:
+            try:
+                other_vec_t = torch.as_tensor(_ov, dtype=z0.dtype, device=z0.device)
+            except Exception:
+                other_vec_t = None
+
+    # WS-EXPAND E3: current controllable proprio for the motor corrector (E3.1)
+    # and the phase-generator gate (E3.2/E3.3). Both stay None unless enabled
+    # and a body observation exists -> the stack call is byte-identical then.
+    proprio_vec_t = None
+    cpg_gate_v = None
+    if latest is not None:
+        if C.motor_corrector_enabled():
+            try:
+                proprio_vec_t = torch.as_tensor(
+                    [controllable_proprio_vector(latest, bundle.cfg.forward_pred_dim)],
+                    device=z0.device,
+                    dtype=z0.dtype,
+                )
+            except Exception:
+                proprio_vec_t = None
+        if C.cpg_enabled():
+            # E3.3 aperiodic escape: a threat fast-path cycle routes raw (no
+            # periodic drive during recovery); everything else walks gated on.
+            cpg_gate_v = (
+                0.0
+                if (gate_decision is not None and gate_decision.reason == "fast_path")
+                else 1.0
+            )
+    # WS-EXPAND E8.1: felt body-state vector (reservoirs + touch + effort) for
+    # the interoceptive embedding conditioning the affect path. None -> no-op.
+    body_vec_t = None
+    if latest is not None and C.interoceptive_head_enabled():
+        try:
+            body_vec_t = torch.as_tensor(
+                [
+                    controllable_intero_vector(latest, int(C.INTERO_PRED_DIM))
+                    + controllable_tactile_vector(latest, int(C.TACTILE_PRED_DIM))
+                    + controllable_effort_vector(latest, int(C.EFFORT_PRED_DIM))
+                ],
+                device=z0.device,
+                dtype=z0.dtype,
+            )
+        except Exception:
+            body_vec_t = None
+    # WS-EXPAND E6: per-slot routing gate — top-down goal relevance weights
+    # which percept slots reach the deep network. Identity at init (exact 1.0
+    # weights), floored, and REOPENED toward identity by the E2.3 surprise
+    # channel so gating can never blind the agent to a newly-surprising world.
+    if (
+        C.input_routing_enabled()
+        and wm_slots_t is not None
+        and goal_vec_t is not None
+        and getattr(bundle.stack, "has_slot_gate", False)
+    ):
+        try:
+            if (
+                wm_slots_t.dim() == 3
+                and wm_slots_t.shape[-1] + goal_vec_t.reshape(-1).shape[0]
+                == bundle.stack.slot_gate.in_features
+            ):
+                _lc_now = getattr(bundle, "_learning_controller", None)
+                _surp = float(_lc_now.last.surprise) if _lc_now is not None else 0.0
+                _w_slots = bundle.stack.slot_relevance(
+                    wm_slots_t, goal_vec_t, C.slot_gate_floor()
+                )
+                # WS-IND I3: compose per-slot RELIABILITY (relative noise —
+                # the E2 volatility/noise separation at percept granularity)
+                # into the pass weight: relevance x reliability, floored, and
+                # reopened together by surprise below.
+                if C.slot_reliability_enabled():
+                    from decadic.nn.slot_reliability import SlotReliability
+
+                    _srel = getattr(bundle, "_slot_reliability", None)
+                    if _srel is None:
+                        _srel = SlotReliability(
+                            max_slots=64,
+                            fast_alpha=C.slot_rel_fast_alpha(),
+                            noise_alpha=C.slot_rel_noise_alpha(),
+                            floor=C.slot_rel_floor(),
+                            warmup=C.slot_rel_warmup(),
+                        )
+                        bundle._slot_reliability = _srel
+                    # Waste guard (2026-07-07 CPU audit): update() costs a
+                    # GPU->CPU sync + python loops, and reliability is a slow
+                    # EMA -- recompute on a stride, reuse the cached weights
+                    # between (shape-checked; a slot-count change recomputes).
+                    _cyc_now = int(ctx.state_bus.cycle_index)
+                    _cache = getattr(bundle, "_slot_rel_cache", None)
+                    _rel_t = None
+                    if (
+                        _cache is not None
+                        and _cyc_now - _cache[1] < 4
+                        and _cache[0].shape[1] == wm_slots_t.shape[1]
+                    ):
+                        _rel_t = _cache[0]
+                    else:
+                        _rel = _srel.update(wm_slots_t)
+                        if _rel and len(_rel) == wm_slots_t.shape[1]:
+                            _rel_t = torch.as_tensor(
+                                _rel, device=wm_slots_t.device, dtype=wm_slots_t.dtype
+                            ).reshape(1, -1, 1)
+                            bundle._slot_rel_cache = (_rel_t, _cyc_now)
+                    if _rel_t is not None:
+                        _w_slots = (_w_slots * _rel_t).clamp(min=C.slot_gate_floor())
+                # Reopen on surprise: gate relaxes toward identity as surprise
+                # rises (a startled agent looks at everything again).
+                _w_slots = _w_slots + (1.0 - _w_slots) * min(1.0, max(0.0, _surp))
+                wm_slots_t = wm_slots_t * _w_slots
+        except Exception:
+            pass
+
+    # WS-IND I1.2: last cycle's attention-schema prediction re-enters the
+    # policy input through the zero-init schema ingress. None when off/first.
+    schema_vec_t = (
+        getattr(bundle, "_schema_prev_pred", None)
+        if C.attention_schema_enabled()
+        else None
+    )
+    # WS-EXPAND E10.3: the modeled other's egocentric state (all-zero solo, so
+    # the zero-init ingress is doubly inert until someone adaptive is there).
+    other_vec_t = None
+    other_presence_val = 0.0
+    if C.other_modeling_enabled() and getattr(ctx, "other_vec", None):
+        try:
+            other_vec_t = torch.as_tensor(
+                [ctx.other_vec], device=z0.device, dtype=z0.dtype
+            )
+            other_presence_val = float(ctx.other_vec[0])
+        except Exception:
+            other_vec_t = None
+    # WS-SYM 4.0: feed the PREVIOUS cycle's quantized code back into this
+    # cycle's policy (bundle._prev_symbol_q was set at the end of last cycle's
+    # symbol block, so it holds the prior code here -- before this cycle's is
+    # computed). Zero-init ingress -> birth-identical; on by default.
+    symbol_vec_t = None
+    symbol_feedback_source = "none"
+    if (
+        C.symbols_enabled()
+        and C.symbols_feedback_enabled()
+        and getattr(bundle.stack, "has_symbol_ingress", False)
+    ):
+        # WS-SYM 3.3: prefer the code RECALLED for the focused entity (what the
+        # mind learned about what it's attending) over its own previous code
+        # (4.0). Both feed the same zero-init ingress.
+        _rvec = None
+        if C.symbols_recall_feedback_enabled() and ctx.ltm_graph is not None:
+            _rvec = getattr(ctx.ltm_graph, "_last_recalled_symbol_vec", None)
+        if _rvec is not None:
+            try:
+                symbol_vec_t = torch.as_tensor([_rvec], device=z0.device, dtype=z0.dtype)
+                symbol_feedback_source = "recalled"
+            except Exception:
+                symbol_vec_t = None
+        if symbol_vec_t is None:
+            _psq = getattr(bundle, "_prev_symbol_q", None)
+            if _psq is not None:
+                try:
+                    symbol_vec_t = _psq.to(device=z0.device, dtype=z0.dtype)
+                    symbol_feedback_source = "own_prev"
+                except Exception:
+                    symbol_vec_t = None
+    _fwd_kwargs = dict(
+        self_prev=self_prev_fed,
+        repself_prev=repself_fed,
+        stage4_override=gate_override,
+        stage4_shadow=gate_shadow_skip,
+        wm_slots=wm_slots_t,
+        wm_slots_mask=wm_mask_t,
+        mem_tokens=mem_tokens_t,
+        mem_tokens_mask=mem_tokens_mask_t,
+        goal_vec=goal_vec_t,
+        proprio_vec=proprio_vec_t,
+        cpg_gate=cpg_gate_v,
+        body_vec=body_vec_t,
+        schema_vec=schema_vec_t,
+        other_vec=other_vec_t,
+        symbol_vec=symbol_vec_t,
+    )
+    # WS-IND I2: sequential deliberation. On an escalated cycle, a DRAFT
+    # forward runs first under no_grad with the recurrent buffers snapshotted
+    # and restored (the state advances exactly ONCE per cycle), and its
+    # conclusion (z5, chosen action) re-enters the FINAL forward through the
+    # zero-init draft ingress — query, integrate, re-deliberate, commit.
+    # Zero-init => round 2 == round 1 at birth; compute cost is bounded by the
+    # Type-2 refractory (escalated cycles only).
+    ws_seq_rounds_v = 0
+    ws_seq_div = 0.0
+    draft_vec_t = None
+    _draft_motor = None
+    if (
+        C.ws_seq_enabled()
+        and gate_decision is not None
+        and gate_decision.escalate
+        # Throughput guard (2026-07-07: 4.1 -> 2.0 cyc/s regression): drafts
+        # only where re-deliberation has proven value — Type-2 intention
+        # formation (already refractory-bounded to ~3% of cycles). Score/
+        # hysteresis escalations commit in one round. The detour A/B (plan
+        # I2.2/D3.3) decides whether drafts ever widen again.
+        and gate_decision.reason == "type2_memory_search"
+        and getattr(bundle.stack, "has_draft_ingress", False)
+    ):
+        try:
+            # WS-DEPTH D3: k-round deliberation (k in [2,3]) — each draft
+            # round sees the previous round's conclusion through the same
+            # zero-init ingress; the recurrent state is restored after every
+            # draft so it advances exactly once (on the final commit). The
+            # learned query chooser stays define-only until the detour A/B
+            # earns it (plan D3.3); round order is the fixed heuristic.
+            _k = C.ws_seq_rounds()
+            _snap_rec = bundle.stack.snapshot_recurrent_state()
+            for _round in range(_k - 1):
+                with torch.no_grad(), bundle.train_autocast():
+                    _draft = bundle.stack(
+                        z0, ep, mem_t, draft_vec=draft_vec_t, **_fwd_kwargs
+                    )
+                bundle.stack.restore_recurrent_state(_snap_rec)
+                if not (
+                    torch.isfinite(_draft["z5"]).all()
+                    and torch.isfinite(_draft["motor_u"]).all()
+                ):
+                    break
+                draft_vec_t = torch.cat(
+                    [_draft["z5"].detach(), _draft["motor_u"].detach()], dim=-1
+                )
+                _draft_motor = _draft["motor_u"].detach()
+                ws_seq_rounds_v = _round + 2
+        except Exception:
+            draft_vec_t = None
+            ws_seq_rounds_v = 0
+
     # bf16 autocast on the forward only when the memory-efficient path is on (CUDA);
     # a nullcontext otherwise, so the fp32 / CPU / test path is byte-identical.
     with bundle.train_autocast():
-        out = bundle.stack(
-            z0,
-            ep,
-            mem_t,
-            self_prev=self_prev_fed,
-            repself_prev=repself_fed,
-            stage4_override=gate_override,
-            stage4_shadow=gate_shadow_skip,
-            wm_slots=wm_slots_t,
-            wm_slots_mask=wm_mask_t,
-            mem_tokens=mem_tokens_t,
-            mem_tokens_mask=mem_tokens_mask_t,
-            goal_vec=goal_vec_t,
-        )
+        out = bundle.stack(z0, ep, mem_t, draft_vec=draft_vec_t, **_fwd_kwargs)
     fwd_ms = (time.perf_counter() - t0) * 1000.0
+    if _draft_motor is not None:
+        try:
+            ws_seq_div = float((out["motor_u"].detach() - _draft_motor).abs().max().item())
+        except Exception:
+            ws_seq_div = 0.0
 
     # Autocast can leave the forward's float outputs in bf16 on CUDA. The rest of
     # the pipeline (NumPy extraction -> NumPy has no bf16, the State Bus, the
@@ -995,6 +1245,8 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
     # the SF head has learned and the ramp has opened, so behavior starts identical.
     sf_value_last = 0.0
     sf_value_w = 0.0
+    motor_corr_loss_val = 0.0  # WS-EXPAND E3.1 FEL supervision telemetry
+    inverse_loss_val = 0.0  # WS-EXPAND E10.4 inverse-dynamics telemetry
     # Per-joint proprioceptive forward-model error: the squared error of each
     # predicted joint qpos channel. Feeds the body's joint-brace ROM curriculum
     # (a joint earns range of motion only once the brain predicts it well). The
@@ -1019,6 +1271,56 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                     for x in per_dim_se.reshape(-1)[base:].tolist()
                 ]
         loss = loss + ai_fwd_weight() * l_fwd
+
+        # WS-EXPAND E3.1: feedback-error learning for the motor corrector. The
+        # realized per-joint tracking error (previous command vs this cycle's
+        # realized joint channels — dims [BASE:] map channel-for-channel onto
+        # the hinges) is the SUPERVISED target for what the correction should
+        # have been. Clamped and detached: an error target, never a reward.
+        if (
+            C.motor_corrector_enabled()
+            and getattr(bundle.stack, "has_motor_corrector", False)
+            and bundle.prev_motor is not None
+            and getattr(bundle, "prev_proprio", None) is not None
+        ):
+            _base = int(C.CONTROLLABLE_PROPRIO_BASE)
+            _realized = s_target[:, _base:]
+            _n_j = min(int(bundle.prev_motor.shape[-1]), int(_realized.shape[-1]))
+            if _n_j > 0:
+                _track_err = (
+                    bundle.prev_motor[:, :_n_j] - _realized[:, :_n_j]
+                ).detach()
+                _corr_target = torch.clamp(
+                    C.motor_corrector_fel_k() * _track_err, -0.95, 0.95
+                )
+                _corr_prev = bundle.stack.motor_correction(
+                    bundle.prev_motor, bundle.prev_proprio
+                )
+                _l_corr = torch.nn.functional.mse_loss(
+                    _corr_prev[:, :_n_j], _corr_target
+                )
+                if torch.isfinite(_l_corr):
+                    loss = loss + C.motor_corrector_loss_weight() * _l_corr
+                    motor_corr_loss_val = float(_l_corr.detach().item())
+
+        # WS-EXPAND E10.4 (prerequisite): inverse dynamics trained on the
+        # agent's OWN lived triple (prev proprio, realized proprio, executed
+        # action) — the same buffers FEL uses. This is the labeling model
+        # imitation-from-observation needs; applying it to a demonstrator
+        # waits on percepts that carry the OTHER agent's body pose.
+        if (
+            C.inverse_model_enabled()
+            and getattr(bundle.stack, "has_inverse_model", False)
+            and bundle.prev_motor is not None
+            and getattr(bundle, "prev_proprio", None) is not None
+        ):
+            _a_hat = bundle.stack.inverse_action(
+                bundle.prev_proprio, s_target.detach()
+            )
+            _l_inv = torch.nn.functional.mse_loss(_a_hat, bundle.prev_motor)
+            if torch.isfinite(_l_inv):
+                loss = loss + C.inverse_model_loss_weight() * _l_inv
+                inverse_loss_val = float(_l_inv.detach().item())
 
         # Tactile active inference: the world model learns which actions load which
         # body part from the realized transition (prev_state, prev_motor) -> realized
@@ -1183,6 +1485,410 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                             delta, plan_diag = planned
                             motor_u = motor_u + delta
                             ctx.latents["planner"] = plan_diag
+
+    # --- WS-EXPAND E4: cached (habit) vs deliberate dual control ------------
+    # Escalated cycles BANK the executed deliberate action as teacher data
+    # (teacher outputs only — the cached head never trains on itself). A small
+    # distillation loss rides the main optimizer over the most-recent window
+    # (deterministic, continually tracking the evolving teacher). Skip cycles
+    # blend the motor command toward the habit by a TRUST weight earned from
+    # the distillation-loss EMA: 0 at birth (byte-identical), decays the
+    # moment the habit stops matching the teacher (stale-habit guard); the
+    # E2.3 surprise channel independently forces re-escalation when the world
+    # shifts, and gate hysteresis + refractory bound arbitration thrash.
+    cached_w_applied = 0.0
+    cached_divergence = 0.0
+    if (
+        C.cached_policy_enabled()
+        and gate_decision is not None
+        and getattr(bundle.stack, "has_cached_policy", False)
+    ):
+        from decadic.nn.cached_policy import DistillBuffer, trust_weight
+
+        _buf = getattr(bundle, "_distill_buf", None)
+        if _buf is None:
+            _buf = DistillBuffer(C.cached_buf())
+            bundle._distill_buf = _buf
+            bundle._distill_loss_ema = None
+        _z0_d = z0.detach()
+        _u_d = motor_u.detach()
+        _banked_now = False
+        if (
+            gate_decision.escalate
+            and torch.isfinite(_z0_d).all()
+            and torch.isfinite(_u_d).all()
+        ):
+            _buf.push(_z0_d.clone(), _u_d.clone())
+            _banked_now = True
+        # Waste guard (2026-07-07 CPU audit): between escalations no new
+        # teacher data arrives, so re-optimizing every cycle is compute for
+        # nothing. Step when a pair was just banked, else on a slow stride
+        # (keeps the rotating window sweeping without per-cycle backwards).
+        if len(_buf) >= C.cached_distill_min() and (
+            _banked_now or int(ctx.state_bus.cycle_index) % 8 == 0
+        ):
+            # Rotating (cycle-keyed) window: sweeps the WHOLE teacher buffer
+            # over time so the trust EMA measures fit across everything the
+            # teacher demonstrated, not memorization of the newest 32 (the
+            # overfit exposure caught by the distillation test).
+            _pairs = _buf.window(
+                int(ctx.state_bus.cycle_index), C.cached_distill_batch()
+            )
+            _zb = torch.cat([p[0] for p in _pairs], dim=0)
+            _ub = torch.cat([p[1] for p in _pairs], dim=0)
+            _l_distill = torch.nn.functional.mse_loss(
+                bundle.stack.cached_action(_zb), _ub
+            )
+            if torch.isfinite(_l_distill):
+                loss = loss + C.cached_distill_weight() * _l_distill
+                _a = C.cached_distill_ema_alpha()
+                _cur = float(_l_distill.detach().item())
+                _prev = bundle._distill_loss_ema
+                bundle._distill_loss_ema = (
+                    _cur if _prev is None else (1.0 - _a) * _prev + _a * _cur
+                )
+        if not gate_decision.escalate:
+            _w = trust_weight(
+                getattr(bundle, "_distill_loss_ema", None),
+                threshold=C.cached_trust_threshold(),
+                max_w=C.cached_max_w(),
+            )
+            if _w > 0.0:
+                with torch.no_grad():
+                    _u_habit = bundle.stack.cached_action(_z0_d)
+                if torch.isfinite(_u_habit).all():
+                    cached_divergence = float(
+                        (_u_habit - _u_d).abs().max().item()
+                    )
+                    motor_u = (1.0 - _w) * motor_u + _w * _u_habit
+                    cached_w_applied = _w
+
+    # --- WS-EXPAND E5.3: action veto ------------------------------------------
+    # Predicts imminent viability loss for the FINAL command (post habit blend)
+    # and applies a MINIMAL multiplicative attenuation — capped well short of
+    # zero (over-conservatism guardrail). Trained supervised on the REALIZED
+    # viability outcome of the previous command: error as target, never reward.
+    veto_attenuation = 0.0
+    if (
+        C.action_veto_enabled()
+        and getattr(bundle.stack, "has_action_veto", False)
+        and drive_on
+    ):
+        try:
+            _viab_now = float(getattr(ctx.viability, "value", 100.0))
+            if (
+                bundle.prev_state is not None
+                and bundle.prev_motor is not None
+                and getattr(bundle, "prev_viability", None) is not None
+            ):
+                _drop = max(0.0, float(bundle.prev_viability) - _viab_now)
+                _t_veto = torch.clamp(
+                    torch.as_tensor(
+                        C.veto_k() * _drop / 100.0, device=z0.device, dtype=z0.dtype
+                    ),
+                    0.0,
+                    1.0,
+                )
+                _raw_prev = bundle.stack.motor_veto_raw(
+                    bundle.prev_state, bundle.prev_motor
+                )
+                _l_veto = torch.nn.functional.mse_loss(
+                    torch.tanh(_raw_prev).reshape(()), _t_veto
+                )
+                if torch.isfinite(_l_veto):
+                    loss = loss + C.veto_loss_weight() * _l_veto
+            bundle.prev_viability = _viab_now
+            with torch.no_grad():
+                _raw_now = bundle.stack.motor_veto_raw(
+                    z5_t.detach(), motor_u.detach()
+                )
+                _att = float(
+                    (
+                        C.veto_max_attenuation()
+                        * torch.relu(torch.tanh(_raw_now)).reshape(())
+                    ).item()
+                )
+            if 0.0 < _att < 1.0:
+                motor_u = motor_u * (1.0 - _att)
+                veto_attenuation = _att
+        except Exception:
+            veto_attenuation = 0.0
+
+    # --- WS-EXPAND E9: discrete abstraction bottleneck (side channel) ---------
+    # FSQ code of a DETACHED z5 (fixed random projection — a stable hash of the
+    # latent; no codebook, no collapse) + one-step next-code self-supervision
+    # training only the dynamics head. Gradients never reach the trunk.
+    symbol_code_val = None
+    symbol_smooth_val = 0.0
+    # WS-SYM 5.0: drift closed loop. Sustained top-code churn (once grounding is
+    # mature) freezes fsq_in -- we skip its smoothness loss below, so the
+    # encoder->code projection stops moving and a code's referent stops
+    # wandering. Meaning is carried by the grounded binding, so freezing is safe.
+    _fsq_frozen = False
+    symbol_binding_churn = 0.0
+    if ctx.ltm_graph is not None:
+        _upd = int(getattr(ctx.ltm_graph, "_symbol_binding_updates", 0) or 0)
+        _flips = int(getattr(ctx.ltm_graph, "_symbol_binding_flips", 0) or 0)
+        if _upd > 0:
+            symbol_binding_churn = _flips / _upd
+        if (
+            C.symbol_drift_freeze_enabled()
+            and _upd >= C.symbol_freeze_min_updates()
+            and symbol_binding_churn >= C.symbol_churn_threshold()
+        ):
+            _fsq_frozen = True
+    if C.symbols_enabled() and getattr(bundle.stack, "has_symbols", False):
+        try:
+            from decadic.nn.symbol import CodeUsage, fsq_quantize
+
+            # WS-IND I5: the projection now carries gradient (input still
+            # DETACHED -> the trunk keeps E9's parity guarantee) so the
+            # smoothness objective below can train fsq_in.
+            _q_proj = bundle.stack.fsq_in(z5_t.detach())
+            _q_cur, _q_idx = fsq_quantize(_q_proj)
+            _usage = getattr(bundle, "_symbol_usage", None)
+            if _usage is None:
+                _usage = CodeUsage()
+                bundle._symbol_usage = _usage
+            symbol_code_val = int(_q_idx.reshape(-1)[0].item())
+            _usage.note(symbol_code_val)
+            _q_prev = getattr(bundle, "_prev_symbol_q", None)
+            if _q_prev is not None and _q_prev.shape == _q_cur.shape:
+                _l_sym = torch.nn.functional.mse_loss(
+                    bundle.stack.fsq_next(_q_prev), _q_cur.detach()
+                )
+                if torch.isfinite(_l_sym):
+                    loss = loss + C.symbol_loss_weight() * _l_sym
+            # WS-IND I5: temporal local isometry — successive codes should
+            # move about as far as their pre-quantization projections did
+            # (nearby latents -> nearby codes; a smooth, sparse quality
+            # space, HOT-4). Trains fsq_in only -- so skipping it when
+            # _fsq_frozen (WS-SYM 5.0) freezes fsq_in exactly.
+            if C.symbol_smoothness_enabled() and not _fsq_frozen:
+                _p_cur = torch.tanh(_q_proj)
+                _p_prev = getattr(bundle, "_prev_symbol_p", None)
+                if (
+                    _q_prev is not None
+                    and _p_prev is not None
+                    and _p_prev.shape == _p_cur.shape
+                ):
+                    _dq = (_q_cur - _q_prev).norm()
+                    _dp = (_p_cur - _p_prev).norm()
+                    _l_smooth = (_dq - _dp).pow(2)
+                    if torch.isfinite(_l_smooth):
+                        loss = loss + C.symbol_smooth_weight() * _l_smooth
+                        symbol_smooth_val = float(_l_smooth.detach().item())
+                bundle._prev_symbol_p = _p_cur.detach()
+            bundle._prev_symbol_q = _q_cur.detach()
+            # WS-SYM 1.1: publish the code + quantized vector onto the latents
+            # bus so Stage 10 can bind it to the attended entity / episode and
+            # a future policy ingress can read it back. Pure read-only side
+            # channel -- z5/action/loss are unaffected, so cognition is
+            # byte-identical (the code is still a DETACHED projection).
+            ctx.latents["symbol_code"] = symbol_code_val
+            ctx.latents["symbol_q"] = [
+                float(x) for x in _q_cur.detach().reshape(-1).tolist()
+            ]
+        except Exception:
+            symbol_code_val = None
+
+    # --- WS-IND I1: attention schema --------------------------------------
+    # Train on the PREVIOUS cycle's stored input against THIS cycle's realized
+    # gate outcome (outcome as target); then predict NEXT cycle from this
+    # cycle's (latent, gate state), store the prediction for the I1.2 feedback
+    # ingress, and derive the bounded anticipatory bias for the next decide().
+    if (
+        C.attention_schema_enabled()
+        and gate_decision is not None
+        and getattr(bundle.stack, "has_attention_schema", False)
+    ):
+        try:
+            from decadic.nn import attention_schema as AS
+
+            _gate_obj = getattr(bundle, "_attention_gate", None)
+            _realized = AS.encode_realized_target(gate_decision)
+            _prev_in = getattr(bundle, "_schema_prev_in", None)
+            # Throughput guard: the schema's TRAINING forwards (with grad)
+            # alternate cycles with the metacog/percept heads below — halves
+            # the added backward cost; the heads just learn over 2x the
+            # cycles. Predictions (no_grad, feeding the bias and the
+            # self-vec) still run every cycle.
+            _train_even = int(ctx.state_bus.cycle_index) % 2 == 0
+            if _prev_in is not None and _train_even:
+                _z5_prev, _gs_prev = _prev_in
+                _raw_prev = bundle.stack.attention_schema_predict(_z5_prev, _gs_prev)
+                _esc_logit = _raw_prev[:, 0]
+                _reason_logits = _raw_prev[:, 1 : 1 + len(AS.GATE_REASONS)]
+                # Score sits after the reason block (D4 appended ign/share at
+                # the tail, so -1 is no longer the score).
+                _score_pred = _raw_prev[:, 1 + len(AS.GATE_REASONS)]
+                _t_esc = torch.tensor(
+                    [_realized[0]], device=_raw_prev.device, dtype=_raw_prev.dtype
+                )
+                _t_reason = torch.tensor(
+                    [_realized[1]], device=_raw_prev.device, dtype=torch.long
+                )
+                _t_score = torch.tensor(
+                    [_realized[2]], device=_raw_prev.device, dtype=_raw_prev.dtype
+                )
+                _l_schema = (
+                    torch.nn.functional.binary_cross_entropy_with_logits(
+                        _esc_logit, _t_esc
+                    )
+                    + torch.nn.functional.cross_entropy(_reason_logits, _t_reason)
+                    + torch.nn.functional.mse_loss(_score_pred, _t_score)
+                )
+                if torch.isfinite(_l_schema):
+                    loss = loss + C.schema_loss_weight() * _l_schema
+                _acc = getattr(bundle, "_schema_acc", None)
+                if _acc is None:
+                    _acc = AS.SchemaAccuracy()
+                    bundle._schema_acc = _acc
+                _acc.note(
+                    float(torch.sigmoid(_esc_logit.detach()).reshape(-1)[0].item()),
+                    _realized[0] >= 0.5,
+                )
+            # WS-DEPTH D4: ignition targets lag one extra cycle (this cycle's
+            # workspace competition runs AFTER this loss region), so the
+            # ignition head trains on the twice-shifted input buffer against
+            # the realized (ignited, share) stored at the END of last cycle.
+            _prev_in2 = getattr(bundle, "_schema_prev_in2", None)
+            _ws_real = getattr(bundle, "_ws_realized", None)
+            if _prev_in2 is not None and _ws_real is not None and _train_even:
+                _z5_p2, _gs_p2 = _prev_in2
+                _raw_p2 = bundle.stack.attention_schema_predict(_z5_p2, _gs_p2)
+                _t_ign = torch.tensor(
+                    [_ws_real[0]], device=_raw_p2.device, dtype=_raw_p2.dtype
+                )
+                _t_share = torch.tensor(
+                    [_ws_real[1]], device=_raw_p2.device, dtype=_raw_p2.dtype
+                )
+                _l_ign = torch.nn.functional.binary_cross_entropy_with_logits(
+                    _raw_p2[:, -2], _t_ign
+                ) + torch.nn.functional.mse_loss(
+                    torch.sigmoid(_raw_p2[:, -1]), _t_share
+                )
+                if torch.isfinite(_l_ign):
+                    loss = loss + C.schema_loss_weight() * _l_ign
+            if _prev_in is not None:
+                bundle._schema_prev_in2 = _prev_in
+            if _gate_obj is not None and torch.isfinite(z5_t.detach()).all():
+                _gs_vec = AS.build_gate_state_vec(gate_decision, _gate_obj)
+                _gs_t = torch.as_tensor([_gs_vec], device=z0.device, dtype=z0.dtype)
+                bundle._schema_prev_in = (z5_t.detach().clone(), _gs_t)
+                with torch.no_grad():
+                    _raw_now = bundle.stack.attention_schema_predict(
+                        z5_t.detach(), _gs_t
+                    )
+                    _p_next = float(
+                        torch.sigmoid(_raw_now[:, 0]).reshape(-1)[0].item()
+                    )
+                    _probs = torch.softmax(
+                        _raw_now[:, 1 : 1 + len(AS.GATE_REASONS)], dim=-1
+                    )
+                    _n_r = 1 + len(AS.GATE_REASONS)
+                    _sv = torch.cat(
+                        [
+                            torch.sigmoid(_raw_now[:, :1]),  # p(escalate)
+                            _probs,  # reason classes
+                            _raw_now[:, _n_r : _n_r + 1],  # next score
+                            torch.sigmoid(_raw_now[:, -2:-1]),  # p(ignite) — D4
+                            torch.sigmoid(_raw_now[:, -1:]),  # share — D4
+                        ],
+                        dim=-1,
+                    )
+                bundle._schema_prev_pred = _sv.detach()
+                bundle._schema_bias = AS.schema_gate_bias(
+                    _p_next, gain=C.schema_bias_gain(), cap=C.schema_bias_cap()
+                )
+        except Exception:
+            pass
+
+    # --- WS-DEPTH D1: metacognitive calibration ----------------------------
+    # Train yesterday's self-assessment against today's realized outcome
+    # (outcome as target), then assess today for tomorrow. The tracker's
+    # binned reliability (metacog_calibration, lower = better) is the
+    # measurement instrument behavioral self-awareness probes read.
+    if (
+        C.metacog_calibration_enabled()
+        and getattr(bundle.stack, "has_metacog_cal", False)
+    ):
+        try:
+            from decadic.nn.metacog_cal import CalibrationTracker
+
+            _realized_pc = float(pc_val)
+            _realized_up = (
+                float(ctx.state_bus.pleasure_scalar - ctx.state_bus.pain_scalar) > 0.0
+            )
+            _prev_mc = getattr(bundle, "_metacog_prev_in", None)
+            # Throughput guard: trains on ODD cycles (schema trains on even).
+            if _prev_mc is not None and int(ctx.state_bus.cycle_index) % 2 == 1:
+                _raw_mc = bundle.stack.metacog_calibrate(_prev_mc)
+                _pred_err = torch.nn.functional.softplus(_raw_mc[:, 0])
+                _t_err = torch.tensor(
+                    [_realized_pc], device=_raw_mc.device, dtype=_raw_mc.dtype
+                )
+                _t_up = torch.tensor(
+                    [1.0 if _realized_up else 0.0],
+                    device=_raw_mc.device,
+                    dtype=_raw_mc.dtype,
+                )
+                _l_mc = torch.nn.functional.mse_loss(
+                    _pred_err, _t_err
+                ) + torch.nn.functional.binary_cross_entropy_with_logits(
+                    _raw_mc[:, 1], _t_up
+                )
+                if torch.isfinite(_l_mc):
+                    loss = loss + C.metacog_cal_loss_weight() * _l_mc
+                _trk = getattr(bundle, "_metacog_tracker", None)
+                if _trk is None:
+                    _trk = CalibrationTracker()
+                    bundle._metacog_tracker = _trk
+                _trk.note(
+                    float(_pred_err.detach().reshape(-1)[0].item()),
+                    _realized_pc,
+                    float(torch.sigmoid(_raw_mc[:, 1].detach()).reshape(-1)[0].item()),
+                    _realized_up,
+                )
+            if torch.isfinite(z5_t.detach()).all():
+                bundle._metacog_prev_in = z5_t.detach().clone()
+                with torch.no_grad():
+                    _raw_now_mc = bundle.stack.metacog_calibrate(z5_t.detach())
+                    bundle._metacog_now = (
+                        float(
+                            torch.tanh(
+                                torch.nn.functional.softplus(_raw_now_mc[:, 0])
+                            ).reshape(-1)[0].item()
+                        ),
+                        float(torch.sigmoid(_raw_now_mc[:, 1]).reshape(-1)[0].item()),
+                    )
+        except Exception:
+            pass
+
+    # --- WS-DEPTH P1: percept forward-model training ------------------------
+    # The refinement cell earns its keep by making the refined percept a
+    # better basis for predicting the NEXT percept (given efference). Grads
+    # reach refine_* and percept_fwd_* only; the target is detached.
+    percept_fwd_loss_val = 0.0
+    if (
+        C.percept_refine_enabled()
+        and getattr(bundle.stack, "has_percept_refine", False)
+        and bundle.prev_motor is not None
+        and getattr(bundle, "prev_z0_raw", None) is not None
+        # Throughput guard: trains on ODD cycles (with metacog).
+        and int(ctx.state_bus.cycle_index) % 2 == 1
+    ):
+        try:
+            _ref_prev = bundle.stack.refine_percept(
+                bundle.prev_z0_raw, C.percept_refine_iters()
+            )
+            _pred_next = bundle.stack.percept_forward(_ref_prev, bundle.prev_motor)
+            _l_pf = torch.nn.functional.mse_loss(_pred_next, z0_bu.detach())
+            if torch.isfinite(_l_pf):
+                loss = loss + C.percept_refine_loss_weight() * _l_pf
+                percept_fwd_loss_val = float(_l_pf.detach().item())
+        except Exception:
+            percept_fwd_loss_val = 0.0
 
     # --- Cognitive trace: capture the raw "why" arrays from the action-producing
     # (pre-optimizer-step) weights. Read-only and gated, so the oracle/no-trace
@@ -1705,6 +2411,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         bundle.prev_state = None
         bundle.prev_motor = None
         bundle.prev_intero = None
+        bundle.prev_proprio = None
         bundle.prev_affect = None
         bundle.prev_scene_features = None
         bundle.prev_scene_entity_ids = []
@@ -1741,7 +2448,27 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             "prev_motor": bundle.prev_motor.detach().to("cpu"),
             "proprio_target": s_target.detach().to("cpu"),
             "drive_on": bool(drive_on),
-            "salience": float(pc_val + l_fwd_val + tactile_pe_val + effort_pe_val + intero_pe_val),
+            # WS-EXPAND E8.2: valence-BLENDED replay priority — a bounded
+            # multiplier (1 .. 1+beta) on the surprise-based salience, never a
+            # replacement (the evidence verdict: fuse |valence| with the
+            # error-based signal; raw |valence| alone biases the value fn).
+            "salience": float(
+                pc_val + l_fwd_val + tactile_pe_val + effort_pe_val + intero_pe_val
+            )
+            * (
+                1.0
+                + C.valence_replay_beta()
+                * min(
+                    1.0,
+                    abs(
+                        float(
+                            ctx.state_bus.pleasure_scalar - ctx.state_bus.pain_scalar
+                        )
+                    ),
+                )
+                if C.valence_replay_enabled()
+                else 1.0
+            ),
         }
         if has_body:
             transition_payload["effort_now"] = torch.as_tensor(
@@ -1895,6 +2622,11 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         u_emit = np.clip(motor_np + noise, -1.0, 1.0)
     else:
         u_emit = np.clip(motor_np, -1.0, 1.0)
+    # WS-EXPAND E7: a resting body idles — the emitted command is zeroed while
+    # every learning pathway above still ran (consolidation works against a
+    # quiet body). The runtime's RestController owns entry/exit/threat-abort.
+    if getattr(ctx, "rest_active", False):
+        u_emit = np.zeros_like(u_emit)
     # Manual override pins the harness level; otherwise follow the fading curriculum.
     assist_gain = (
         float(ctx.assist_override)
@@ -1915,6 +2647,9 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             bundle.prev_motor = torch.as_tensor(
                 u_emit, device=z0.device, dtype=z0.dtype
             ).unsqueeze(0)
+            # WS-EXPAND E3.1: proprio HALF of next cycle's FEL pair (what the
+            # body looked like when this command was issued).
+            bundle.prev_proprio = s_target.detach().clone()
             if drive_on:
                 bundle.prev_intero = torch.as_tensor(
                     [controllable_intero_vector(ctx.homeostasis, int(C.INTERO_PRED_DIM))],
@@ -1927,6 +2662,7 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
             bundle.prev_state = None
             bundle.prev_motor = None
             bundle.prev_intero = None
+            bundle.prev_proprio = None
 
     _np_assign(ctx.state_bus.emotion_physio, emo)
     _np_assign(ctx.state_bus.state_of_mind, sm)
@@ -1961,6 +2697,48 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         beta = float(os.environ.get("DECADIC_WM_ATTENTION_WEIGHT", "0.25"))
         if gwt_on:
             vecs, sal = wm.workspace_candidates(dim)
+            # WS-DEPTH D2: the unified self-model competes for conscious
+            # access like any content. Content = deterministic packing of the
+            # frozen SELF_VEC layout; salience = interoceptive urgency x a
+            # birth ramp (0 at cycle 0 -> parity: the self cannot win at
+            # birth). Deprivation should turn attention inward.
+            _self_idx = None
+            if C.self_candidate_enabled():
+                try:
+                    from decadic.state.self_vec import (
+                        build_self_vec,
+                        candidate_salience,
+                        pack_candidate,
+                    )
+
+                    _urg = max(0.0, 1.0 - float(ctx.viability.value) / 100.0)
+                    _cal_now = getattr(bundle, "_metacog_now", (0.0, 0.0))
+                    _sp = getattr(bundle, "_schema_prev_pred", None)
+                    _sv_self = build_self_vec(
+                        metacog=ctx.state_bus.metacognition.tolist(),
+                        pain=ctx.state_bus.pain_scalar,
+                        pleasure=ctx.state_bus.pleasure_scalar,
+                        urgency=_urg,
+                        viability=ctx.viability.value,
+                        schema_pred=(
+                            _sp.reshape(-1).cpu().tolist() if _sp is not None else None
+                        ),
+                        cal_next_err=_cal_now[0],
+                        cal_p_improve=_cal_now[1],
+                        rest_active=bool(getattr(ctx, "rest_active", False)),
+                    )
+                    _s_sal = candidate_salience(
+                        _urg,
+                        int(ctx.state_bus.cycle_index),
+                        gain=C.self_candidate_gain(),
+                        ramp_cycles=C.self_candidate_ramp_cycles(),
+                    )
+                    if _s_sal > 0.0:
+                        vecs = list(vecs) + [pack_candidate(_sv_self, dim).tolist()]
+                        sal = list(sal) + [_s_sal]
+                        _self_idx = len(vecs) - 1
+                except Exception:
+                    _self_idx = None
             slots_arr = (
                 np.asarray(vecs, dtype=np.float32) if vecs else np.zeros((0, dim), np.float32)
             )
@@ -1969,12 +2747,22 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
                 capacity=C.gwt_capacity(),
                 temperature=C.gwt_temperature(),
             ).ignite(slots_arr, np.asarray(sal, dtype=np.float32))
+            # WS-DEPTH D4: bank the realized competition outcome as next
+            # cycle's ignition-prediction target; D2 telemetry.
+            bundle._ws_realized = (1.0 if ign.ignited else 0.0, float(ign.score))
+            _self_ignited = bool(
+                ign.ignited and _self_idx is not None and _self_idx in ign.winners
+            )
+            bundle._self_ign_count = int(getattr(bundle, "_self_ign_count", 0)) + (
+                1 if _self_ignited else 0
+            )
             if ign.ignited:
                 a_vec = ctx.state_bus.state_of_mind
                 a_vec[:] = (1.0 - beta) * a_vec + beta * ign.content.astype(np.float32)
             workspace_block = {
                 "enabled": True,
                 "ignited": bool(ign.ignited),
+                "self_ignited": _self_ignited,  # WS-DEPTH D2
                 "share": round(float(ign.score), 4),
                 "threshold": round(float(C.gwt_ignition_threshold()), 4),
                 "n_candidates": int(len(vecs)),
@@ -2406,6 +3194,81 @@ def run_neural_cycle(ctx: CycleContext, bundle: NeuralBundle) -> dict:
         # value-shaping weight (None until the homeostatic drive is on).
         "sf_value": (round(sf_value_last, 6) if drive_on else None),
         "sf_value_weight": (round(float(sf_value_w), 6) if drive_on else None),
+        "motor_corrector_loss": (round(motor_corr_loss_val, 6) if has_body else None),
+        "cached_policy_w": round(cached_w_applied, 6),
+        "cached_divergence": round(cached_divergence, 6),
+        "veto_attenuation": round(veto_attenuation, 6),
+        "symbol_code": symbol_code_val,
+        # WS-SYM 3.3/5.0: which source conditioned the trunk this cycle, and the
+        # drift closed-loop state.
+        "symbol_feedback_source": symbol_feedback_source,
+        "symbol_binding_churn": round(float(symbol_binding_churn), 6),
+        "symbol_fsq_frozen": bool(_fsq_frozen),
+        "symbol_utilization": (
+            getattr(bundle, "_symbol_usage", None).telemetry().get("symbol_utilization")
+            if getattr(bundle, "_symbol_usage", None) is not None
+            else None
+        ),
+        "planner_bias_linf": (
+            (ctx.latents.get("planner") or {}).get("planner_bias_linf")
+            if isinstance(ctx.latents.get("planner"), dict)
+            else None
+        ),
+        # WS-IND telemetry.
+        "schema_accuracy": (
+            getattr(bundle, "_schema_acc", None).telemetry().get("schema_accuracy")
+            if getattr(bundle, "_schema_acc", None) is not None
+            else None
+        ),
+        "schema_base_accuracy": (
+            getattr(bundle, "_schema_acc", None).telemetry().get("schema_base_accuracy")
+            if getattr(bundle, "_schema_acc", None) is not None
+            else None
+        ),
+        "schema_bias": round(float(getattr(bundle, "_schema_bias", 0.0) or 0.0), 6),
+        "ws_seq_rounds": ws_seq_rounds_v,
+        "ws_seq_divergence": round(ws_seq_div, 6),
+        # WS-DEPTH telemetry.
+        "metacog_calibration": (
+            getattr(bundle, "_metacog_tracker", None).telemetry().get("metacog_calibration")
+            if getattr(bundle, "_metacog_tracker", None) is not None
+            else None
+        ),
+        "metacog_err_mae": (
+            getattr(bundle, "_metacog_tracker", None).telemetry().get("metacog_err_mae")
+            if getattr(bundle, "_metacog_tracker", None) is not None
+            else None
+        ),
+        "percept_fwd_loss": round(percept_fwd_loss_val, 6),
+        "topdown_frac": (
+            round(1.0 - gate_mean, 6) if gate_mean is not None else None
+        ),
+        "self_ignition_rate": round(
+            float(getattr(bundle, "_self_ign_count", 0))
+            / max(1.0, float(cycle_idx)),
+            6,
+        ),
+        "symbol_smoothness": round(symbol_smooth_val, 6),
+        "slot_noise_mean": (
+            getattr(bundle, "_slot_reliability", None).telemetry().get("slot_noise_mean")
+            if getattr(bundle, "_slot_reliability", None) is not None
+            else None
+        ),
+        "inverse_model_loss": (round(inverse_loss_val, 6) if has_body else None),
+        "other_presence": round(other_presence_val, 6),
+        # WS-EXPAND E13: phase clock — INSTRUMENTATION ONLY, never consumed by
+        # any decision path (evidence review: no task benefit demonstrated for
+        # phase-scheduled control; kept for integration-measurement work).
+        "phase_slow": (
+            round(math.sin(2.0 * math.pi * (cycle_idx % C.phase_slow_period()) / C.phase_slow_period()), 6)
+            if C.phase_clock_enabled()
+            else None
+        ),
+        "phase_fast": (
+            round(math.sin(2.0 * math.pi * (cycle_idx % C.phase_fast_period()) / C.phase_fast_period()), 6)
+            if C.phase_clock_enabled()
+            else None
+        ),
         # Need-gated curiosity (None when the drive is disabled -> parity).
         "curiosity_drive": (round(float(cur_out.drive), 6) if cur_out is not None else None),
         "curiosity_pleasure": (round(float(cur_out.pleasure), 6) if cur_out is not None else None),
