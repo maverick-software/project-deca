@@ -62,7 +62,11 @@ _INTERFACE: dict[str, int] = {
 
 # Scalable widths per tier, ordered small -> large (drives VALID_PRESETS order,
 # the dashboard option order, and validation). The "~conn" comment is the
-# measured weight-connection count that the dashboard label advertises.
+# measured cognitive-stack weight-connection count (dim>=2 matrices, faculties
+# off), asserted by tests/test_neural_presets.py. NOTE: the dashboard label now
+# advertises TOTAL trainable parameters (stack + the shared ~177M frozen HF
+# sensory encoder) with this stack count shown alongside -- see
+# dashboard/src/neuralPresets.ts. "conn" here is the scalable stack only.
 _PRESET_SPECS: dict[str, dict] = {
     # ~1.1M conn -- fastest cycles (default). This is the practical floor: the
     # fixed motor/PC/projection heads keep connections near 1M even at d_model=96,
