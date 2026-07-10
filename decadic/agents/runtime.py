@@ -755,6 +755,19 @@ class AgentRuntime:
                 self._landscape_runner(),
                 name=f"decadic-landscape-{self.agent_id}",
             )
+        # Periodic rolling auto-save (crash safety). Always start the task when
+        # there is a brain to save; it idles while disabled so the toggle endpoint
+        # can flip it on live. Default-on state comes from DECADIC_AUTOSAVE.
+        if self.neural is not None and (
+            getattr(self, "_autosave_task", None) is None or self._autosave_task.done()
+        ):
+            self._autosave_enabled = getattr(self, "_autosave_enabled", C.autosave_enabled())
+            self._autosave_interval_s = getattr(
+                self, "_autosave_interval_s", C.autosave_interval_s()
+            )
+            self._autosave_task = asyncio.create_task(
+                self._autosave_loop(), name=f"decadic-autosave-{self.agent_id}"
+            )
 
     def _watchdog_probe(self) -> dict[str, Any]:
         """Read-only heartbeat snapshot for the freeze watchdog. Never locks;
@@ -2607,6 +2620,14 @@ class AgentRuntime:
                 await self._cycle_task
             except asyncio.CancelledError:
                 pass
+        autosave_task = getattr(self, "_autosave_task", None)
+        if autosave_task is not None:
+            autosave_task.cancel()
+            try:
+                await autosave_task
+            except asyncio.CancelledError:
+                pass
+            self._autosave_task = None
         # Drain + stop the write-behind episodic worker (no-op for the sync store).
         close = getattr(self.episodic, "close", None)
         if callable(close):
@@ -2656,6 +2677,112 @@ class AgentRuntime:
         if self.neural is None:
             raise RuntimeError("agent has no neural stack to load into")
         self.neural.load(path)
+
+    async def _autosave_loop(self) -> None:
+        """Periodic rolling auto-save for crash safety. Every
+        ``self._autosave_interval_s`` seconds, when enabled and the agent is
+        alive, snapshot a consistent CPU copy of the brain under the lock and
+        write it to disk OFF the event loop, atomically overwriting THIS agent's
+        previous auto-save. Idles cheaply (just sleeps) while disabled, so the
+        ``/agent/{id}/autosave`` endpoint can flip it on/off live. ON by default
+        (``DECADIC_AUTOSAVE``)."""
+        while True:
+            interval = max(
+                10.0, float(getattr(self, "_autosave_interval_s", C.autosave_interval_s()))
+            )
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                return
+            self.metrics["autosave_enabled"] = bool(getattr(self, "_autosave_enabled", True))
+            self.metrics["autosave_interval_s"] = interval
+            if not getattr(self, "_autosave_enabled", True):
+                continue
+            if self.neural is None or self.status != "alive":
+                continue
+            try:
+                await self._autosave_once()
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                logger.exception("autosave_failed agent_id=%s", self.agent_id)
+
+    async def _autosave_once(self) -> None:
+        """Write a full rolling snapshot into the Saved Agents LIBRARY so it shows
+        up in the startup selector, exactly like a manual Save (checkpoint state +
+        brain + episodic memory + graph + manifest). A fresh save folder is
+        written, then this agent's older auto-saves are pruned so only the newest
+        survives -- crash-safe rolling: the manifest is written LAST (an
+        incomplete save is never listed), and old entries are deleted only after
+        the new one is complete, so the previous good auto-save is never at risk.
+        The large brain file is written OFF the event loop; state/memory/graph are
+        copied under the lock, same as a manual Save."""
+        from dataclasses import asdict, is_dataclass
+
+        from decadic.api.saved_agents.store import (  # framework-free; no import cycle
+            SCHEMA_VERSION,
+            SavedAgentStore,
+            resolve_saved_dir,
+        )
+
+        store = SavedAgentStore(resolve_saved_dir())
+        save_id = store.new_save_id()
+        paths = store.create_dir(save_id)
+        t0 = time.perf_counter()
+        cycle = int(getattr(self.state_bus, "cycle_index", 0) or 0)
+        try:
+            async with self.lock:
+                payload = self.neural.snapshot_cpu_payload()
+                state = self.checkpoint_payload()
+                cycle = int(getattr(self.state_bus, "cycle_index", 0) or 0)
+                paths.state.write_text(
+                    json.dumps(state, indent=2, default=str), encoding="utf-8"
+                )
+                self.backup_memory_to(paths.episodes)
+                self.backup_graph_to(paths.graph)
+                manifest = {
+                    "save_id": save_id,
+                    "name": f"autosave {self.agent_id[:8]}",
+                    "notes": "Automatic periodic save (rolling; replaced each interval).",
+                    "kind": "autosave",
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "source_agent_id": self.agent_id,
+                    "preset": self.preset,
+                    "encoder_mode": self.faculties.encoder_mode,
+                    "viability_mode": self.viability_mode,
+                    "viability": float(self.viability.value),
+                    "cycle_index": cycle,
+                    "has_brain": True,
+                    "has_memory": True,
+                    "faculties": asdict(self.faculties) if is_dataclass(self.faculties) else {},
+                    "plasticity_flags": asdict(self.flags) if is_dataclass(self.flags) else {},
+                    "schema_version": SCHEMA_VERSION,
+                }
+            snapshot_ms = (time.perf_counter() - t0) * 1000.0
+            # Big brain file: written off the event loop (payload is already a CPU
+            # clone, so this never races live training).
+            await asyncio.to_thread(self.neural.atomic_save_payload, payload, paths.brain)
+            # Manifest LAST -> the save is invisible to the selector until complete.
+            store.write_manifest(save_id, manifest)
+        except Exception:
+            store.delete(save_id)  # never leave a half-written save behind
+            raise
+        # Rolling overwrite: keep only this agent's newest auto-save.
+        removed = store.prune_saves(source_agent_id=self.agent_id, kind="autosave", keep=1)
+        self.metrics["autosave_enabled"] = True
+        self.metrics["autosave_last_cycle"] = cycle
+        self.metrics["autosave_count"] = int(self.metrics.get("autosave_count", 0)) + 1
+        self.metrics["autosave_snapshot_ms"] = round(snapshot_ms, 1)
+        self.metrics["autosave_save_id"] = save_id
+        self.metrics["autosave_last_unix_s"] = time.time()
+        logger.info(
+            "autosave_written agent_id=%s cycle=%s save_id=%s snapshot_ms=%.1f pruned=%d",
+            self.agent_id,
+            cycle,
+            save_id,
+            snapshot_ms,
+            removed,
+        )
 
     def backup_memory_to(self, path: Path) -> None:
         """Snapshot episodic memory to an explicit sqlite ``path``."""

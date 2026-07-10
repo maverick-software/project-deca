@@ -6,6 +6,8 @@ import {
   fetchState,
   httpBase,
   listAgentPresets,
+  listSavedAgents,
+  loadSavedAgent,
   type AgentPreset,
   type ScenarioDraft,
 } from "./api";
@@ -159,6 +161,19 @@ export default function App() {
   );
 
   const { data: agents } = usePolling(fetchAgents, 2000);
+  const { data: savedBrains } = usePolling(listSavedAgents, 5000);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const loadSavedBrain = async (saveId: string) => {
+    setLoadingSaved(true);
+    try {
+      const id = await loadSavedAgent(saveId);
+      justCreated.current = { id, at: Date.now() };
+      setAgentId(id);
+      selectTab("overview");
+    } finally {
+      setLoadingSaved(false);
+    }
+  };
 
   useEffect(() => {
     if (!agents) return;
@@ -227,7 +242,14 @@ export default function App() {
             paused={metrics?.paused ?? summary?.paused ?? false}
           />
         )}
-        <AgentPicker agents={agents ?? []} selected={agentId} onSelect={setAgentId} />
+        <AgentPicker
+          agents={agents ?? []}
+          saved={savedBrains ?? []}
+          selected={agentId}
+          onSelect={setAgentId}
+          onLoadSaved={loadSavedBrain}
+          loadingSaved={loadingSaved}
+        />
         <AgentAdmin
           selected={agentId}
           presets={presets}

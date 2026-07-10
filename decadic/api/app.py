@@ -1121,6 +1121,35 @@ def create_app() -> FastAPI:
         slim = [{k: v for k, v in row.items() if k != "embedding"} for row in raw]
         return MemorySimilarResponse(agent_id=agent_id, matches=slim)
 
+    @application.post("/agent/{agent_id}/autosave")
+    async def set_autosave(
+        agent_id: str, enabled: bool | None = None, interval_s: float | None = None
+    ) -> JSONResponse:
+        """Toggle the periodic rolling auto-save live (on by default), or change
+        its interval. Both query params are optional; a call with neither just
+        reports current status. The auto-save overwrites this agent's previous
+        rolling snapshot each time it fires."""
+        registry: AgentRegistry = application.state.registry
+        agent = registry.get(agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Unknown agent")
+        if enabled is not None:
+            agent._autosave_enabled = bool(enabled)
+            agent.metrics["autosave_enabled"] = bool(enabled)
+        if interval_s is not None:
+            agent._autosave_interval_s = max(10.0, float(interval_s))
+        return JSONResponse(
+            {
+                "agent_id": agent_id,
+                "enabled": bool(getattr(agent, "_autosave_enabled", True)),
+                "interval_s": float(
+                    getattr(agent, "_autosave_interval_s", 0.0)
+                ),
+                "last_cycle": agent.metrics.get("autosave_last_cycle"),
+                "count": int(agent.metrics.get("autosave_count", 0)),
+            }
+        )
+
     @application.post("/agent/{agent_id}/checkpoint", response_model=CheckpointResponse)
     async def checkpoint_agent(agent_id: str) -> CheckpointResponse:
         registry: AgentRegistry = application.state.registry

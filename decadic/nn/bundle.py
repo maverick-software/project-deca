@@ -57,6 +57,21 @@ def _warn_if_heavy(preset: str, n_params: int, device: torch.device) -> None:
     logger.warning("%s", base)
 
 
+def _to_cpu(obj: Any) -> Any:
+    """Recursively deep-copy every tensor in a (possibly nested) state payload to
+    CPU. Used to take a consistent snapshot of live-training weights that is safe
+    to ``torch.save`` from a different thread while training continues on the GPU.
+    ``copy=True`` forces a real clone so the writer never races an in-place update.
+    """
+    if isinstance(obj, torch.Tensor):
+        return obj.detach().to("cpu", copy=True)
+    if isinstance(obj, dict):
+        return {k: _to_cpu(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_to_cpu(v) for v in obj)
+    return obj
+
+
 class NeuralBundle:
     """Phase 2 cognitive weights + optimizer checkpointing."""
 
@@ -324,6 +339,41 @@ class NeuralBundle:
             ),
         }
         torch.save(payload, path)
+
+    def snapshot_cpu_payload(self) -> dict[str, Any]:
+        """Consistent CPU clone of the full training state, byte-compatible with
+        :meth:`save`'s payload (so :meth:`load` restores it unchanged) but with
+        every tensor deep-copied to CPU. Take this while holding the training
+        lock; the returned dict can then be ``torch.save``-d off the event loop
+        without racing live training. Mirrors :meth:`save` field-for-field.
+        """
+        return {
+            "agent_id": self.agent_id,
+            "preset": self.preset,
+            "stack": _to_cpu(self.stack.state_dict()),
+            "encoders": _to_cpu(self.encoders.state_dict()),
+            "optimizer": _to_cpu(self.optimizer.state_dict()),
+            "faculties": asdict(self.faculties),
+            "plasticity_flags": asdict(self.flags),
+            "plasticity_state": (
+                asdict(self.plasticity_state) if self.plasticity_state is not None else None
+            ),
+            "plastic_arch_meta": (
+                self.stack.plastic_arch_meta() if self.stack.has_plastic else None
+            ),
+        }
+
+    @staticmethod
+    def atomic_save_payload(payload: dict[str, Any], path: Path) -> None:
+        """Write a snapshot payload to ``path`` atomically: serialize to a temp
+        file, then ``os.replace`` it over the target. A crash mid-write leaves the
+        previous good save intact -- the whole point of an auto-save. Overwrites
+        any existing file at ``path`` (the rolling single-snapshot behaviour).
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        torch.save(payload, tmp)
+        os.replace(tmp, path)
 
     def load(self, path: Path) -> None:
         try:

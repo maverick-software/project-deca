@@ -313,6 +313,31 @@ def tombstone_keep() -> int:
     return max(1, int(os.environ.get("DECADIC_TOMBSTONE_KEEP", str(DEFAULT_TOMBSTONE_KEEP))))
 
 
+# Periodic rolling auto-save (crash safety). ON by default: a long-lived agent
+# should never lose hours of learning to a hard crash. Each auto-save writes a
+# full snapshot into the Saved Agents library (so it appears in the startup
+# selector) and then prunes this agent's older auto-saves, so only the newest
+# survives -- a single rolling entry per agent, not an accumulating history.
+# Toggle live via the /agent/{id}/autosave endpoint.
+DEFAULT_AUTOSAVE = True
+DEFAULT_AUTOSAVE_INTERVAL_S = 600.0  # 10 min; at most this much learning is at risk
+
+
+def autosave_enabled() -> bool:
+    return _env_bool("DECADIC_AUTOSAVE", DEFAULT_AUTOSAVE)
+
+
+def autosave_interval_s() -> float:
+    """Seconds between rolling auto-saves; floored at 10s to bound write pressure."""
+    try:
+        return max(
+            10.0,
+            float(os.environ.get("DECADIC_AUTOSAVE_INTERVAL_S", str(DEFAULT_AUTOSAVE_INTERVAL_S))),
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_AUTOSAVE_INTERVAL_S
+
+
 def assist_gain_for_cycle(cycle: int) -> float:
     """Linear training-wheels schedule: full assist at cycle 0, none past horizon."""
     horizon = float(os.environ.get("DECADIC_ASSIST_DECAY_CYCLES", str(DEFAULT_ASSIST_DECAY_CYCLES)))
